@@ -6,3 +6,7 @@ Created on Feb 22, 2017
 
 from prince_config import config
 import numpy as np
+
+class PriNCeRun(object):
+    def __init__(self, *args, **kwargs):
+        pass

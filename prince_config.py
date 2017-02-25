@@ -1,4 +1,4 @@
-import sys
+import sys, os
 import platform
 import os.path as path
 base = path.dirname(path.abspath(__file__))
@@ -35,7 +35,8 @@ config = {
 
 # Directory where the data files for the calculation are stored
 "data_dir": base+'/data',
-
+# nuclear cross sections
+"data_dir": '/data',
 # # File name of particle production yields
 # "yield_fname": "yield_dict.ppd",
 
