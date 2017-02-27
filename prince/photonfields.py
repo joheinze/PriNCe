@@ -60,13 +60,11 @@ class CombinedPhotonField(PhotonField):
         Returns:
           float: CMB photon spectrum in :math:`{\\rm GeV}}^{-1} {\\rm cm}}^{-3}`
         """ 
-        res = None
+        E = np.atleast_1d(E)
+        dime = E.shape[0]
+        res = np.zeros(dime)
         for model in self.model_list:
-            if res == None:
-                res = model.get_photon_density(E, z)
-            else:
-                res += model.get_photon_density(E, z)
-
+            res += model.get_photon_density(E, z)
         return res
 
     
@@ -91,7 +89,6 @@ class CMBPhotonSpectrum(PhotonField):
         Returns:
           float: CMB photon spectrum in :math:`{\\rm GeV}}^{-1} {\\rm cm}}^{-3}`
         """
-                                                
         pref = 1.31868e40  # 1/pi^2/(hbar*c)^3 [GeV^-3 cm^-3]
         Ered = E / (1. + z)
         # density at z = 0, for energy E / (1 + z); ECMB = kB * T0
@@ -307,7 +304,8 @@ class CIBSteckerZ0(PhotonField):
         if z > 0:
             raise Exception(self.__class__.__name__ + 'get_photon_density(): ' +
                 'Redshift z > 0 not supported by this class')
-
+        
+        return self.spl_ngamma(E)
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
@@ -317,7 +315,7 @@ if __name__ == "__main__":
     inoue = CIBInoue2D()
     fig, ax = plt.subplots(1, 1, figsize=(4, 3))
     ax.loglog(erange, erange*cmb.get_photon_density(erange, z=0.), ls='-', lw=2, color='k')
-    # ax.set_ylim(1e-9, 1e3)
+    ax.set_ylim(1e-9, 1e3)
 #     ax.fill_between(erange, CMB_photon_spectrum(erange, z=0.),
 #                     CMB_photon_spectrum(erange, z=6.), color='b', alpha=0.3)
     ax.set_ylabel(r'$\epsilon$ d$n/$d$\epsilon$ cm$^{-3}$')
@@ -331,11 +329,11 @@ if __name__ == "__main__":
 
     mcomb = CombinedPhotonField([CMBPhotonSpectrum,CIBInoue2D])
     fig, ax = plt.subplots(1, 1, figsize=(4, 3))
-    ax.loglog(erange, erange*mcomb.get_photon_density(erange, z=0.), ls='-', 
+    ax.loglog(erange, erange*mcomb.get_photon_density(erange, 0.), ls='-', 
         lw=2, color='k')
+    ax.fill_between(erange, erange*mcomb.get_photon_density(erange, 0.),
+                    erange*mcomb.get_photon_density(erange, 6.), color='r', alpha=0.3)
     ax.set_ylabel(r'$\epsilon$ d$n/$d$\epsilon$ cm$^{-3}$')
     ax.set_xlabel(r'Photon energy $\epsilon$ (GeV)')
-    
-
 
     plt.show()
