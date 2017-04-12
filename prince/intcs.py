@@ -14,3 +14,4 @@ class PhotoNuclearInteractionRate(object):
 
 		# Requirements: vectorized in E (optional in z) or result output directly on egrid
 
+	
