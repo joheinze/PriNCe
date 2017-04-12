@@ -34,9 +34,9 @@ config = {
 #=========================================================================
 
 # Directory where the data files for the calculation are stored
-"data_dir": base+'/data',
-# nuclear cross sections
-"data_dir": '/data',
+"data_dir": path.join(base,'data'),
+# # nuclear cross sections
+# "data_dir": '/data',
 # # File name of particle production yields
 # "yield_fname": "yield_dict.ppd",
 

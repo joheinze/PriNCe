@@ -4,9 +4,14 @@ Created on Feb 22, 2017
 @author: Anatoli Fedynitch
 '''
 import numpy as np
+from prince_config import config
+
 import cosmology as cosm
 from scipy.interpolate import UnivariateSpline
 from abc import abstractmethod
+from os.path import join
+
+
 
 class PhotonField(object):
     """Base class for constructing target photon densitites.
@@ -106,7 +111,8 @@ class CIBFranceschini2D(PhotonField):
     """
     def __init__(self):
         import cPickle as pickle
-        self.int2d = pickle.load(open('../data/CIB_franceschini_int2D.ppo','rb'))
+        self.int2d = pickle.load(
+            open(join(config['data_dir'],'CIB_franceschini_int2D.ppo'),'rb'))
 
     def get_photon_density(self,E, z):
         """Returns the redshift-scaled number density of CIB photons
@@ -137,7 +143,7 @@ class CIBInoue2D(PhotonField):
     def __init__(self, model='base'):
         import cPickle as pickle
         self.int2d_base, self.int2d_min, self.int2d_max = pickle.load(
-            open('../data/CIB_inoue_int2D.ppo','rb'))
+            open(join(config['data_dir'], 'CIB_inoue_int2D.ppo'),'rb'))
 
         if model == 'base':
             self.int2d = self.int2d_base
