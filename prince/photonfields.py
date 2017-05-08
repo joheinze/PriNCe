@@ -14,9 +14,9 @@ from os.path import join
 
 
 class PhotonField(object):
-    """Base class for constructing target photon densitites.
+    """Base class for constructing target photon densities.
     
-    Derived classes have to implment the method  :func:`PhotonField.get_photon_densities`.
+    Derived classes have to implement the method  :func:`PhotonField.get_photon_densities`.
     """
     @abstractmethod
     def get_photon_density(self, E, z):
@@ -26,9 +26,9 @@ class PhotonField(object):
 class CombinedPhotonField(PhotonField):
     """Class to combine (sum) several models, which inherit from :class:`PhotonField`.
 
-    This class is usefull when constructing a realistic photon spectrum, which
-    is typicall a superposition of CMB and CIB. The list of models can be passed
-    to the constructor or each model can be added sperately using the :func:`add_model`.
+    This class is useful when constructing a realistic photon spectrum, which
+    is typically a superposition of CMB and CIB. The list of models can be passed
+    to the constructor or each model can be added separately using the :func:`add_model`.
 
     Args:
           list_of_classes_and_args: Can be either list of classes or list of tuples (class, args)
@@ -98,7 +98,7 @@ class CMBPhotonSpectrum(PhotonField):
         Ered = E / (1. + z)
         # density at z = 0, for energy E / (1 + z); ECMB = kB * T0
         nlocal = pref * Ered ** 2 / (np.exp(Ered / cosm.E_CMB) - 1.0) 
-        return (1. + z) ** 3 * nlocal
+        return (1. + z) ** 2 * nlocal # JH: Fixed, was (1. + z) ** 3 before
 
 class CIBFranceschini2D(PhotonField):
     """CIB model "1" by Fraceschini et al.
@@ -135,7 +135,7 @@ class CIBInoue2D(PhotonField):
     CIB photon distribution for z = 0...10. Requires availability of 
     an `scipy.interp2d` object file `data/CIB_inoue_int2D.ppo`. A low
     and high variation of the "third-population" component are also
-    available, by passing                                   
+    available, by passing                                 
 
     Ref.:                                                                                    
         Y. Inoue et al. [arXiv:1212.1683]   
