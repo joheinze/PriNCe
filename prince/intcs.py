@@ -25,7 +25,7 @@ class PhotoNuclearInteractionRate(object):
         for proj_id in cross_section.resp_nonel:
             self.matrix[proj_id] = self.cross_section.resp_nonel[proj_id](get_y(x, y, proj_id))
 
-    def get_interation_rate(self, proj_id, E, z):
+    def get_interation_rate(self, proj_id, z):
         # proj_id = PDG & neucosma_codes
         # http://pdg.lbl.gov/2010/reviews/rpp2010-rev-monte-carlo-numbering.pdf
 
@@ -271,3 +271,8 @@ class CrossSectionSophia(CrossSection):
             inclusive_channels[p_id_in][p_id_out] = key
 
         return crosssec_nonel, crosssec_incl, inclusive_channels
+
+
+
+if __name__ == "__main__":
+    import matplotlib.pyplot as plt
