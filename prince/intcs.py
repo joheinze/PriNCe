@@ -12,11 +12,18 @@ from scipy.interpolate import InterpolatedUnivariateSpline
 
 
 class PhotoNuclearInteractionRate(object):
-    def __init__(self, photon_field, cross_section, *args, **kwargs):
-        from util import EnergyGrid
+    def __init__(self, photon_field, cross_section, ebins_dec = 10, cbins_dec = 10, *args, **kwargs):
+        from util import EnergyGrid, get_y
         self.photon_field = photon_field # object of CombinedPhotonFiled
         self.cross_section = cross_section
-        self.e_photon = EnergyGrid(-20,-5,200)
+
+        self.e_photon = EnergyGrid(-15,-8, ebins_dec)
+        self.e_cosmicray = EnergyGrid(7,13, cbins_dec)
+
+        x,y = np.meshgrid(self.e_photon.grid, self.e_cosmicray.grid)
+        self.matrix = {}
+        for proj_id in cross_section.resp_nonel:
+            self.matrix[proj_id] = self.cross_section.resp_nonel[proj_id](get_y(x, y, proj_id))
 
     def get_interation_rate(self, proj_id, E, z):
         # proj_id = PDG & neucosma_codes
@@ -27,15 +34,12 @@ class PhotoNuclearInteractionRate(object):
         # Requirements: vectorized in E (optional in z) or result output directly on egrid
         from util import get_y
 
-        x,y = np.meshgrid(self.e_photon.grid, E)
+        #x,y = np.meshgrid(self.e_photon.grid, E)
     
-        M = self.cross_section.resp_nonel[proj_id](get_y(x, y, proj_id))
+        #M = self.cross_section.resp_nonel[proj_id](get_y(x, y, proj_id))
 
         photon_vector = self.photon_field.get_photon_density(self.e_photon.grid, z)
-        return M.dot(self.e_photon.widths * photon_vector)
-
-
-
+        return self.matrix[proj_id].dot(self.e_photon.widths * photon_vector)
 
 class CrossSection(object):
     """Base class for constructing cross section models.
