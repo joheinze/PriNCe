@@ -23,7 +23,7 @@ else:
 config = {
 
 # Debug flag for verbose printing, 0 = minimum
-"debug_level": 1,
+"debug_level": 3,
 
 # Use progress_bars
 "prog_bar": False,
