@@ -1,8 +1,8 @@
 PriNCe - PRopagation Including Nuclear Cascade equations
 ========================================================
 
-This code is supposed to solve the transport equation for ultra-high enregy cosmic rays on cosmological scales. The development
-is part of the `NEUCOS project <https://astro.desy.de/theory/neucos/index_eng.html>`_
+This code is supposed to solve the transport equation for ultra-high enregy cosmic rays on cosmological scales. 
+The development is part of the `NEUCOS project <https://astro.desy.de/theory/neucos/index_eng.html>`_
 
 Status
 ------
@@ -104,16 +104,6 @@ The installation simplest method relies on the Python package manager `Anaconda/
 
 	click on the examples directory and select `basic_flux.ipynb`. Click through the blocks and see what happens.
 
-Troubleshoting
---------------
-You might run into `problems with Anaconda <https://github.com/conda/conda/issues/394>`_  if you have previous 
-Python installations. A workaround is to set the environement variable
-	.. code-block:: bash
-
-	   $ export PYTHONNOUSERSITE=1
-	   
-Thanks to F.C. Penha for pointing this out.
-
 Citation
 --------
 
@@ -122,7 +112,11 @@ Contributers
 ------------
 
 *Anatoli Fedynitch*
+*Jonas Heinze*
+
+DESY, Platanenallee 6, 15xxx Zeuthen
 
 Copyright and license
 ---------------------
-Code and documentation copyright 2017 Anatoli Fedynitch. Private code. All rights reserved.
+Code and documentation copyright 2017 Anatoli Fedynitch. 
+Private code. All rights reserved.

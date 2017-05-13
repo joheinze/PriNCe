@@ -1,11 +1,36 @@
+"""This module contains utility functions, which fulfill common puposes
+in different modules of this project."""
+
 import inspect
 from scipy.interpolate import InterpolatedUnivariateSpline
 from prince_config import config
 
+# Hmmm...
 m_proton = 0.9382720813  # GeV
 
+def get_AZN(nco_id):
+    """Returns mass number :math:`A`, charge :math:`Z` and neutron
+    number :math:`N` of ``nco_id``.
 
-def e_nucleon(e_tot, p_id):
+    Args:
+        nco_id (int): corsika id of nucleus/mass group
+    Returns:
+        (int,int,int): (Z,A) tuple
+    """
+    Z, A = 1, 1
+
+    if nco_id >= 100:
+        Z = nco_id % 100
+        A = (nco_id - Z) / 100
+    else:
+        raise Exception("get_AZN(): invalid nco_id", nco_id)
+
+    return A, Z, A - Z
+
+
+def e_nucleon(e_tot, nco_id):
+    """Converts energy in energy per nucleon"""
+    A, _, _ = get_AZN(nco_id)
     return e_tot / A
 
 
@@ -32,29 +57,21 @@ def get_interp_object(xgrid, ygrid, **kwargs):
     return InterpolatedUnivariateSpline(xgrid, ygrid, **kwargs)
 
 
-def get_AZN(nco_id):
-    """Returns mass number :math:`A`, charge :math:`Z` and neutron
-    number :math:`N` of ``nco_id``.
+def get_y(e, eps, nco_id):
+    """Retrns center of mass energy of nucleus-photon system.
 
     Args:
-        nco_id (int): corsika id of nucleus/mass group
+        e (float): energy (vector) of nucleus(on) in GeV
+        eps (float): photon energy in GeV
+        nco_id (int): particle index
+
     Returns:
-        (int,int,int): (Z,A) tuple
+        (float): center of mass energy :math:`y`
     """
-    Z, A = 1, 1
 
-    if nco_id >= 100:
-        Z = nco_id % 100
-        A = (nco_id - Z) / 100
-    else:
-        raise Exception("get_AZN(): invalid nco_id", nco_id)
+    A = get_AZN(nco_id)[0]
 
-    return A, Z, A - Z
-
-
-def get_y(E, eps, particle_id):
-    A = particle_id / 100
-    return E * eps / (A * m_proton)
+    return e * eps / (A * m_proton)
 
 
 def caller_name(skip=2):
@@ -147,9 +164,21 @@ def load_or_convert_array(fname, **kwargs):
 
 
 class EnergyGrid(object):
+    """Class for constructing a grid for discrete distributions.
+
+    Since we discretize everything in energy, the name seems appropriate.
+    All grids are log spaced.
+
+    Args:
+        lower (float): log10 of low edge of the lowest bin
+        upper (float): log10 of upper edge of the highest bin
+    """
+
     def __init__(self, lower, upper, bins_dec):
         import numpy as np
         self.bins = np.logspace(lower, upper, (upper - lower) * bins_dec + 1)
         self.grid = 0.5 * (self.bins[1:] + self.bins[:-1])
         self.widths = self.bins[1:] - self.bins[:-1]
-        info(0, 'energy grid initialized')
+        self.d = self.grid.size
+        info(1, 'Energy grid initialized {0:3.1e} - {1:3.1e}, {2} bins'.format(
+            self.bins[0], self.bins[-1], self.grid.size))

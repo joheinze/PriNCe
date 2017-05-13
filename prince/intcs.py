@@ -1,3 +1,5 @@
+"""The module contains everything to handle cross section interfaces."""
+
 from abc import ABCMeta, abstractmethod
 from os.path import isfile, join
 
@@ -5,6 +7,7 @@ import numpy as np
 
 from prince.util import get_AZN, get_interp_object, info, load_or_convert_array
 from prince_config import config
+
 
 class CrossSectionBase(object):
     """Base class for cross section interfaces to tabulated models.
@@ -53,7 +56,7 @@ class CrossSectionBase(object):
                                                              e_max))[0]
         info(2, "Range set to {0:3.2e} - {1:3.2e}".format(
             np.min(self._egrid_tab[self._range]),
-            np.min(self._egrid_tab[self._range])))
+            np.max(self._egrid_tab[self._range])))
 
     def egrid(self):
         """Returns energy grid of the tabulated data in selected range.
@@ -86,8 +89,10 @@ class CrossSectionBase(object):
                     'Daughter {0} heavier than mother {1}. Physics??'.format(
                         da, mo))
             if mo not in self.reactions:
-                self.reactions[mo] = {}
-            self.reactions[mo] = (mo, da)
+                self.reactions[mo] = []
+            elif (mo, da) not in self.reactions[mo]:
+                # Make sure it's a unique list to avoid unnecessary loops
+                self.reactions[mo].append((mo, da))
 
     def nonel(self, mother):
         """Returns non-elastic cross section.
@@ -160,20 +165,28 @@ class CrossSectionBase(object):
 
         return integral / (2 * self._ygrid_tab[1:]**2)
 
-    def precomp_response_func(self):
+    def _precomp_response_func(self):
+        """Interpolate each response function and store interpolators.
+
+        Uses :func:`prince.util.get_interp_object` as interpolator.
+        This might result in too many knots and can be subject to
+        future optimization.
+        """
+
+        info(2, 'Computing interpolators for response functions')
         self.resp_nonel_intp = {}
         for mother in self.nonel_idcs:
             self.resp_nonel_intp[mother] = get_interp_object(
                 self._ygrid_tab[1:], self.response_function(mother))
 
         self.resp_incl_intp = {}
-        for mother in self.incl_idcs:
+        for mother, daughter in self.incl_idcs:
             self.resp_incl_intp[(mother, daughter)] = get_interp_object(
                 self._ygrid_tab[1:], self.response_function(mother, daughter))
 
 
 class CrossSectionInterpolator(CrossSectionBase):
-    """Concatenates and interpolates cross section models.
+    """Joins and interpolates cross section models.
 
     """
 
@@ -195,11 +208,11 @@ class CrossSectionInterpolator(CrossSectionBase):
         """
         CrossSectionBase.__init__(self)
 
-        self._concatenate_models(model_list)
+        self._join_models(model_list)
 
-    def _concatenate_models(self, model_list):
+    def _join_models(self, model_list):
 
-        info(1, "Attempt to combine", len(model_list), "models.")
+        info(1, "Attempt to join", len(model_list), "models.")
 
         nmodels = len(model_list)
         m_ranges = []
@@ -222,19 +235,19 @@ class CrossSectionInterpolator(CrossSectionBase):
         self._incl_tab = {}
         self.set_range()
 
-        info(3, 'Concatenating nonelastic cross sections')
+        info(3, 'Joining nonelastic cross sections')
         for mother in m_objects[0].nonel_idcs:
             self._nonel_tab[mother] = np.concatenate(
                 [m_objects[i].nonel(mother) for i in range(nmodels)])
 
-        info(3, 'Concatenating inclusive cross sections')
+        info(3, 'Joining inclusive cross sections')
         for mother, daughter in m_objects[0].incl_idcs:
             self._incl_tab[(mother, daughter)] = np.concatenate(
                 [m_objects[i].incl(mother, daughter) for i in range(nmodels)])
 
         self._gen_channel_index()
         # now also precompute the response function
-        # self.precomp_response_func()
+        self._precomp_response_func()
 
 
 class SophiaSuperposition(CrossSectionBase):

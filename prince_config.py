@@ -59,6 +59,16 @@ config = {
     "Omega_Lambda": 0.73,
 
     #===========================================================================
+    # Grids
+    #===========================================================================
+    # Format (log10(E_min), log10(E_max), nbins/decade of energy)
+    # Main energy grid for solver
+    "cosmic_ray_grid": (7, 13, 10),
+
+    # Photon grid of target field, only for calculation of rates
+    "photon_grid": (-15, -8, 10),
+
+    #===========================================================================
     # Parameters of numerical integration
     #===========================================================================
 

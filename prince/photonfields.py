@@ -3,25 +3,25 @@ Created on Feb 22, 2017
 
 @author: Anatoli Fedynitch
 '''
-import numpy as np
-from prince_config import config
-
-import cosmology as cosm
-from scipy.interpolate import UnivariateSpline
 from abc import abstractmethod
 from os.path import join
+
+import numpy as np
+from scipy.interpolate import UnivariateSpline
+
+import cosmology as cosm
+from prince_config import config
 
 
 class PhotonField(object):
     """Base class for constructing target photon densities.
-    
+
     Derived classes have to implement the method  :func:`PhotonField.get_photon_densities`.
     """
 
     @abstractmethod
     def get_photon_density(self, E, z):
-        raise Exception(self.__class__.__name__ + '::get_photon_density():' +
-                        'Base class method called accidentally.')
+        raise Exception('Base class method called accidentally.')
 
 
 class CombinedPhotonField(PhotonField):
@@ -50,7 +50,7 @@ class CombinedPhotonField(PhotonField):
 
             self.model_list.append(cl(*cl_arg))
 
-    def add_model(self, model_class, model_args=[]):
+    def add_model(self, model_class, model_args=()):
         """Adds a model class to the combination.
         """
         self.model_list.append(model_class(*model_args))
@@ -58,11 +58,11 @@ class CombinedPhotonField(PhotonField):
     def get_photon_density(self, E, z):
         """Returns the redshift-scaled number density of photons as a
         sum of different models.
-    
+
         Args:
           z (float): redshift
           E (float): photon energy (GeV)
-        
+
         Returns:
           float: CMB photon spectrum in :math:`{\\rm GeV}}^{-1} {\\rm cm}}^{-3}`
         """
@@ -76,22 +76,22 @@ class CombinedPhotonField(PhotonField):
 
 class CMBPhotonSpectrum(PhotonField):
     """Redshift-scaled number density of CMB photons
-    
-    In the CMB frame (equivalent to the observer's frame). Normalisation from Planck's spectrum. 
-    The scaling goes as :math:`n(E,z) = (1+z)^3 n(E/(1+z), z = 0)`. 
-    The CMB spectrum is a blackbody spectrum with the present-day temperature T0 = 2.725 K.                                    
 
-    Ref.:                                                                                    
-        M. Ahlers, L.A. Anchordoqui, and S. Sarkar, Phys. Rev. D 79, 083009 (2009) [0902.3993]    
+    In the CMB frame (equivalent to the observer's frame). Normalisation from Planck's spectrum.
+    The scaling goes as :math:`n(E,z) = (1+z)^3 n(E/(1+z), z = 0)`.
+    The CMB spectrum is a blackbody spectrum with the present-day temperature T0 = 2.725 K.
+
+    Ref.:
+        M. Ahlers, L.A. Anchordoqui, and S. Sarkar, Phys. Rev. D 79, 083009 (2009) [0902.3993]
     """
 
     def get_photon_density(self, E, z):
         """Returns the redshift-scaled number density of CMB photons
-    
+
         Args:
           z (float): redshift
           E (float): photon energy (GeV)
-        
+
         Returns:
           float: CMB photon spectrum in :math:`{\\rm GeV}}^{-1} {\\rm cm}}^{-3}`
         """
@@ -104,12 +104,12 @@ class CMBPhotonSpectrum(PhotonField):
 
 class CIBFranceschini2D(PhotonField):
     """CIB model "1" by Fraceschini et al.
-    
-    CIB photon distribution for z = 0...2. Requires availability of 
-    an `scipy.interp2d` object file `data/CIB_franceschini_int2D.ppo`.                                   
 
-    Ref.:                                                                                    
-        A. Franceschini et al., Astron. Astrphys. 487, 837 (2008) [arXiv:0805.1841]    
+    CIB photon distribution for z = 0...2. Requires availability of
+    an `scipy.interp2d` object file `data/CIB_franceschini_int2D.ppo`.
+
+    Ref.:
+        A. Franceschini et al., Astron. Astrphys. 487, 837 (2008) [arXiv:0805.1841]
     """
 
     def __init__(self):
@@ -119,13 +119,13 @@ class CIBFranceschini2D(PhotonField):
 
     def get_photon_density(self, E, z):
         """Returns the redshift-scaled number density of CIB photons
-        
+
         Accepts scalar, vector and matrix arguments.
 
         Args:
           z (float): redshift
           E (float): photon energy (GeV)
-        
+
         Returns:
           float: CMB photon spectrum in :math:`{\\rm GeV}}^{-1} {\\rm cm}}^{-3}`
         """
@@ -135,14 +135,14 @@ class CIBFranceschini2D(PhotonField):
 
 class CIBInoue2D(PhotonField):
     """CIB model "2" by Inoue et al.
-    
-    CIB photon distribution for z = 0...10. Requires availability of 
+
+    CIB photon distribution for z = 0...10. Requires availability of
     an `scipy.interp2d` object file `data/CIB_inoue_int2D.ppo`. A low
     and high variation of the "third-population" component are also
-    available, by passing                                 
+    available, by passing
 
-    Ref.:                                                                                    
-        Y. Inoue et al. [arXiv:1212.1683]   
+    Ref.:
+        Y. Inoue et al. [arXiv:1212.1683]
     """
 
     def __init__(self, model='base'):
@@ -162,13 +162,13 @@ class CIBInoue2D(PhotonField):
 
     def get_photon_density(self, E, z):
         """Returns the redshift-scaled number density of CIB photons
-        
+
         Accepts scalar, vector and matrix arguments.
-        
+
         Args:
           z (float): redshift
           E (float): photon energy (GeV)
-        
+
         Returns:
           float: CMB photon spectrum in :math:`{\\rm GeV}}^{-1} {\\rm cm}}^{-3}`
         """
@@ -178,11 +178,11 @@ class CIBInoue2D(PhotonField):
 
 class CIBFranceschiniZ0(PhotonField):
     """CIB model "1" by Fraceschini et al.
-    
-    CIB photon distribution at z=0.                                   
 
-    Ref.:                                                                                    
-        A. Franceschini et al., Astron. Astrphys. 487, 837 (2008) [arXiv:0805.1841]    
+    CIB photon distribution at z=0.
+
+    Ref.:
+        A. Franceschini et al., Astron. Astrphys. 487, 837 (2008) [arXiv:0805.1841]
     """
 
     def __init__(self):
