@@ -13,14 +13,16 @@ def get_interp_object(xgrid, ygrid, **kwargs):
     """Returns simple standard interpolation object.
 
     Default type of interpolation is a spline of order
-    one without extrapolation.
+    one without extrapolation (extrapolation to zero).
 
     Args:
         xgrid (numpy.array): x values of function
         ygrid (numpy.array): y values of function
     """
     if xgrid.shape != ygrid.shape:
-        raise Exception('xgrid and ygrid args need identical shape.')
+        raise Exception(
+            'xgrid and ygrid args need identical shapes: {0} != {1}'.format(
+                xgrid.shape, ygrid.shape))
 
     if 'k' not in kwargs:
         kwargs['k'] = 1
@@ -98,9 +100,50 @@ def caller_name(skip=2):
 
 
 def info(min_dbg_level, *message):
-    if min_dbg_level > config["debug_level"]:
+    """Print to console if `min_debug_level <= config["debug_level"]`
+
+    The fuction determines automatically the name of caller and appends
+    the message to it. Message can be a tuple of strings or objects
+    which can be converted to string using `str()`.
+
+    Args:
+        min_dbg_level (int): Minimum debug level in config for printing
+        message (tuple): Any argument or list of arguments that casts to str
+    """
+
+    if min_dbg_level <= config["debug_level"]:
         message = [str(m) for m in message]
         print caller_name() + " ".join(message)
+
+
+def load_or_convert_array(fname, **kwargs):
+    """ Loads an array from '.npy' file if exists otherwise
+    the array is created from CVS file.
+
+    `fname` is expected to be just the file name, without folder.
+    The CVS file is expected to be in the `raw_data_dir` directory
+    pointed to by the config. The array from the file is stored
+    as numpy binary with extension `.npy` in the folder pointed
+    by the `data_dir` config variable.
+
+    Args:
+        fname (str): File name without path or ending
+        kwargs (dict): Is passed to :func:`numpy.loadtxt`
+    Returns:
+        (numpy.array): Array stored in that file
+    """
+    from os.path import join, splitext, isfile
+    import numpy as np
+    fname = splitext(fname)[0]
+    info(2, 'Loading file', fname)
+    if not isfile(join(config["data_dir"], fname + '.npy')):
+        info(2, 'Converting', fname, "to '.npy'")
+        arr = np.loadtxt(
+            join(config['raw_data_dir'], fname + '.dat'), **kwargs)
+        np.save(join(config["data_dir"], fname + '.npy'), arr)
+        return arr
+    else:
+        return np.load(join(config["data_dir"], fname + '.npy'))
 
 
 class EnergyGrid(object):
