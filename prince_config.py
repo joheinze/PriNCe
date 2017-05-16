@@ -1,6 +1,8 @@
-import sys, os
-import platform
+import os
 import os.path as path
+import platform
+import sys
+
 base = path.dirname(path.abspath(__file__))
 sys.path.append(base)
 # sys.path.append(base+"/CRFluxModels")
@@ -23,9 +25,6 @@ config = {
 
     # Debug flag for verbose printing, 0 = minimum
     "debug_level": 3,
-
-    # Use progress_bars
-    "prog_bar": False,
 
     #=========================================================================
     # Paths and library locations

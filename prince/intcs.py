@@ -22,18 +22,16 @@ class CrossSectionBase(object):
         self._range = None
         # Energy grid, as defined in files
         self._egrid_tab = None
-        # Grid in y (defined as self.egrid/2)
-        self._ygrid_tab = None
         # Dictionary of incl. cross sections on egrid, indexed by (mother, daughter)
         self._incl_tab = None
         # Dictionary of nonel. cross sections on egrid, indexed by (mother)
         self._nonel_tab = None
         # List of available mothers for nonel cross sections
-        self.nonel_idcs = None
+        self.nonel_idcs = []
         # List of available (mothers,daughter) reactions in incl. cross sections
-        self.incl_idcs = None
+        self.incl_idcs = []
         # Dictionary of (mother, daughter) reactions for each mother
-        self.reactions = None
+        self.reactions = {}
 
         # Dictionary of reponse function interpolators
         self.resp_nonel_intp = {}
@@ -67,20 +65,16 @@ class CrossSectionBase(object):
 
         return self._egrid_tab[self._range]
 
-    def ygrid(self):
-        """Returns grid of y values (average CMS energy in reponse functions).
+    def _gen_channel_index(self, just_reactions=False):
+        """Construct a list of mothers and (mother, daughter) indices.
 
-        Returns:
-            (numpy.array): y grid in GeV
+        Args:
+            just_reactions (bool): If True then fill just the reactions index.
         """
 
-        return self._ygrid_tab[1:]
-
-    def _gen_channel_index(self):
-        """Construct a list of mothers and (mother, daughter) indices"""
-
-        self.nonel_idcs = sorted(self._nonel_tab.keys())
-        self.incl_idcs = sorted(self._incl_tab.keys())
+        if not just_reactions:
+            self.nonel_idcs = sorted(self._nonel_tab.keys())
+            self.incl_idcs = sorted(self._incl_tab.keys())
         self.reactions = {}
 
         for mo, da in self.incl_idcs:
@@ -105,14 +99,17 @@ class CrossSectionBase(object):
             mother (int): Mother nucleus(on)
 
         Returns:
-            (numpy.array): Inclusive cross section in :math:`cm^{-2}`
-                           on self._egrid_tab
+            (numpy.array, numpy.array): Tuple of Energy grid in GeV, inclusive cross
+                                        section in :math:`cm^{-2}`
         """
 
         if mother not in self._nonel_tab:
-            raise Exception('Mother', mother, 'unknown')
+            info(3, 'Mother', mother, 'unknown')
 
-        return self._nonel_tab[mother][self._range]
+            return self.egrid()[[0, -1]], self._nonel_tab[(
+                mother)][self._range][[0, -1]]
+
+        return self.egrid(), self._nonel_tab[mother][self._range]
 
     def incl(self, mother, daughter):
         """Returns inclusive cross section.
@@ -130,11 +127,15 @@ class CrossSectionBase(object):
         """
 
         if (mother, daughter) not in self._incl_tab:
-            raise Exception(
+            info(
+                3,
                 '({0},{1}) combination not in inclusive cross sections'.format(
                     mother, daughter))
 
-        return self._incl_tab[(mother, daughter)][self._range]
+            return self.egrid()[[0, -1]], self._incl_tab[(
+                mother, daughter)][self._range][[0, -1]]
+
+        return self.egrid(), self._incl_tab[(mother, daughter)][self._range]
 
     def response_function(self, mother, daughter=None):
         """Reponse function :math:`f(y)` or :math:`g(y)` as
@@ -152,18 +153,18 @@ class CrossSectionBase(object):
         """
         from scipy import integrate
 
-        if self._range[0] != 0:
-            raise Exception('Response functions can not computed ' +
-                            'if a minimal energy is defined in range.')
+        egrid, cross_section = None, None
 
-        cross_section = self.nonel(mother)
         if daughter != None:
-            cross_section = self.incl(mother, daughter)
+            egrid, cross_section = self.incl(mother, daughter)
+        else:
+            egrid, cross_section = self.nonel(mother)
 
-        integral = integrate.cumtrapz(
-            self.egrid() * cross_section, x=self.egrid())
+        ygrid = egrid[1:] / 2.
 
-        return integral / (2 * self._ygrid_tab[1:]**2)
+        integral = integrate.cumtrapz(egrid * cross_section, x=egrid)
+
+        return ygrid, integral / (2 * ygrid**2)
 
     def _precomp_response_func(self):
         """Interpolate each response function and store interpolators.
@@ -177,12 +178,13 @@ class CrossSectionBase(object):
         self.resp_nonel_intp = {}
         for mother in self.nonel_idcs:
             self.resp_nonel_intp[mother] = get_interp_object(
-                self._ygrid_tab[1:], self.response_function(mother))
+                *self.response_function(mother))
 
         self.resp_incl_intp = {}
         for mother, daughter in self.incl_idcs:
-            self.resp_incl_intp[(mother, daughter)] = get_interp_object(
-                self._ygrid_tab[1:], self.response_function(mother, daughter))
+            self.resp_incl_intp[(
+                mother, daughter
+            )] = get_interp_object(*self.response_function(mother, daughter))
 
 
 class CrossSectionInterpolator(CrossSectionBase):
@@ -207,7 +209,8 @@ class CrossSectionInterpolator(CrossSectionBase):
             model_list (list): format as specified above
         """
         CrossSectionBase.__init__(self)
-
+        # References to model instances to be joined
+        self.model_refs = None
         self._join_models(model_list)
 
     def _join_models(self, model_list):
@@ -218,7 +221,8 @@ class CrossSectionInterpolator(CrossSectionBase):
         m_ranges = []
         grid_list = []
 
-        m_objects = []
+        self.model_refs = []
+        # Construct instances of models and set ranges where they are valid
         for im, (e_thr, mclass, margs) in enumerate(model_list):
             csm_inst = mclass(*margs)
             if im < nmodels - 1:
@@ -226,28 +230,51 @@ class CrossSectionInterpolator(CrossSectionBase):
             else:
                 csm_inst.set_range(e_thr)
 
-            m_objects.append(csm_inst)
+            self.model_refs.append(csm_inst)
 
-        self._egrid_tab = np.concatenate(
-            [m_objects[i].egrid() for i in range(nmodels)])
-        self._ygrid_tab = self._egrid_tab / 2.
         self._nonel_tab = {}
         self._incl_tab = {}
-        self.set_range()
 
-        info(3, 'Joining nonelastic cross sections')
-        for mother in m_objects[0].nonel_idcs:
-            self._nonel_tab[mother] = np.concatenate(
-                [m_objects[i].nonel(mother) for i in range(nmodels)])
+        # Create a list of nonel and incl cross section in all models
+        self.nonel_idcs = sorted(
+            list(set(sum([m.nonel_idcs for m in self.model_refs], []))))
+        self.incl_idcs = sorted(
+            list(set(sum([m.incl_idcs for m in self.model_refs], []))))
 
-        info(3, 'Joining inclusive cross sections')
-        for mother, daughter in m_objects[0].incl_idcs:
-            self._incl_tab[(mother, daughter)] = np.concatenate(
-                [m_objects[i].incl(mother, daughter) for i in range(nmodels)])
+        self._gen_channel_index(just_reactions=True)
 
-        self._gen_channel_index()
         # now also precompute the response function
         self._precomp_response_func()
+
+    def nonel(self, mother):
+        """Returns the non-elastic cross section of the joined models.
+        """
+
+        info(5, 'Joining nonelastic cross sections for', mother)
+
+        egr = []
+        nonel = []
+        for mod in self.model_refs:
+            e, cs = mod.nonel(mother)
+            egr.append(e)
+            nonel.append(cs)
+
+        return np.concatenate(egr), np.concatenate(nonel)
+
+    def incl(self, mother, daughter):
+        """Returns joined incl cross sections."""
+
+        info(5, 'Joining inclusive cross sections for channel', (mother,
+                                                                 daughter))
+
+        egr = []
+        incl = []
+        for mod in self.model_refs:
+            e, cs = mod.incl(mother, daughter)
+            egr.append(e)
+            incl.append(cs)
+
+        return np.concatenate(egr), np.concatenate(incl)
 
 
 class SophiaSuperposition(CrossSectionBase):
@@ -267,7 +294,6 @@ class SophiaSuperposition(CrossSectionBase):
             'sophia_csec', delimiter=',', unpack=True)
         self.cs_proton_grid *= 1e-30
         self.cs_neutron_grid *= 1e-30
-        self._ygrid_tab = self._egrid_tab / 2.
 
         self.set_range()
 
@@ -285,13 +311,14 @@ class SophiaSuperposition(CrossSectionBase):
             (numpy.array): Inclusive cross section in :math:`cm^{-2}`
                            on self._egrid_tab
         """
+
         # now interpolate these as Spline
         _, Z, N = get_AZN(mother)
 
         # the nonelastic crosssection is just a superposition of
         # the proton/neutron number
         cgrid = Z * self.cs_proton_grid + N * self.cs_neutron_grid
-        return cgrid[self._range]
+        return self.egrid(), cgrid[self._range]
 
     def incl(self, mother, daughter):
         """Returns inclusive cross section.
@@ -311,15 +338,15 @@ class SophiaSuperposition(CrossSectionBase):
         _, Z, N = get_AZN(mother)
 
         if daughter not in [101, 100, mother - 101, mother - 100]:
-            info(5, 'mother, daughter', mother, daughter, 'out of range')
-            return np.zeros_like(self.cs_proton_grid)[self._range]
+            info(10, 'mother, daughter', mother, daughter, 'out of range')
+            return self.egrid()[[0, -1]], np.array([0., 0.])
 
         if daughter in [101, mother - 101]:
             cgrid = Z * self.cs_proton_grid
-            return cgrid[self._range]
+            return self.egrid(), cgrid[self._range]
         elif daughter in [100, mother - 100]:
             cgrid = N * self.cs_neutron_grid
-            return cgrid[self._range]
+            return self.egrid(), cgrid[self._range]
         else:
             raise Exception('Should not happen.')
 
@@ -368,7 +395,6 @@ class NeucosmaFileInterface(CrossSectionBase):
             _incl_tab[mo, da] = csgrid
 
         self._egrid_tab = egrid
-        self._ygrid_tab = egrid / 2
         self._nonel_tab = _nonel_tab
         self._incl_tab = _incl_tab
         # Set initial range to whole egrid
