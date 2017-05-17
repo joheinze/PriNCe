@@ -88,6 +88,54 @@ class CrossSectionBase(object):
                 # Make sure it's a unique list to avoid unnecessary loops
                 self.reactions[mo].append((mo, da))
 
+    def nonel_scale(self, mother, scale='A'):
+        """Returns the nonel cross section scaled by `scale`.
+
+        Convenience funtion for plotting, where it is important to
+        compare the cross section per nucleon.
+
+        Args:
+            mother (int): Mother nucleus(on)
+            scale (float): If `A` then nonel/A is returned, otherwise
+                           scale can be any float.
+
+        Returns:
+            (numpy.array, numpy.array): Tuple of Energy grid in GeV,
+                                        scale * inclusive cross section
+                                        in :math:`cm^{-2}`
+        """
+
+        egr, cs = self.nonel(mother)
+
+        if scale == 'A':
+            scale = 1. / get_AZN(mother)[0]
+
+        return egr, scale * cs
+
+    def incl_scale(self, mother, daughter, scale='A'):
+        """Same as :func:`~intcs.CrossSectionBase.nonel_scale`,
+        just for inclusive cross sections.
+        """
+
+        egr, cs = self.incl(mother, daughter)
+
+        if scale == 'A':
+            scale = 1. / get_AZN(mother)[0]
+
+        return egr, scale * cs
+
+    def response_function_scale(self, mother, daughter=None, scale='A'):
+        """Same meaning as :func:`~intcs.CrossSectionBase.nonel_scale`,
+        just for response functions.
+        """
+
+        ygr, cs = self.response_function(mother, daughter)
+
+        if scale == 'A':
+            scale = 1. / get_AZN(mother)[0]
+
+        return ygr, scale * cs
+
     def nonel(self, mother):
         """Returns non-elastic cross section.
 
@@ -292,6 +340,10 @@ class SophiaSuperposition(CrossSectionBase):
         self._egrid_tab, self.cs_proton_grid, self.cs_neutron_grid = \
         load_or_convert_array(
             'sophia_csec', delimiter=',', unpack=True)
+        # Take each n-th row to reduce the nuber of datapoints
+        nr = config["sophia_grid_skip"]
+        self._egrid_tab, self.cs_proton_grid, self.cs_neutron_grid = \
+            self._egrid_tab[::nr], self.cs_proton_grid[::nr], self.cs_neutron_grid[::nr]
         self.cs_proton_grid *= 1e-30
         self.cs_neutron_grid *= 1e-30
 

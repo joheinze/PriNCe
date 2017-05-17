@@ -68,6 +68,12 @@ config = {
     "photon_grid": (-15, -8, 10),
 
     #===========================================================================
+    # Model options
+    #===========================================================================
+    # The sophia tables are on a grid with 2000 points. The number will use every
+    # N-th entry of the table to reduce memory usage of the interpolator
+    "sophia_grid_skip": 4,
+    #===========================================================================
     # Parameters of numerical integration
     #===========================================================================
 

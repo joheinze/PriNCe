@@ -51,16 +51,18 @@ class PhotoNuclearInteractionRate(object):
         # to benefit from sparse algebra.
         if species_list is None:
             species_list = cross_section.nonel_idcs
-        for mother in species_list:
-            ymat = get_y(x, y, mother)
 
+        # Compute y matrix only once and then rescale by A
+        ymat = get_y(x, y, 100)
+        for mother in species_list:
+            A = get_AZN(mother)[0]
             self.matrix[mother] = self.cross_section.resp_nonel_intp[mother](
-                ymat).dot(delta_eps)
+                ymat/A).dot(delta_eps)
 
             # Compute rates of inclusive reactions
             for (mo, da) in self.cross_section.reactions[mother]:
                 self.matrix[(mo, da)] = self.cross_section.resp_incl_intp[(
-                    mo, da)](ymat).dot(delta_eps)
+                    mo, da)](ymat/A).dot(delta_eps)
 
     def _set_photon_vector(self, z):
         """Cache photon vector for the previous value of z.
