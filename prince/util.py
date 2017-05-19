@@ -1,34 +1,184 @@
+"""This module contains utility functions, which fulfill common puposes
+in different modules of this project."""
+
+import inspect
+from scipy.interpolate import InterpolatedUnivariateSpline
+from prince_config import config
+
+# Hmmm...
+m_proton = 0.9382720813  # GeV
+
+def get_AZN(nco_id):
+    """Returns mass number :math:`A`, charge :math:`Z` and neutron
+    number :math:`N` of ``nco_id``.
+
+    Args:
+        nco_id (int): corsika id of nucleus/mass group
+    Returns:
+        (int,int,int): (Z,A) tuple
+    """
+    Z, A = 1, 1
+
+    if nco_id >= 100:
+        Z = nco_id % 100
+        A = (nco_id - Z) / 100
+    else:
+        raise Exception("get_AZN(): invalid nco_id", nco_id)
+
+    return A, Z, A - Z
 
 
-m_proton = 0.9382720813 # GeV
-
-def E_nucleon(E_tot, p_id):
-	pass
-	return E/A
-
-def Z_A(self, corsika_id):
-        """Returns mass number :math:`A` and charge :math:`Z` corresponding
-        to ``corsika_id``
-
-        Args:
-          corsika_id (int): corsika id of nucleus/mass group
-        Returns:
-          (int,int): (Z,A) tuple
-        """
-        Z, A = 1, 1
-        if corsika_id > 14:
-            Z = corsika_id % 100
-            A = (corsika_id - Z) / 100
-        return Z, A
+def e_nucleon(e_tot, nco_id):
+    """Converts energy in energy per nucleon"""
+    A, _, _ = get_AZN(nco_id)
+    return e_tot / A
 
 
-def get_y(E, eps, particle_id):
-    A = particle_id / 100
-    return E*eps /(A * m_proton)
+def get_interp_object(xgrid, ygrid, **kwargs):
+    """Returns simple standard interpolation object.
+
+    Default type of interpolation is a spline of order
+    one without extrapolation (extrapolation to zero).
+
+    Args:
+        xgrid (numpy.array): x values of function
+        ygrid (numpy.array): y values of function
+    """
+    if xgrid.shape != ygrid.shape:
+        raise Exception(
+            'xgrid and ygrid args need identical shapes: {0} != {1}'.format(
+                xgrid.shape, ygrid.shape))
+
+    if 'k' not in kwargs:
+        kwargs['k'] = 1
+    if 'ext' not in kwargs:
+        kwargs['ext'] = 'zeros'
+
+    return InterpolatedUnivariateSpline(xgrid, ygrid, **kwargs)
+
+
+def get_y(e, eps, nco_id):
+    """Retrns center of mass energy of nucleus-photon system.
+
+    Args:
+        e (float): energy (vector) of nucleus(on) in GeV
+        eps (float): photon energy in GeV
+        nco_id (int): particle index
+
+    Returns:
+        (float): center of mass energy :math:`y`
+    """
+
+    A = get_AZN(nco_id)[0]
+
+    return e * eps / (A * m_proton)
+
+
+def caller_name(skip=2):
+    """Get a name of a caller in the format module.class.method
+
+    `skip` specifies how many levels of stack to skip while getting caller
+    name. skip=1 means "who calls me", skip=2 "who calls my caller" etc.
+    An empty string is returned if skipped levels exceed stack height.abs
+
+    From https://gist.github.com/techtonik/2151727
+    """
+
+    stack = inspect.stack()
+    start = 0 + skip
+
+    if len(stack) < start + 1:
+        return ''
+
+    parentframe = stack[start][0]
+
+    name = []
+    module = inspect.getmodule(parentframe)
+
+    # `modname` can be None when frame is executed directly in console
+
+    if module:
+        name.append(module.__name__ + '.')
+
+    # detect classname
+    if 'self' in parentframe.f_locals:
+        # I don't know any way to detect call from the object method
+        # there seems to be no way to detect static method call - it will
+        # be just a function call
+
+        name.append(parentframe.f_locals['self'].__class__.__name__ + '::')
+
+    codename = parentframe.f_code.co_name
+    if codename != '<module>':  # top level usually
+        name.append(codename + '(): ')  # function or a method
+
+    del parentframe
+    return "".join(name)
+
+
+def info(min_dbg_level, *message):
+    """Print to console if `min_debug_level <= config["debug_level"]`
+
+    The fuction determines automatically the name of caller and appends
+    the message to it. Message can be a tuple of strings or objects
+    which can be converted to string using `str()`.
+
+    Args:
+        min_dbg_level (int): Minimum debug level in config for printing
+        message (tuple): Any argument or list of arguments that casts to str
+    """
+
+    if min_dbg_level <= config["debug_level"]:
+        message = [str(m) for m in message]
+        print caller_name() + " ".join(message)
+
+
+def load_or_convert_array(fname, **kwargs):
+    """ Loads an array from '.npy' file if exists otherwise
+    the array is created from CVS file.
+
+    `fname` is expected to be just the file name, without folder.
+    The CVS file is expected to be in the `raw_data_dir` directory
+    pointed to by the config. The array from the file is stored
+    as numpy binary with extension `.npy` in the folder pointed
+    by the `data_dir` config variable.
+
+    Args:
+        fname (str): File name without path or ending
+        kwargs (dict): Is passed to :func:`numpy.loadtxt`
+    Returns:
+        (numpy.array): Array stored in that file
+    """
+    from os.path import join, splitext, isfile
+    import numpy as np
+    fname = splitext(fname)[0]
+    info(2, 'Loading file', fname)
+    if not isfile(join(config["data_dir"], fname + '.npy')):
+        info(2, 'Converting', fname, "to '.npy'")
+        arr = np.loadtxt(
+            join(config['raw_data_dir'], fname + '.dat'), **kwargs)
+        np.save(join(config["data_dir"], fname + '.npy'), arr)
+        return arr
+    else:
+        return np.load(join(config["data_dir"], fname + '.npy'))
+
 
 class EnergyGrid(object):
+    """Class for constructing a grid for discrete distributions.
+
+    Since we discretize everything in energy, the name seems appropriate.
+    All grids are log spaced.
+
+    Args:
+        lower (float): log10 of low edge of the lowest bin
+        upper (float): log10 of upper edge of the highest bin
+    """
+
     def __init__(self, lower, upper, bins_dec):
         import numpy as np
-        self.bins = np.logspace(lower,upper,(upper-lower) * bins_dec + 1)
-        self.grid = 0.5*(self.bins[1:] + self.bins[:-1])
+        self.bins = np.logspace(lower, upper, (upper - lower) * bins_dec + 1)
+        self.grid = 0.5 * (self.bins[1:] + self.bins[:-1])
         self.widths = self.bins[1:] - self.bins[:-1]
+        self.d = self.grid.size
+        info(1, 'Energy grid initialized {0:3.1e} - {1:3.1e}, {2} bins'.format(
+            self.bins[0], self.bins[-1], self.grid.size))
