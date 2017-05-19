@@ -55,12 +55,14 @@ class PhotoNuclearInteractionRate(object):
         # Compute y matrix only once and then rescale by A
         ymat = get_y(x, y, 100)
         from scipy.sparse import csr_matrix
-
+        # Warning!! Don't divide by A for energy per nucleon grid, currently
+        # per nucleus.
         for mother in species_list:
             A = get_AZN(mother)[0]
             self.matrix[mother] = csr_matrix(self.cross_section.resp_nonel_intp[mother](
                 ymat/A).dot(delta_eps))
             if "ignore_incl" in kwargs and kwargs["ignore_incl"]:
+
                 continue
             # Compute rates of inclusive reactions
             for (mo, da) in self.cross_section.reactions[mother]:
