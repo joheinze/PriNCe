@@ -58,6 +58,9 @@ class PhotoNuclearInteractionRate(object):
         # TODO: Warning!! Don't divide by A for energy per nucleon grid, currently
         # per nucleus.
         for mother in species_list:
+            if mother <= 100:
+                info(3, "Can not compute interaction rate for", mother)
+                continue
             A = get_AZN(mother)[0]
             self.matrix[mother] = csr_matrix(self.cross_section.resp_nonel_intp[mother](
                 ymat/A).dot(delta_eps))

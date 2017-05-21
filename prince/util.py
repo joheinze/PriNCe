@@ -187,7 +187,7 @@ def dict_add(di, key, value):
     """Adds value to previous value of di[key], otherwise the key
     is created with value set to `value`."""
 
-    try:
+    if key in di:
         di[key] += value
-    except KeyError:
+    else:
         di[key] = value
