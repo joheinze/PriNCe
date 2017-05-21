@@ -8,8 +8,9 @@ import cPickle as pickle
 from os import path
 from prince import photonfields, intcs, interaction_rates, data, util
 from util import info
-from prince_config import config
+from prince_config import config, spec_data
 import numpy as np
+
 
 
 class PriNCeRun(object):
@@ -39,67 +40,73 @@ class PriNCeRun(object):
         self.photon_field = photonfields.CombinedPhotonField(
             [photonfields.CMBPhotonSpectrum, photonfields.CIBFranceschini2D])
 
-        #: Dictionary containing particle properties, like mass, charge
-        #: lifetime or branching ratios
-        self.pd = pickle.load(
-            open(path.join(config["data_dir"], "particle_data.ppo"), "rb"))
+        # Store adv_set
+        self.adv_set = config["adv_settings"]
+
 
         # Replace it temporarily by a system with A <= 4
         self.species_refs = self._gen_species_list(
             [mo for mo in self.cross_sections.nonel_idcs if mo < 500])
+
+        # Create tables for shortcuts and conversions
+        self._init_species_tables()
+
+        # Further short-cuts depending on previous initializations
+        self.n_tot_species = len(self.species_refs)
+
+        # Total dimension of system
+        self.dim_states = self.ed * self.n_tot_species
 
         # Initialize the interaction rates
         self.int_rates = interaction_rates.PhotoNuclearInteractionRate(
             photon_field=self.photon_field,
             cross_section=self.cross_sections,
             cr_grid=self._grid,
-            species_list=[
-                mo for mo in self.cross_sections.nonel_idcs if mo < 500
-            ])
-
-        # Store adv_set
-        self.adv_set = config["adv_settings"]
+            species_list=[sorted(self.ncoid2sref.keys())])
 
     def _gen_species_list(self, ncoid_list=None):
         info(2, "Generating list of species.")
-        # TODO: Probably bad idea
+        # TODO: Probably bad idea multi-use the argument
         if ncoid_list is None:
             ncoid_list = self.cross_sections.nonel_idcs
-        ncoid_list += self.pd["non_nuclear_ids"]
-        ncoid_list.sort()
-        
+        ncoid_list += spec_data["non_nuclear_species"]
+        # Make sure list is unique and sorted
+        ncoid_list = sorted(list(set(ncoid_list)))
+
         species_refs = []
-        for ncoid in ncoid_list:
-            species_refs.append(data.PrinceSpecies(ncoid, self.pd, self.ed))
+        # Define position in state vector (princeidx) by simply
+        # incrementing it with the (sorted) list of Neucosma IDs
+        for princeidx, ncoid in enumerate(ncoid_list):
+            info(3, "Appending species {0} at position {1}".format(
+                ncoid, princeidx))
+            species_refs.append(
+                data.PrinceSpecies(ncoid, princeidx, spec_data, self.ed))
         return species_refs
 
-    def _init_particle_tables(self):
+    def _init_species_tables(self):
 
         # Particle index shortcuts
-        #: (dict) Converts PDG ID to index in state vector
+        #: (dict) Converts Neucosma ID to index in state vector
         self.ncoid2princeidx = {}
         #: (dict) Converts particle name to index in state vector
-        self.pname2princeidx = {}
-        #: (dict) Converts PDG ID to reference of :class:`data.MCEqParticle`
-        self.ncoid2pref = {}
+        self.sname2princeidx = {}
+        #: (dict) Converts Neucosma ID to reference of :class:`data.MCEqParticle`
+        self.ncoid2sref = {}
         #: (dict) Converts particle name to reference of :class:`data.MCEqParticle`
-        self.pname2pref = {}
-        #: (dict) Converts index in state vector to PDG ID
+        self.sname2sref = {}
+        #: (dict) Converts index in state vector to Neucosma ID
         self.princeidx2ncoid = {}
         #: (dict) Converts index in state vector to reference of :class:`data.MCEqParticle`
         self.princeidx2pname = {}
 
-        for p in self.particle_species:
-            try:
-                princeidx = p.princeidx
-            except:
-                princeidx = -1
-            self.ncoid2princeidx[p.ncoid] = princeidx
-            self.pname2princeidx[p.name] = princeidx
-            self.princeidx2ncoid[princeidx] = p.ncoid
-            self.princeidx2pname[princeidx] = p.name
-            self.ncoid2pref[p.ncoid] = p
-            self.pname2pref[p.name] = p
+        for p in self.species_refs:
+            self.ncoid2princeidx[p.ncoid] = p.princeidx
+            self.sname2princeidx[p.sname] = p.princeidx
+            self.princeidx2ncoid[p.princeidx] = p.ncoid
+            self.princeidx2pname[p.princeidx] = p.sname
+            self.ncoid2sref[p.ncoid] = p
+            self.sname2sref[p.sname] = p
+    
 
     @property
     def egrid(self):

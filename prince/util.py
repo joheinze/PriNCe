@@ -182,3 +182,12 @@ class EnergyGrid(object):
         self.d = self.grid.size
         info(1, 'Energy grid initialized {0:3.1e} - {1:3.1e}, {2} bins'.format(
             self.bins[0], self.bins[-1], self.grid.size))
+
+def dict_add(di, key, value):
+    """Adds value to previous value of di[key], otherwise the key
+    is created with value set to `value`."""
+
+    try:
+        di[key] += value
+    except KeyError:
+        di[key] = value

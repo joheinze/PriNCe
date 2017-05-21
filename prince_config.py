@@ -1,7 +1,11 @@
+"""PriNCe configuration module."""
+
 import os
 import os.path as path
 import platform
 import sys
+import cPickle as pickle
+import numpy as np
 
 base = path.dirname(path.abspath(__file__))
 sys.path.append(base)
@@ -73,6 +77,11 @@ config = {
     # The sophia tables are on a grid with 2000 points. The number will use every
     # N-th entry of the table to reduce memory usage of the interpolator
     "sophia_grid_skip": 4,
+    # Threshold lifetime value to consider a particle as woth propagating. It
+    # means that if a particle is unstable with lifetime smaller than this threshold
+    # will be decayed until all final state particles of this chain are stable.
+    # In other words: short intermediate states will be integrated out
+    "tau_dec_threshold": np.inf,
     #===========================================================================
     # Parameters of numerical integration
     #===========================================================================
@@ -116,11 +125,7 @@ config = {
     }
 }
 
-dbg = config['debug_level']
-
-
-def mceq_config_without(key_list):
-    r = dict(config)  # make a copy
-    for key in key_list:
-        del r[key]
-    return r
+#: Dictionary containing particle properties, like mass, charge
+#: lifetime or branching ratios
+spec_data = pickle.load(
+    open(path.join(config["data_dir"], "particle_data.ppo"), "rb"))

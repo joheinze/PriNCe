@@ -5,8 +5,8 @@ from os.path import isfile, join
 
 import numpy as np
 
-from prince.util import get_AZN, get_interp_object, info, load_or_convert_array
-from prince_config import config
+from prince.util import *
+from prince_config import config, spec_data
 
 
 class CrossSectionBase(object):
@@ -65,20 +65,22 @@ class CrossSectionBase(object):
 
         return self._egrid_tab[self._range]
 
-    def _gen_channel_index(self, just_reactions=False):
+    def _optimize_and_generate_index(self):
         """Construct a list of mothers and (mother, daughter) indices.
 
         Args:
             just_reactions (bool): If True then fill just the reactions index.
         """
 
-        if not just_reactions:
-            self.nonel_idcs = sorted(self._nonel_tab.keys())
-            self.incl_idcs = sorted(self._incl_tab.keys())
-        self.reactions = {}
+        # Integrate out short lived processes and leave only stable particles
+        # in the databases
+        self._optimize_channels()
+
+        self.nonel_idcs = sorted(self._nonel_tab.keys())
+        self.incl_idcs = sorted(self._incl_tab.keys())
 
         for mo, da in self.incl_idcs:
-            if get_AZN(da)[0] > get_AZN(mo)[0]:
+            if da > 100 and get_AZN(da)[0] > get_AZN(mo)[0]:
                 raise Exception(
                     'Daughter {0} heavier than mother {1}. Physics??'.format(
                         da, mo))
@@ -87,6 +89,90 @@ class CrossSectionBase(object):
             elif (mo, da) not in self.reactions[mo]:
                 # Make sure it's a unique list to avoid unnecessary loops
                 self.reactions[mo].append((mo, da))
+
+    def _optimize_channels(self):
+        """Follows decay chains until all inclusive reactions point to
+        stable final state particles.
+
+        The "tau_dec_threshold" parameter in the config controls the
+        definition of stable. Nuclei for which no the decays are
+        unkown, will be forced to beta-decay until they reach a stable
+        element.
+        """
+        # The new dictionary that will replace _incl_tab
+        new_incl_tab = {}
+        threshold = config["tau_dec_threshold"]
+        # How to indent debug printout for recursion
+        dbg_indent = lambda lev: 4 * lev * "-" + ">" if lev else ""
+
+        info(2, "Integrating out species with lifetime smaller than",
+             threshold)
+        info(3,
+             ("Before optimization, the number of known primaries is {0} with "
+              + "in total {1} inclusive channels").format(
+                  len(self._nonel_tab), len(self._incl_tab)))
+
+        def follow_chain(first_mo, da, value, reclev):
+            """Recursive function to follow decay chains until all
+            final state particles are stable"""
+
+            if da not in spec_data:
+                info(
+                    3,
+                    dbg_indent(reclev),
+                    'daughter {0} unknown, forcing beta decay. Not Implemented yet!!'.
+                    format(da))
+                return
+                # dict_add(new_incl_tab,(mo,da)) TODO something here
+
+            # Daughter is stable. Add it to the new dictionary and terminate
+            # recursion
+            if spec_data[da]["lifetime"] >= threshold:
+                info(10,
+                     dbg_indent(reclev),
+                     'daughter {0} stable. Adding to ({1}, {2})'.format(
+                         da, first_mo, da))
+
+                dict_add(new_incl_tab, (first_mo, da), value)
+                return
+
+            # ..otherwise follow decay products of this daughter, tracking the
+            # original mother particle. The cross section (value) is reduced by
+            # the branching ratio into this partcular channel
+            for br, daughters in spec_data[da]["branchings"]:
+                info(10,
+                     dbg_indent(reclev),
+                     ("{3} -> {0:4d} -> {2:4.2f}: {1}").format(
+                         da, ", ".join(map(str, daughters)), br, first_mo))
+
+                for chained_daughter in daughters:
+                    # Follow each secondary and increment the recursion level by one
+                    follow_chain(first_mo, chained_daughter, br * value,
+                                 reclev + 1)
+
+        # Launch the reduction for each inclusive channel
+        for (mo, da), value in self._incl_tab.items():
+            if mo in spec_data and spec_data[mo]["lifetime"] >= threshold:
+                follow_chain(mo, da, value, 0)
+            else:
+                info(
+                    10,
+                    "Primary species {0} does not fulfill stability criteria.".
+                    format(mo))
+                # Remove mother from _nonel as well, since those particles will
+                # not live long enough for propagation
+                if mo in self._nonel_tab:
+                    _ = self._nonel_tab.pop(mo)
+
+        # Overwrite the old dictionary
+        self._incl_tab = new_incl_tab
+        info(3, "The number of channels after optimization is",
+             len(self._incl_tab))
+
+        info(3,
+             ("After optimization, the number of known primaries is {0} with "
+              + "in total {1} inclusive channels").format(
+                  len(self._nonel_tab), len(self._incl_tab)))
 
     def nonel_scale(self, mother, scale='A'):
         """Returns the nonel cross section scaled by `scale`.
@@ -152,12 +238,13 @@ class CrossSectionBase(object):
         """
 
         if mother not in self._nonel_tab:
-            info(3, 'Mother', mother, 'unknown')
-
-            return self.egrid()[[0, -1]], self._nonel_tab[(
-                mother)][self._range][[0, -1]]
-
-        return self.egrid(), self._nonel_tab[mother][self._range]
+            raise Exception('Mother {0} unknown.'.format(mother))
+            # return self.egrid()[[0, -1]], self._nonel_tab[(
+            #     mother)][self._range][[0, -1]]
+        if isinstance(self._nonel_tab[mother], tuple):
+            return self._nonel_tab[mother]
+        else:
+            return self.egrid(), self._nonel_tab[mother][self._range]
 
     def incl(self, mother, daughter):
         """Returns inclusive cross section.
@@ -175,14 +262,17 @@ class CrossSectionBase(object):
         """
 
         if (mother, daughter) not in self._incl_tab:
-            info(
-                3,
+            raise Exception(
                 '({0},{1}) combination not in inclusive cross sections'.format(
                     mother, daughter))
 
-            return self.egrid()[[0, -1]], self._incl_tab[(
-                mother, daughter)][self._range][[0, -1]]
+            # return self.egrid()[[0, -1]], self._incl_tab[(
+            #     mother, daughter)][self._range][[0, -1]]
 
+        # If _nonel_tab contains tuples of (egrid, cs) return tuple
+        # otherwise return (egrid(), cs) in range defined by self.range
+        if isinstance(self._incl_tab[(mother, daughter)], tuple):
+            return self._incl_tab[(mother, daughter)]
         return self.egrid(), self._incl_tab[(mother, daughter)][self._range]
 
     def response_function(self, mother, daughter=None):
@@ -280,21 +370,25 @@ class CrossSectionInterpolator(CrossSectionBase):
 
             self.model_refs.append(csm_inst)
 
-        self._nonel_tab = {}
-        self._incl_tab = {}
-
         # Create a list of nonel and incl cross section in all models
         self.nonel_idcs = sorted(
             list(set(sum([m.nonel_idcs for m in self.model_refs], []))))
+        self._nonel_tab = {}
+        for mo in self.nonel_idcs:
+            self._nonel_tab[mo] = self._join_nonel(mo)
+
         self.incl_idcs = sorted(
             list(set(sum([m.incl_idcs for m in self.model_refs], []))))
+        self._incl_tab = {}
+        for mo, da in self.incl_idcs:
+            self._incl_tab[(mo, da)] = self._join_incl(mo, da)
 
-        self._gen_channel_index(just_reactions=True)
+        self._optimize_and_generate_index()
 
         # now also precompute the response function
         self._precomp_response_func()
 
-    def nonel(self, mother):
+    def _join_nonel(self, mother):
         """Returns the non-elastic cross section of the joined models.
         """
 
@@ -309,7 +403,7 @@ class CrossSectionInterpolator(CrossSectionBase):
 
         return np.concatenate(egr), np.concatenate(nonel)
 
-    def incl(self, mother, daughter):
+    def _join_incl(self, mother, daughter):
         """Returns joined incl cross sections."""
 
         info(5, 'Joining inclusive cross sections for channel', (mother,
@@ -452,7 +546,7 @@ class NeucosmaFileInterface(CrossSectionBase):
         # Set initial range to whole egrid
         self.set_range()
 
-        self._gen_channel_index()
+        self._optimize_and_generate_index()
 
         info(2, "Finished initialization")
 
