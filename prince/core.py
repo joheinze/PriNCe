@@ -1,8 +1,4 @@
-'''
-Created on Feb 22, 2017
-
-@author: Anatoli Fedynitch
-'''
+'''Provides user interface and runtime management.'''
 
 import cPickle as pickle
 from os import path
@@ -56,8 +52,7 @@ class PriNCeRun(object):
             cr_grid=self._grid,
             species_mananager=self.spec_man)
 
-        self.sim_environment = solvers.ExtragalacticSpace(
-            int_rates, self.spec_man)
+        self.sim_environment = solvers.ExtragalacticSpace(int_rates)
 
     @property
     def egrid(self):
