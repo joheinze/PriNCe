@@ -30,6 +30,10 @@ class CrossSectionBase(object):
         self.nonel_idcs = []
         # List of available (mothers,daughter) reactions in incl. cross sections
         self.incl_idcs = []
+        # List of all known particles (after optimization)
+        self.known_species = []
+        # List of all known inclusive channels (after optimization)
+        self.known_channels = []
         # Dictionary of (mother, daughter) reactions for each mother
         self.reactions = {}
 
@@ -86,9 +90,15 @@ class CrossSectionBase(object):
                         da, mo))
             if mo not in self.reactions:
                 self.reactions[mo] = []
+                self.known_species.append(mo)
             elif (mo, da) not in self.reactions[mo]:
                 # Make sure it's a unique list to avoid unnecessary loops
                 self.reactions[mo].append((mo, da))
+                self.known_channels.append((mo, da))
+                self.known_species.append(da)
+
+        self.known_species = sorted(list(set(self.known_species)))
+        self.known_channels = sorted(list(set(self.known_channels)))
 
     def _optimize_channels(self):
         """Follows decay chains until all inclusive reactions point to
@@ -320,9 +330,8 @@ class CrossSectionBase(object):
 
         self.resp_incl_intp = {}
         for mother, daughter in self.incl_idcs:
-            self.resp_incl_intp[(
-                mother, daughter
-            )] = get_interp_object(*self.response_function(mother, daughter))
+            self.resp_incl_intp[(mother, daughter)] = get_interp_object(
+                *self.response_function(mother, daughter))
 
 
 class CrossSectionInterpolator(CrossSectionBase):

@@ -3,10 +3,38 @@ in different modules of this project."""
 
 import inspect
 from scipy.interpolate import InterpolatedUnivariateSpline
+import scipy.constants as spc
 from prince_config import config
 
-# Hmmm...
-m_proton = 0.9382720813  # GeV
+
+def convert_to_namedtuple(dictionary, name='GenericNamedTuple'):
+    """Converts a dictionary to a named tuple."""
+    from collections import namedtuple
+    return namedtuple(name, dictionary.keys())(**dictionary)
+
+
+# Default units in Prince are ***cm, s, GeV***
+# Define here all constants and unit conversions and use
+# throughout the code. Don't write c=2.99.. whatever.
+# Write clearly which units a function returns.
+# Convert them if not standard unit
+# Accept only arguments in the units above
+
+units_and_conversions_def = dict(
+    c=1e2 * spc.c,
+    cm2Mpc=1. / (spc.parsec * spc.mega * 1e2),
+    Mpc2cm=spc.mega * spc.parsec * 1e2,
+    m_proton=spc.physical_constants['proton mass energy equivalent in MeV'][0]
+    * 1e-3,
+    GeV2erg=1. / 624.15,
+    erg2GeV=624.15,
+    km2cm=1e5,
+    Gyr2sec=spc.giga*spc.year,
+    cm2sec=1e-2/spc.c)
+
+#This is the immutable unit object to be imported throughout the code
+pru = convert_to_namedtuple(units_and_conversions_def,
+                            "PriNCeUnits")
 
 def get_AZN(nco_id):
     """Returns mass number :math:`A`, charge :math:`Z` and neutron
@@ -71,7 +99,7 @@ def get_y(e, eps, nco_id):
 
     A = get_AZN(nco_id)[0]
 
-    return e * eps / (A * m_proton)
+    return e * eps / (A * pru.m_proton)
 
 
 def caller_name(skip=2):
@@ -182,6 +210,7 @@ class EnergyGrid(object):
         self.d = self.grid.size
         info(1, 'Energy grid initialized {0:3.1e} - {1:3.1e}, {2} bins'.format(
             self.bins[0], self.bins[-1], self.grid.size))
+
 
 def dict_add(di, key, value):
     """Adds value to previous value of di[key], otherwise the key
