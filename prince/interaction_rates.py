@@ -92,9 +92,13 @@ class PhotoNuclearInteractionRate(object):
         """Returns redistribution function g matrix for inclusive channel.
 
         """
+        A, _, _ = get_AZN(mother)
         if mother < 100:
             return self.zeros
-
+        elif (mother, daughter) == (101, 101):
+            # TODO: Workaround for missing redistribution functions
+            return 0.1 * self.matrix[(mother, daughter)]
+        # TODO: Sort out energy per nucleon conversions
         return self.matrix[(mother, daughter)]
 
     def photon_vector(self, z):
@@ -122,7 +126,7 @@ class PhotoNuclearInteractionRate(object):
                     self.g_submat(*nco_ids)).dot(self.photon_vector(z))
 
         # Convolve using matrix multiplication
-        return self.matrix[nco_ids].dot(self.photon_vector(z))
+        return self.g_submat(*nco_ids).dot(self.photon_vector(z))
 
     def interation_rate(self, nco_ids, z):
         """Compute interaction rates using matrix convolution.

@@ -77,7 +77,7 @@ class ExtragalacticSpace(object):
     def eqn_deriv(self, z, state, *args):
         # print z
         dldz = -1. / ((1. + z) * H(z) * pru.cm2sec)
-        # state[state < 1e-100] *= 0.
+        state[state < 1e-100] *= 0.
         r = dldz * self.coupling_mat.dot(state)
         # print r
         # r[r < 1e-100] = 0.
@@ -100,7 +100,7 @@ class ExtragalacticSpace(object):
 
     def solve(self):
         from time import time
-        dz = -1e-5
+        dz = -1e-2
         now = time()
         info(2, 'Starting integration.')
         while self.r.successful() and (self.r.t + dz) > self.final_z:

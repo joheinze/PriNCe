@@ -38,9 +38,14 @@ class PriNCeRun(object):
         # Store adv_set
         self.adv_set = config["adv_settings"]
 
+        # Limit max nuclear mass of eqn system
+        system_species = self.cross_sections.known_species
+        if "max_mass" in kwargs:
+            system_species = [
+                s for s in system_species if s < 100 * (kwargs["max_mass"] + 1)
+            ]
         # Initialize species manager for all species for which cross sections are known
-        self.spec_man = data.SpeciesManager(
-            [s for s in self.cross_sections.known_species if s < 500], self.ed)
+        self.spec_man = data.SpeciesManager(system_species, self.ed)
 
         # Total dimension of system
         self.dim_states = self.ed * self.spec_man.nspec
