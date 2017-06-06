@@ -30,7 +30,10 @@ units_and_conversions_def = dict(
     erg2GeV=624.15,
     km2cm=1e5,
     Gyr2sec=spc.giga*spc.year,
-    cm2sec=1e-2/spc.c)
+    cm2sec=1e-2/spc.c,
+    yr2sec = 365 * 24 * 60 * 60,
+    sec2yr = 1 / (365 * 24 * 60 * 60),
+    )
 
 #This is the immutable unit object to be imported throughout the code
 pru = convert_to_namedtuple(units_and_conversions_def,
