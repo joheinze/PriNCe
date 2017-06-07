@@ -2,7 +2,7 @@
 
 import numpy as np
 from prince.cosmology import H
-from prince.util import info, pru
+from prince.util import info, pru, get_AZN
 
 
 class ExtragalacticSpace(object):
@@ -10,9 +10,6 @@ class ExtragalacticSpace(object):
         self.initial_z = initial_z
         self.final_z = final_z
         self.list_of_sources = []
-        self.FGmat = prince_run.FGmat
-        self.struct_mat = prince_run.struct_mat
-        self.coupling_mat = np.zeros_like(self.struct_mat)
 
         self.prince_run = prince_run
         self.spec_man = prince_run.spec_man
@@ -27,9 +24,16 @@ class ExtragalacticSpace(object):
 
         self.solution_vector = []
         self._init_vode()
-
+    
     def add_source_class(self, source_instance):
         self.list_of_sources.append()
+
+    def get_energy_density(self, nco_id):
+        from scipy.integrate import trapz
+
+        A, _, _ = get_AZN(nco_id)
+        return trapz(A * self.egrid * self.get_solution(nco_id),
+                     A * self.egrid)
 
     def get_solution(self, nco_id, redshift=0.):
         sp = self.spec_man.ncoid2sref[nco_id]
@@ -49,15 +53,19 @@ class ExtragalacticSpace(object):
 
         return np.sum([s.injection(z) for s in self.list_of_sources])
 
-    def energy_loss_legth_Mpc(self, nco_id, z):
-        sp = self.spec_man.ncoid2sref[nco_id]
-        rate = self.FGmat[sp.lidx():sp.uidx(),
-                          sp.lidx("ph"):sp.uidx("ph")].dot(self.targ_vec(z))
-        return (1. / rate) * pru.cm2Mpc
+    # def energy_loss_legth_Mpc(self, nco_id, z):
+    #     sp = self.spec_man.ncoid2sref[nco_id]
+    #     rate = self.FGmat[sp.lidx():sp.uidx(),
+    #                       sp.lidx("ph"):sp.uidx("ph")].dot(self.targ_vec(z))
+    #     return (1. / rate) * pru.cm2Mpc
+
+    def init_coupling_mat(self, z):
+        pass
 
     def update_coupling_mat(self, z):
         # info(3, 'Updating coupling matrix at redshift', z)
         sref = self.spec_man.ncoid2sref
+        # self.coupling_mat *= 0.
         for tup in self.int_rates.matrix.keys():
             if not isinstance(tup, tuple):
                 continue
@@ -77,7 +85,7 @@ class ExtragalacticSpace(object):
     def eqn_deriv(self, z, state, *args):
         # print z
         dldz = -1. / ((1. + z) * H(z) * pru.cm2sec)
-        state[state < 1e-100] *= 0.
+        # state[state < 1e-100] *= 0.
         r = dldz * self.coupling_mat.dot(state)
         # print r
         # r[r < 1e-100] = 0.
@@ -88,7 +96,7 @@ class ExtragalacticSpace(object):
 
         ode_params = {
             'name': 'vode',
-            'method': 'adams',
+            'method': 'bdf',
             'nsteps': 2000,
             'rtol': 0.01,
             'max_step': 0.1,
@@ -107,5 +115,6 @@ class ExtragalacticSpace(object):
             # info(3, "Integrating at z={0}".format(self.r.t))
             self.update_coupling_mat(self.r.t)
             self.r.integrate(self.r.t + dz)
+
         self.r.integrate(self.final_z)
         info(2, 'Integration completed in {0} s'.format(time() - now))
