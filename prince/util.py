@@ -29,12 +29,12 @@ units_and_conversions_def = dict(
     GeV2erg=1. / 624.15,
     erg2GeV=624.15,
     km2cm=1e5,
-    Gyr2sec=spc.giga*spc.year,
-    cm2sec=1e-2/spc.c)
+    Gyr2sec=spc.giga * spc.year,
+    cm2sec=1e-2 / spc.c)
 
 #This is the immutable unit object to be imported throughout the code
-pru = convert_to_namedtuple(units_and_conversions_def,
-                            "PriNCeUnits")
+pru = convert_to_namedtuple(units_and_conversions_def, "PriNCeUnits")
+
 
 def get_AZN(nco_id):
     """Returns mass number :math:`A`, charge :math:`Z` and neutron
@@ -50,8 +50,6 @@ def get_AZN(nco_id):
     if nco_id >= 100:
         Z = nco_id % 100
         A = (nco_id - Z) / 100
-    else:
-        raise Exception("get_AZN(): invalid nco_id", nco_id)
 
     return A, Z, A - Z
 
@@ -180,7 +178,7 @@ def load_or_convert_array(fname, **kwargs):
     from os.path import join, splitext, isfile
     import numpy as np
     fname = splitext(fname)[0]
-    info(2, 'Loading file', fname)
+    info(3, 'Loading file', fname)
     if not isfile(join(config["data_dir"], fname + '.npy')):
         info(2, 'Converting', fname, "to '.npy'")
         arr = np.loadtxt(

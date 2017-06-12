@@ -81,7 +81,7 @@ config = {
     # means that if a particle is unstable with lifetime smaller than this threshold
     # will be decayed until all final state particles of this chain are stable.
     # In other words: short intermediate states will be integrated out
-    "tau_dec_threshold": np.inf,
+    "tau_dec_threshold": 0.5,
     #===========================================================================
     # Parameters of numerical integration
     #===========================================================================
