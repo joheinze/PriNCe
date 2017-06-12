@@ -22,6 +22,9 @@ class PriNCeRun(object):
         # Initialize energy grid
         self.cr_grid = util.EnergyGrid(*config["cosmic_ray_grid"])
 
+        # Photon grid for rate computations
+        self.ph_grid = util.EnergyGrid(*config["photon_grid"])
+
         #: Dimension of energy grid
         self.ed = self.cr_grid.d
 

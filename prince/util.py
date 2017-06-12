@@ -26,6 +26,10 @@ units_and_conversions_def = dict(
     Mpc2cm=spc.mega * spc.parsec * 1e2,
     m_proton=spc.physical_constants['proton mass energy equivalent in MeV'][0]
     * 1e-3,
+    m_electron=spc.physical_constants[
+        'electron mass energy equivalent in MeV'][0] * 1e-3,
+    r_electron=spc.physical_constants['classical electron radius'][0] * 1e2,
+    fine_structure=spc.fine_structure,
     GeV2erg=1. / 624.15,
     erg2GeV=624.15,
     km2cm=1e5,
