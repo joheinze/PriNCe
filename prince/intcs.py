@@ -82,16 +82,19 @@ class CrossSectionBase(object):
 
         self.nonel_idcs = sorted(self._nonel_tab.keys())
         self.incl_idcs = sorted(self._incl_tab.keys())
+        self.reactions = {}
 
         for mo, da in self.incl_idcs:
             if da > 100 and get_AZN(da)[0] > get_AZN(mo)[0]:
                 raise Exception(
                     'Daughter {0} heavier than mother {1}. Physics??'.format(
                         da, mo))
+
             if mo not in self.reactions:
                 self.reactions[mo] = []
                 self.known_species.append(mo)
-            elif (mo, da) not in self.reactions[mo]:
+
+            if (mo, da) not in self.reactions[mo]:
                 # Make sure it's a unique list to avoid unnecessary loops
                 self.reactions[mo].append((mo, da))
                 self.known_channels.append((mo, da))
@@ -99,6 +102,7 @@ class CrossSectionBase(object):
 
         self.known_species = sorted(list(set(self.known_species)))
         self.known_channels = sorted(list(set(self.known_channels)))
+
 
     def _optimize_channels(self):
         """Follows decay chains until all inclusive reactions point to
@@ -145,7 +149,6 @@ class CrossSectionBase(object):
                      dbg_indent(reclev),
                      'daughter {0} stable. Adding to ({1}, {2})'.format(
                          da, first_mo, da))
-
                 dict_add(new_incl_tab, (first_mo, da), value)
                 return
 
