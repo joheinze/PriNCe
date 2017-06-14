@@ -82,16 +82,19 @@ class CrossSectionBase(object):
 
         self.nonel_idcs = sorted(self._nonel_tab.keys())
         self.incl_idcs = sorted(self._incl_tab.keys())
+        self.reactions = {}
 
         for mo, da in self.incl_idcs:
             if da > 100 and get_AZN(da)[0] > get_AZN(mo)[0]:
                 raise Exception(
                     'Daughter {0} heavier than mother {1}. Physics??'.format(
                         da, mo))
+
             if mo not in self.reactions:
                 self.reactions[mo] = []
                 self.known_species.append(mo)
-            elif (mo, da) not in self.reactions[mo]:
+
+            if (mo, da) not in self.reactions[mo]:
                 # Make sure it's a unique list to avoid unnecessary loops
                 self.reactions[mo].append((mo, da))
                 self.known_channels.append((mo, da))
@@ -99,6 +102,7 @@ class CrossSectionBase(object):
 
         self.known_species = sorted(list(set(self.known_species)))
         self.known_channels = sorted(list(set(self.known_channels)))
+
 
     def _optimize_channels(self):
         """Follows decay chains until all inclusive reactions point to
@@ -109,6 +113,9 @@ class CrossSectionBase(object):
         unkown, will be forced to beta-decay until they reach a stable
         element.
         """
+        # TODO: check routine, how to avoid empty channels and
+        # mothers with zero nonel cross sections
+
         # The new dictionary that will replace _incl_tab
         new_incl_tab = {}
         threshold = config["tau_dec_threshold"]
@@ -142,7 +149,6 @@ class CrossSectionBase(object):
                      dbg_indent(reclev),
                      'daughter {0} stable. Adding to ({1}, {2})'.format(
                          da, first_mo, da))
-
                 dict_add(new_incl_tab, (first_mo, da), value)
                 return
 
@@ -176,9 +182,6 @@ class CrossSectionBase(object):
 
         # Overwrite the old dictionary
         self._incl_tab = new_incl_tab
-        info(3, "The number of channels after optimization is",
-             len(self._incl_tab))
-
         info(3,
              ("After optimization, the number of known primaries is {0} with "
               + "in total {1} inclusive channels").format(
@@ -249,8 +252,7 @@ class CrossSectionBase(object):
 
         if mother not in self._nonel_tab:
             raise Exception('Mother {0} unknown.'.format(mother))
-            # return self.egrid()[[0, -1]], self._nonel_tab[(
-            #     mother)][self._range][[0, -1]]
+
         if isinstance(self._nonel_tab[mother], tuple):
             return self._nonel_tab[mother]
         else:
@@ -276,11 +278,9 @@ class CrossSectionBase(object):
                 '({0},{1}) combination not in inclusive cross sections'.format(
                     mother, daughter))
 
-            # return self.egrid()[[0, -1]], self._incl_tab[(
-            #     mother, daughter)][self._range][[0, -1]]
-
         # If _nonel_tab contains tuples of (egrid, cs) return tuple
         # otherwise return (egrid(), cs) in range defined by self.range
+
         if isinstance(self._incl_tab[(mother, daughter)], tuple):
             return self._incl_tab[(mother, daughter)]
         return self.egrid(), self._incl_tab[(mother, daughter)][self._range]
@@ -513,6 +513,8 @@ class NeucosmaFileInterface(CrossSectionBase):
     def __init__(self, model_prefix='peanut', *args, **kwargs):
         CrossSectionBase.__init__(self)
         self._load(model_prefix)
+        self._optimize_and_generate_index()
+
 
     def _load(self, model_prefix):
 
@@ -554,9 +556,6 @@ class NeucosmaFileInterface(CrossSectionBase):
         self._incl_tab = _incl_tab
         # Set initial range to whole egrid
         self.set_range()
-
-        self._optimize_and_generate_index()
-
         info(2, "Finished initialization")
 
 
