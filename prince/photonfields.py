@@ -130,7 +130,7 @@ class CIBFranceschini2D(PhotonField):
           float: CMB photon spectrum in :math:`{\\rm GeV}}^{-1} {\\rm cm}}^{-3}`
         """
 
-        return self.int2d(E, z)
+        return self.int2d(E, z, assume_sorted=True)
 
 
 class CIBInoue2D(PhotonField):
@@ -173,7 +173,7 @@ class CIBInoue2D(PhotonField):
           float: CMB photon spectrum in :math:`{\\rm GeV}}^{-1} {\\rm cm}}^{-3}`
         """
 
-        return self.int2d(E, z)
+        return self.int2d(E, z, assume_sorted=True)
 
 
 class CIBFranceschiniZ0(PhotonField):
@@ -226,7 +226,7 @@ class CIBFranceschiniZ0(PhotonField):
             raise Exception(self.__class__.__name__ + 'get_photon_density(): '
                             + 'Redshift z > 0 not supported by this class')
 
-        return self.spl_ngamma(E)
+        return self.spl_ngamma(E, assume_sorted=True)
 
 
 class CIBSteckerZ0(PhotonField):
@@ -305,7 +305,7 @@ class CIBSteckerZ0(PhotonField):
             raise Exception(self.__class__.__name__ + 'get_photon_density(): '
                             + 'Redshift z > 0 not supported by this class')
 
-        return self.spl_ngamma(E)
+        return self.spl_ngamma(E, assume_sorted=True)
 
 
 if __name__ == "__main__":

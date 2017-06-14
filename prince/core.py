@@ -56,6 +56,10 @@ class PriNCeRun(object):
         self.int_rates = interaction_rates.PhotoNuclearInteractionRate(
             prince_run=self)
 
+        # Initialize continuous energy losses
+        self.continuous_losses = interaction_rates.ContinuousLossRates(
+            prince_run=self)
+
         # Let species manager know about the photon grid dimensions (for idx calculations)
         # it is accesible under index "ph" for lidx(), uidx() calls
         self.spec_man.add_grid('ph', self.int_rates.dim_ph)

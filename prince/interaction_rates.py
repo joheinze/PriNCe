@@ -62,6 +62,11 @@ class InteractionRateBase(object):
         """Implement all initialization in the derived class"""
         raise Exception("Base class function called.")
 
+    @abstractmethod
+    def _update_rates(self, z):
+        """Updates all rates if photon field/redshift changes"""
+        raise Exception("Base class function called.")
+
     def photon_vector(self, z):
         """Returns photon vector at redshift `z` on photon grid.
 
@@ -152,31 +157,31 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
             (numpy.array): interaction length :math:`\\Gamma` in cm^-1
         """
 
-        self._update_rate_vec(z)
+        self._update_rates(z)
 
         if isinstance(nco_ids, tuple):
-            lidx, ridx = self._incl_batchvec_pointer[nco_ids]
-            return self._incl_batch_vec[lidx:ridx]
+            lidx, uidx = self._incl_batchvec_pointer[nco_ids]
+            return self._incl_batch_vec[lidx:uidx]
         else:
-            lidx, ridx = self._nonel_batchvec_pointer[nco_ids]
-            return self._nonel_batch_vec[lidx:ridx]
+            lidx, uidx = self._nonel_batchvec_pointer[nco_ids]
+            return self._nonel_batch_vec[lidx:uidx]
 
     def get_coupling_mat(self, z):
         """Returns the nonel rate vector and coupling matrix.
         """
 
-        self._update_rate_vec(z)
+        self._update_rates(z)
         return self._nonel_batch_vec, self.reinjection_smat.multiply(
             bmat(self.incl_rate_struc))
 
-    def _update_rate_vec(self, z):
+    def _update_rates(self, z):
         """Batch compute all nonel and inclusive rates if z changes.
 
         The result is always stored in the same vectors, since '_init_rate_matstruc'
         makes use of views to link ranges of the vector to locations in the matrix.
         """
         if self._ratemat_zcache != z:
-            info(3, 'Updating batch rate vectors.')
+            info(5, 'Updating batch rate vectors.')
             np.dot(
                 self._nonel_batch_matrix,
                 self.photon_vector(z),
@@ -229,15 +234,20 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
 
         # One big matrix for batch-compute all incl rates at once
 
-        # [mother_ncoid,daughter_ncoid] -> _incl_batch_vec[lidx:ridx]
+        # [mother_ncoid,daughter_ncoid] -> _incl_batch_vec[lidx:uidx]
         self._incl_batchvec_pointer = {}
 
-        # [mother_princeidx,daughter_princeidx] -> _incl_batch_vec[lidx:ridx]
+        # [mother_princeidx,daughter_princeidx] -> _incl_batch_vec[lidx:uidx]
         self._incl_batchvec_pridx_pointer = {}
 
+        # Count number of incl channels for activated nuclear species
+        n_incl = np.sum([
+            len(self.cross_sections.reactions[mother])
+            for mother in self.spec_man.known_species if mother >= 100
+        ])
+
         # Matrix: (incl-channels * dim_cr) x dim_ph
-        self.incl_batch_matrix = np.zeros(
-            (self.dim_cr * len(self.cross_sections.incl_idcs), self.dim_ph))
+        self.incl_batch_matrix = np.zeros((self.dim_cr * n_incl, self.dim_ph))
 
         # Result vector, which stores computed incl rates
         self._incl_batch_vec = np.zeros(self.incl_batch_matrix.shape[0])
@@ -262,12 +272,12 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                 continue
 
             A = get_AZN(mother)[0]
-            lidx, ridx = fill_idx * self.dim_cr, (fill_idx + 1) * self.dim_cr
+            lidx, uidx = fill_idx * self.dim_cr, (fill_idx + 1) * self.dim_cr
 
             self._nonel_batch_matrix[
-                lidx:ridx] = self.cross_sections.resp_nonel_intp[mother](
+                lidx:uidx] = self.cross_sections.resp_nonel_intp[mother](
                     self.ymat).dot(delta_eps)
-            self._nonel_batchvec_pointer[mother] = (lidx, ridx)
+            self._nonel_batchvec_pointer[mother] = (lidx, uidx)
 
             fill_idx += 1
 
@@ -280,23 +290,23 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
             for (mo, da) in self.cross_sections.reactions[mother]:
 
                 # Indices in batch matrix
-                lidx, ridx = fill_idx * self.dim_cr, (
+                lidx, uidx = fill_idx * self.dim_cr, (
                     fill_idx + 1) * self.dim_cr
 
                 # Staple ("vstack"") all inclusive (channel) response functions
                 self.incl_batch_matrix[
-                    lidx:ridx] = self.cross_sections.resp_incl_intp[(
+                    lidx:uidx] = self.cross_sections.resp_incl_intp[(
                         mo, da)](self.ymat).dot(delta_eps)
 
                 # Remember how to find the entry for a response function/rate in the
                 # matrix or result vector
-                self._incl_batchvec_pointer[(mo, da)] = (lidx, ridx)
+                self._incl_batchvec_pointer[(mo, da)] = (lidx, uidx)
 
                 # Create association between prince_idx and position in resulting
                 # rate vector
                 mo_pridx, da_pridx = pridx[mo], pridx[da]
                 self._incl_batchvec_pridx_pointer[(mo_pridx,
-                                                   da_pridx)] = (lidx, ridx)
+                                                   da_pridx)] = (lidx, uidx)
 
                 fill_idx += 1
 
@@ -320,11 +330,11 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                     else:
                         self.incl_rate_struc[da_pridx].append(None)
                     continue
-                lidx, ridx = self._incl_batchvec_pridx_pointer[(mo_pridx,
+                lidx, uidx = self._incl_batchvec_pridx_pointer[(mo_pridx,
                                                                 da_pridx)]
                 self.incl_rate_struc[da_pridx].append(
                     coo_matrix(
-                        (self._incl_batch_vec[lidx:ridx], (idcs, idcs)),
+                        (self._incl_batch_vec[lidx:uidx], (idcs, idcs)),
                         shape=shape_submat,
                         copy=False))
 
@@ -350,7 +360,7 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                 B, A = float(get_AZN(prnco[da_pridx])[0]), float(
                     get_AZN(prnco[mo_pridx])[0])
 
-                lidx, ridx = self._incl_batchvec_pridx_pointer[(mo_pridx,
+                lidx, uidx = self._incl_batchvec_pridx_pointer[(mo_pridx,
                                                                 da_pridx)]
                 if da_pridx == mo_pridx and prnco[da_pridx] == 101:
                     A = 0.8
@@ -369,24 +379,121 @@ class ContinuousLossRates(InteractionRateBase):
     """Implementation of continuous pair production loss rates."""
 
     def __init__(self, prince_run, *args, **kwargs):
-        InteractionRateBase.__init__(self, prince_run, *args, **kwargs)
-
         # Number of integration steps in phi
         self.xi_steps = 100 if 'xi_steps' not in kwargs else kwargs['xi_steps']
 
+        InteractionRateBase.__init__(self, prince_run, *args, **kwargs)
+
+    def pprod_loss_rate(self, nco_id, z):
+        """Returns energy loss rate in GeV/cm."""
+
+        self._update_rates(z)
+        s = self.spec_man.ncoid2sref[nco_id]
+
+        return self.pprod_loss_vector[s.lidx():s.uidx()]
+
+    def adiabatic_losses(self, z):
+        """Returns adiabatic loss vector at redshift z"""
+        from prince.cosmology import H
+        return H(z) * pru.cm2sec * self.adiabatic_loss_vector
+
+    def pprod_losses(self, z):
+        """Returns pair production losses at redshift z"""
+        self._update_rates(z)
+        return self.pprod_loss_vector
+
+    def loss_vector(self, z):
+        """Returns all continuous losses on dim_states grid"""
+
+        return self.pprod_losses(z) + self.adiabatic_losses(z)
+
     def _setup(self):
-        self._init_constants()
 
-    def _init_constants(self):
-        xi = np.logspace(0.30103, 8., self.xi_steps)
+        # Photon grid for parallel integration of the "Blumental integral"
+        # for each point of the cosmic ray grid
 
-        int_prefactor = pru.fine_structure * pru.r_electron**2 * pru.m_electron**2
+        # xi is dimensionless (natural units) variable
+        self.xi = np.logspace(np.log10(2 + 1e-8), 8., self.xi_steps)
 
-        self.pref_phi_xi2 = int_prefactor * self._phi(xi) / xi**2
+        # weights for integration
+        self.phi_xi2 = self._phi() / (self.xi**2)
 
+        # Gamma factor of the cosmic ray
         gamma = self.e_cosmicray.grid / pru.m_proton
 
-    def _phi(self, xi):
+        # Scale vector containing the units and factors of Z**2 for nuclei
+        self.scale_vec = self._init_scale_vec()
+
+        # Init adiabatic loss vector
+        self.adiabatic_loss_vector = self._init_adiabatic_vec()
+
+        # Grid of photon energies for interpolation
+        self.photon_grid = np.outer(1 / gamma, self.xi) * pru.m_electron / 2.
+        self.pg_desort = self.photon_grid.reshape(-1).argsort()
+        self.pg_sorted = self.photon_grid.reshape(-1)[self.pg_desort]
+
+        # Rate vector (dim_states x 1) containing all rates
+        self.pprod_loss_vector = np.zeros(self.prince_run.dim_states)
+
+    def _update_rates(self, z):
+        """Updates photon fields and computes rates for all species."""
+        from scipy.integrate import trapz
+
+        np.multiply(
+            self.scale_vec,
+            np.tile(
+                trapz(self.photon_vector(z) * self.phi_xi2, self.xi, axis=1),
+                self.spec_man.nspec),
+            out=self.pprod_loss_vector)
+
+    def _set_photon_vector(self, z):
+        """Get and cache photon vector for the previous value of z.
+
+        This vector is in fact a matrix of vectors of the interpolated
+        photon field with dimensions (dim_cr, xi_steps).
+
+        Args:
+            z (float): redshift
+        """
+        if self._photon_vector is None:
+            self._photon_vector = np.zeros_like(self.photon_grid)
+
+        if self._ph_vec_zcache != z:
+            self._photon_vector.reshape(-1)[
+                self.pg_desort] = self.photon_field.get_photon_density(
+                    self.pg_sorted, z)
+            self._ph_vec_zcache = z
+
+    def _init_scale_vec(self):
+        """Prepare vector for scaling with units, charge and mass."""
+
+        scale_vec = np.zeros(self.prince_run.dim_states)
+        units = pru.fine_structure * pru.r_electron**2 * pru.m_electron**2
+
+        for spec in self.spec_man.species_refs:
+            if not spec.is_nucleus:
+                continue
+            print spec.uidx()
+            scale_vec[spec.lidx():spec.uidx()] = units * abs(
+                spec.charge) * spec.Z**2 / float(spec.A) * np.ones(
+                    self.dim_cr, dtype='double')
+
+        return scale_vec
+
+    def _init_adiabatic_vec(self):
+        """Prepare vector for scaling with units, charge and mass."""
+
+        adiabatic_loss_vector = np.zeros(self.prince_run.dim_states)
+        units = pru.fine_structure * pru.r_electron**2 * pru.m_electron**2
+
+        for spec in self.spec_man.species_refs:
+            adiabatic_loss_vector[spec.lidx():spec.uidx()] = float(
+                spec.A) * np.ones(
+                    self.dim_cr, dtype='double')
+
+        return adiabatic_loss_vector
+
+    def _phi(self):
         """Phi function as in Blumental 1970"""
 
         # Simple ultrarelativistic approximation by Blumental 1970
@@ -402,11 +509,12 @@ class ContinuousLossRates(InteractionRateBase):
         f1 = 2.91
         f2 = 78.35
         f3 = 1837
-        xi = np.asarray(xi)
+
+        xi = self.xi
         res = np.zeros(xi.shape)
 
-        le = xi < 25.
-        he = xi >= 25.
+        le = np.where(xi < 25.)
+        he = np.where(xi >= 25.)
 
         res[le] = np.pi / 12. * (xi[le] - 2)**4 / (c1 * (xi[le] - 2)**1 + c2 *
                                                    (xi[le] - 2)**2 + c3 *
@@ -417,25 +525,3 @@ class ContinuousLossRates(InteractionRateBase):
             1 - f1 * xi[he]**-1 - f2 * xi[he]**-2 - f3 * xi[he]**-3)
 
         return res
-
-    def lossrate(self, energy, z=0, intsteps=100):
-        """Loss rate for a proton with lorentz factor gamma 
-        propagating through photon_density at redshift z.
-        
-        Fully vectorized version!
-        
-        For nuclei multiply the result by Z^2
-        result is given in [GeV / cm]
-        """
-        gamma = energy / 939e-3
-
-        ephoton = np.outer(1 / gamma, xi) * emass / 2
-        pdensity = photon_density.get_photon_density
-
-        intmatrix = (pdensity(ephoton.reshape(-1),
-                              z).reshape(ephoton.shape)) * phi(xi) / xi**2
-        integral = integrate.trapz(intmatrix, xi, axis=1)
-        pref = (finestruct * eradius**2 * emass**2)
-        return pref * integral
-
-    pair_lossrate = lossrate

@@ -6,19 +6,27 @@ from prince.util import info, pru, get_AZN
 
 
 class UHECRPropagationSolver(object):
-    def __init__(self, initial_z, final_z, prince_run):
+    def __init__(self, initial_z, final_z, prince_run,
+                 enable_cont_losses=True):
         self.initial_z = initial_z
         self.final_z = final_z
 
         self.prince_run = prince_run
+        self.spec_man = prince_run.spec_man
+
+        self.enable_cont_losses = enable_cont_losses
+
         self.egrid = prince_run.egrid
+        self.egr_state = np.tile(self.egrid, prince_run.spec_man.nspec)
         self.dim_cr = prince_run.int_rates.dim_cr
         self.dim_ph = prince_run.int_rates.dim_ph
         self.int_rates = self.prince_run.int_rates
+        self.continuous_loss_rates = self.prince_run.continuous_losses
 
         self.targ_vec = prince_run.int_rates.photon_vector
 
         self.state = np.zeros(prince_run.dim_states)
+        self.last_z = self.initial_z
 
         self.solution_vector = []
         self.list_of_sources = []
@@ -45,7 +53,8 @@ class UHECRPropagationSolver(object):
         self.state[sp.lidx():sp.uidx()] = spectrum
         # Initial value
         self.r.set_initial_value(self.state, self.initial_z)
-        self.update_coupling_mat(self.initial_z)
+        self._update_coupling_mat(self.initial_z)
+        self.last_z = self.initial_z
 
     def injection(self, z):
         """This needs to return the injection rate
@@ -59,16 +68,31 @@ class UHECRPropagationSolver(object):
     #                       sp.lidx("ph"):sp.uidx("ph")].dot(self.targ_vec(z))
     #     return (1. / rate) * pru.cm2Mpc
 
-    def update_coupling_mat(self, z):
+    def _update_coupling_mat(self, z):
         info(5, 'Updating coupling matrix at redshift', z)
+        self.continuous_losses = self.continuous_loss_rates.loss_vector(z)
         self.nonel_rate, self.coupling_mat = self.int_rates.get_coupling_mat(z)
 
-    def eqn_deriv(self, z, state, *args):
+    def semi_lagrangian(self, delta_z, z, state):
 
-        state[state < 1e-50] *= 0.
         dldz = -1. / ((1. + z) * H(z) * pru.cm2sec)
-        # print self.nonel_rate.shape, self.state.shape
-        r = dldz * (-self.nonel_rate * state + self.coupling_mat.dot(state) + self.injection(z))
+        # delta_l
+        conloss = self.continuous_losses * delta_z * dldz
+        # print delta_z * dldz
+        for s in self.spec_man.species_refs:
+            lidx, uidx = s.lidx(), s.uidx()
+            state[lidx:uidx] = np.interp(
+                self.egrid, self.egrid + conloss[lidx:uidx], state[lidx:uidx])
+
+        return state
+
+    def eqn_deriv(self, z, state, *args):
+        from scipy.integrate import trapz
+        state[state < 1e-50] *= 0.
+
+        dldz = -1. / ((1. + z) * H(z) * pru.cm2sec)
+        r = dldz * (-self.nonel_rate * state + self.coupling_mat.dot(state) +
+                    self.injection(z))
         return r
 
     def _init_vode(self):
@@ -79,13 +103,16 @@ class UHECRPropagationSolver(object):
             'method': 'bdf',
             'nsteps': 10000,
             'rtol': 0.1,
-            'max_step': 0.01,
+            # 'max_order_s': 2,
+            'order':5,
+            'max_step': 0.1,
+
+            # 'first_step': 1e-4,
             # 'with_jacobian': False
         }
 
         # Setup solver
         self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
-        self.r.stiff = 1
 
     def solve(self):
         from time import time
@@ -94,11 +121,16 @@ class UHECRPropagationSolver(object):
         info(2, 'Starting integration.')
         while self.r.successful() and (self.r.t + dz) > self.final_z:
             info(3, "Integrating at z={0}".format(self.r.t))
-            self.update_coupling_mat(self.r.t)
+            self._update_coupling_mat(self.r.t)
             self.r.integrate(self.r.t + dz)
+            if self.enable_cont_losses:
+                self.r.set_initial_value(
+                    self.semi_lagrangian(dz, self.r.t, self.r.y),
+                    self.r.t)
 
         if not self.r.successful():
-            raise Exception('Integration failed. Change integrator setup and retry.')
+            raise Exception(
+                'Integration failed. Change integrator setup and retry.')
 
         self.r.integrate(self.final_z)
 
