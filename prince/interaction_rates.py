@@ -166,13 +166,15 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
             lidx, uidx = self._nonel_batchvec_pointer[nco_ids]
             return self._nonel_batch_vec[lidx:uidx]
 
-    def get_coupling_mat(self, z):
+    def get_hadr_jacobian(self, z):
         """Returns the nonel rate vector and coupling matrix.
         """
-
+        from scipy.sparse import csr_matrix, dia_matrix
         self._update_rates(z)
-        return self._nonel_batch_vec, self.reinjection_smat.multiply(
-            bmat(self.incl_rate_struc))
+        coupl = self.reinjection_smat.multiply(
+            bmat(self.incl_rate_struc, format='coo'))
+        coupl -= dia_matrix((self._nonel_batch_vec, [0]), shape=coupl.shape)
+        return coupl
 
     def _update_rates(self, z):
         """Batch compute all nonel and inclusive rates if z changes.
@@ -372,7 +374,7 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                             idcs, idcs)),
                         shape=shape_submat))
 
-        self.reinjection_smat = bmat(self.reinjection_struc)
+        self.reinjection_smat = bmat(self.reinjection_struc, format='coo')
 
 
 class ContinuousLossRates(InteractionRateBase):
@@ -473,7 +475,6 @@ class ContinuousLossRates(InteractionRateBase):
         for spec in self.spec_man.species_refs:
             if not spec.is_nucleus:
                 continue
-            print spec.uidx()
             scale_vec[spec.lidx():spec.uidx()] = units * abs(
                 spec.charge) * spec.Z**2 / float(spec.A) * np.ones(
                     self.dim_cr, dtype='double')
@@ -484,12 +485,10 @@ class ContinuousLossRates(InteractionRateBase):
         """Prepare vector for scaling with units, charge and mass."""
 
         adiabatic_loss_vector = np.zeros(self.prince_run.dim_states)
-        units = pru.fine_structure * pru.r_electron**2 * pru.m_electron**2
 
         for spec in self.spec_man.species_refs:
             adiabatic_loss_vector[spec.lidx():spec.uidx()] = float(
-                spec.A) * np.ones(
-                    self.dim_cr, dtype='double')
+                spec.A) * self.e_cosmicray.grid
 
         return adiabatic_loss_vector
 

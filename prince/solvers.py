@@ -53,7 +53,7 @@ class UHECRPropagationSolver(object):
         self.state[sp.lidx():sp.uidx()] = spectrum
         # Initial value
         self.r.set_initial_value(self.state, self.initial_z)
-        self._update_coupling_mat(self.initial_z)
+        self._update_jacobian(self.initial_z)
         self.last_z = self.initial_z
 
     def injection(self, z):
@@ -68,10 +68,15 @@ class UHECRPropagationSolver(object):
     #                       sp.lidx("ph"):sp.uidx("ph")].dot(self.targ_vec(z))
     #     return (1. / rate) * pru.cm2Mpc
 
-    def _update_coupling_mat(self, z):
-        info(5, 'Updating coupling matrix at redshift', z)
+    def _update_jacobian(self, z):
+        info(5, 'Updating jacobian matrix at redshift', z)
         self.continuous_losses = self.continuous_loss_rates.loss_vector(z)
-        self.nonel_rate, self.coupling_mat = self.int_rates.get_coupling_mat(z)
+        self.sp_jacobian = self.int_rates.get_hadr_jacobian(z)
+        self.jacobian = self.sp_jacobian.todense()
+
+    def eqn_jac(self, z, state):
+        dldz = -1. / ((1. + z) * H(z) * pru.cm2sec)
+        return dldz * self.jacobian
 
     def semi_lagrangian(self, delta_z, z, state):
 
@@ -87,12 +92,10 @@ class UHECRPropagationSolver(object):
         return state
 
     def eqn_deriv(self, z, state, *args):
-        from scipy.integrate import trapz
-        state[state < 1e-50] *= 0.
+        # state[state < 1e-50] *= 0.
 
         dldz = -1. / ((1. + z) * H(z) * pru.cm2sec)
-        r = dldz * (-self.nonel_rate * state + self.coupling_mat.dot(state) +
-                    self.injection(z))
+        r = dldz * self.sp_jacobian.dot(state)
         return r
 
     def _init_vode(self):
@@ -102,31 +105,31 @@ class UHECRPropagationSolver(object):
             'name': 'vode',
             'method': 'bdf',
             'nsteps': 10000,
-            'rtol': 0.1,
+            'rtol': 0.05,
             # 'max_order_s': 2,
-            'order':5,
-            'max_step': 0.1,
+            # 'order': 5,
+            'max_step': 0.2,
 
             # 'first_step': 1e-4,
             # 'with_jacobian': False
         }
 
         # Setup solver
-        self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
-
+        self.r = ode(
+            self.eqn_deriv).set_integrator(**ode_params)
+        #, jac=self.eqn_jac
     def solve(self):
         from time import time
-        dz = -1e-2
+        dz = -1e-3
         now = time()
         info(2, 'Starting integration.')
         while self.r.successful() and (self.r.t + dz) > self.final_z:
-            info(3, "Integrating at z={0}".format(self.r.t))
-            self._update_coupling_mat(self.r.t)
+            # info(3, "Integrating at z={0}".format(self.r.t))
+            self._update_jacobian(self.r.t)
             self.r.integrate(self.r.t + dz)
             if self.enable_cont_losses:
                 self.r.set_initial_value(
-                    self.semi_lagrangian(dz, self.r.t, self.r.y),
-                    self.r.t)
+                    self.semi_lagrangian(dz, self.r.t, self.r.y), self.r.t)
 
         if not self.r.successful():
             raise Exception(
