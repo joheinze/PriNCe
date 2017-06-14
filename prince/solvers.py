@@ -32,6 +32,9 @@ class UHECRPropagationSolver(object):
         self.list_of_sources = []
         self._init_vode()
 
+    def dldz(self, z):
+        return -1. / ((1. + z) * H(z) * pru.cm2sec)
+
     def add_source_class(self, source_instance):
         self.list_of_sources.append(source_instance)
 
@@ -47,20 +50,22 @@ class UHECRPropagationSolver(object):
         return self.r.y[sp.lidx():sp.uidx()]
         # return self.solution_vector[-1][sp.lidx():sp.uidx()]
 
-    def set_initial_condition(self, spectrum, nco_id):
-        sp = self.prince_run.spec_man.ncoid2sref[nco_id]
+    def set_initial_condition(self, spectrum=None, nco_id=None):
         self.state *= 0.
-        self.state[sp.lidx():sp.uidx()] = spectrum
+        if spectrum is not None and nco_id is not None:
+            sp = self.prince_run.spec_man.ncoid2sref[nco_id]
+            self.state[sp.lidx():sp.uidx()] = spectrum
         # Initial value
         self.r.set_initial_value(self.state, self.initial_z)
         self._update_jacobian(self.initial_z)
         self.last_z = self.initial_z
 
-    def injection(self, z):
+    def injection(self, dz, z):
         """This needs to return the injection rate
         at each redshift value z"""
-
-        return np.sum([s.injection(z) for s in self.list_of_sources])
+        f = self.dldz(z) * dz / pru.cm2sec
+        return f * np.sum(
+            [s.injection_rate(z) for s in self.list_of_sources], axis=0)
 
     # def energy_loss_legth_Mpc(self, nco_id, z):
     #     sp = self.prince_run.spec_man.ncoid2sref[nco_id]
@@ -75,15 +80,11 @@ class UHECRPropagationSolver(object):
         self.jacobian = self.sp_jacobian.todense()
 
     def eqn_jac(self, z, state):
-        dldz = -1. / ((1. + z) * H(z) * pru.cm2sec)
-        return dldz * self.jacobian
+        return self.dldz(z) * self.jacobian
 
     def semi_lagrangian(self, delta_z, z, state):
 
-        dldz = -1. / ((1. + z) * H(z) * pru.cm2sec)
-        # delta_l
-        conloss = self.continuous_losses * delta_z * dldz
-        # print delta_z * dldz
+        conloss = self.continuous_losses * delta_z * self.dldz(z)
         for s in self.spec_man.species_refs:
             lidx, uidx = s.lidx(), s.uidx()
             state[lidx:uidx] = np.interp(
@@ -94,8 +95,7 @@ class UHECRPropagationSolver(object):
     def eqn_deriv(self, z, state, *args):
         # state[state < 1e-50] *= 0.
 
-        dldz = -1. / ((1. + z) * H(z) * pru.cm2sec)
-        r = dldz * self.sp_jacobian.dot(state)
+        r = self.dldz(z) * self.sp_jacobian.dot(state)
         return r
 
     def _init_vode(self):
@@ -115,12 +115,12 @@ class UHECRPropagationSolver(object):
         }
 
         # Setup solver
-        self.r = ode(
-            self.eqn_deriv).set_integrator(**ode_params)
+        self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
         #, jac=self.eqn_jac
+
     def solve(self):
         from time import time
-        dz = -1e-3
+        dz = -1e-2
         now = time()
         info(2, 'Starting integration.')
         while self.r.successful() and (self.r.t + dz) > self.final_z:
@@ -129,7 +129,8 @@ class UHECRPropagationSolver(object):
             self.r.integrate(self.r.t + dz)
             if self.enable_cont_losses:
                 self.r.set_initial_value(
-                    self.semi_lagrangian(dz, self.r.t, self.r.y), self.r.t)
+                    self.semi_lagrangian(dz, self.r.t, self.r.y) +
+                    self.injection(dz, self.r.t), self.r.t)
 
         if not self.r.successful():
             raise Exception(

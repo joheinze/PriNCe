@@ -1,11 +1,13 @@
 """The module contains classes for computations of interaction rates"""
 
-import numpy as np
-from scipy.sparse import coo_matrix, bmat
-
-from prince.util import get_AZN, get_interp_object, info, load_or_convert_array, pru
-from prince_config import config
 from abc import ABCMeta, abstractmethod
+
+import numpy as np
+from scipy.sparse import bmat, coo_matrix
+
+from prince.util import (get_AZN, get_interp_object, info,
+                         load_or_convert_array, pru)
+from prince_config import config
 
 
 class InteractionRateBase(object):
