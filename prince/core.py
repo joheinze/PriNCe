@@ -2,7 +2,7 @@
 
 import cPickle as pickle
 from os import path
-from prince import photonfields, intcs, interaction_rates, data, util, solvers
+from prince import photonfields, cross_sections, interaction_rates, data, util, solvers
 from prince.util import info
 from prince_config import config, spec_data
 import numpy as np
