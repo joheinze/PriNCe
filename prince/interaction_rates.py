@@ -489,8 +489,7 @@ class ContinuousLossRates(InteractionRateBase):
         adiabatic_loss_vector = np.zeros(self.prince_run.dim_states)
 
         for spec in self.spec_man.species_refs:
-            adiabatic_loss_vector[spec.lidx():spec.uidx()] = float(
-                spec.A) * self.e_cosmicray.grid
+            adiabatic_loss_vector[spec.lidx():spec.uidx()] = self.e_cosmicray.grid
 
         return adiabatic_loss_vector
 

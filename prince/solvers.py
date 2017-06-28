@@ -77,7 +77,7 @@ class UHECRPropagationSolver(object):
         info(5, 'Updating jacobian matrix at redshift', z)
         self.continuous_losses = self.continuous_loss_rates.loss_vector(z)
         self.sp_jacobian = self.int_rates.get_hadr_jacobian(z)
-        self.jacobian = self.sp_jacobian.todense()
+        # self.jacobian = self.sp_jacobian.todense()
 
     def eqn_jac(self, z, state):
         return self.dldz(z) * self.jacobian
@@ -93,7 +93,7 @@ class UHECRPropagationSolver(object):
         return state
 
     def eqn_deriv(self, z, state, *args):
-        # state[state < 1e-50] *= 0.
+        state[state < 1e-50] *= 0.
 
         r = self.dldz(z) * self.sp_jacobian.dot(state)
         return r
@@ -105,7 +105,7 @@ class UHECRPropagationSolver(object):
             'name': 'vode',
             'method': 'bdf',
             'nsteps': 10000,
-            'rtol': 0.05,
+            'rtol': 0.2,
             # 'max_order_s': 2,
             # 'order': 5,
             'max_step': 0.2,
@@ -124,7 +124,7 @@ class UHECRPropagationSolver(object):
         now = time()
         info(2, 'Starting integration.')
         while self.r.successful() and (self.r.t + dz) > self.final_z:
-            # info(3, "Integrating at z={0}".format(self.r.t))
+            info(3, "Integrating at z={0}".format(self.r.t))
             self._update_jacobian(self.r.t)
             self.r.integrate(self.r.t + dz)
             if self.enable_cont_losses:
