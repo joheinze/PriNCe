@@ -2,7 +2,7 @@
 
 import cPickle as pickle
 from os import path
-from prince import photonfields, intcs, interaction_rates, data, util, solvers
+from prince import photonfields, cross_sections, interaction_rates, data, util, solvers
 from prince.util import info
 from prince_config import config, spec_data
 import numpy as np
@@ -21,6 +21,9 @@ class PriNCeRun(object):
 
         # Initialize energy grid
         self.cr_grid = util.EnergyGrid(*config["cosmic_ray_grid"])
+
+        # Photon grid for rate computations
+        self.ph_grid = util.EnergyGrid(*config["photon_grid"])
 
         #: Dimension of energy grid
         self.ed = self.cr_grid.d
@@ -51,6 +54,10 @@ class PriNCeRun(object):
 
         # Initialize the interaction rates
         self.int_rates = interaction_rates.PhotoNuclearInteractionRate(
+            prince_run=self)
+
+        # Initialize continuous energy losses
+        self.continuous_losses = interaction_rates.ContinuousLossRates(
             prince_run=self)
 
         # Let species manager know about the photon grid dimensions (for idx calculations)
