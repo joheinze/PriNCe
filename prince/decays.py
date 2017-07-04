@@ -2,10 +2,37 @@
 
 import numpy as np
 
-from prince.util import *
 from prince_config import config, spec_data
 
-# JH: in general, the input of each function should be 
+# JH: I am still not sure, how this class should look like.
+# maybe we do not even need a class and can just use the decay distributions
+# as functions on an x-grid, where the management is done bei another class
+
+# def AllDecays(object):
+#     def __init__(self):
+#         self.data = spec_data
+
+#     def get_decay_matrix(mo, da, mo_energy, da_energy):
+#         dbentry = self.data[mo]
+
+#         for branching, daughters in dbentry['branchings']:
+#             if da in daughters:
+#                 x_matrix = da_energy.outer(1 / mo_energy) # the grid in x values
+
+#                 # pion to neutrino
+#                 if mo in [2,3] and da in [13,14]:
+#                     return branching * pion_to_numu(x_matrix)
+#                 # pion to muon
+#                 if mo in [2,3] and da in [7,8,9,10]:
+#                     return branching * pion_to_muon(x_matrix)
+#                 # muon to electron neutrino
+#                 if mo in [7,8,9,10]:
+#                     return branching * prob_muon_hel(x_matrix, h) * 
+#                 # muon to muon neutrino
+#                 if mo in [7,8,9,10]:
+#             else:
+#                 info(6, 'Daughter {:} not found in decay channel of Mother {:} with branching {:} and products {:}'.format(da, mo, branching, daughters))
+#                 continue
 
 
 def pion_to_numu(x):
@@ -42,7 +69,6 @@ def pion_to_muon(x):
     res[cond] = 1 / (1 - r)
     return res
 
-@np.vectorize
 def prob_muon_hel(x, h):
     """
     probability for muon+ from pion+ decay to have helicity h
@@ -58,8 +84,6 @@ def prob_muon_hel(x, h):
     #helicity expectation value
     hel = 2 * r / (1 - r) / x - (1 + r) / (1 - r)
     
-    #print hel
-    #return hel
     return (1 + hel * h) / 2 #this result is only correct for x > r
 
 def muon_to_numu(x, h):
@@ -107,9 +131,8 @@ def beta_decay(x_grid, mother, daughter):
     Returns:
       float: probability density at x
     """
-    
-    mass_mo = mother
-    mass_da = daughter
+    mass_mo = spec_data[mother]['mass']
+    mass_da = spec_data[daughter]['mass']
     
     # this is different for beta+ emission, atleast in NeuCosmA.nco_decay.c, l.126  (JH: really? why?)
     E0 = m_elec + mass_mo - mass_da
