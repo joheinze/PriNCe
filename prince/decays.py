@@ -2,6 +2,7 @@
 
 import numpy as np
 
+from prince.util import info
 from prince_config import config, spec_data
 
 # JH: I am still not sure, how this class should look like.
@@ -15,18 +16,19 @@ def get_particle_channels(mo, mo_energy, da_energy):
     """
 
     dbentry = spec_data[mo]
-    x_grid = da_energy.outer(1 / mo_energy)
+    x_grid = np.outer(da_energy, (1 / mo_energy))
 
+    redist = {}
     for branching, daughters in dbentry['branchings']:
-        redist = []
         for da in daughters:
             if da > 99:  # daughter is a nucleus, we have lorentz factor conservation
-                res = np.ones(x_grid.shape)
+                res = np.zeros(x_grid.shape)
+                res[x_grid == 1.] = 1.
             else:
                 res = get_decay_matrix(mo, da, x_grid)
-            redist.append((da, branching * res))
+            redist[da] = branching * res
 
-    return redist
+    return x_grid, redist
 
 
 def get_decay_matrix(mo, da, x_grid):
@@ -61,30 +63,31 @@ def get_decay_matrix(mo, da, x_grid):
 
     # muon to neutrino
     elif mo in [5, 6, 7, 8, 9, 10] and da in [11, 12, 13, 14]:
-        muon_hel = {
+        muon_hel = {# translating muon ids to helicity
             5: 1.,
             6: -1.,
-            7: 0.5,
+            7: 0.,
             8: 1.,
             9: -1.,
-            10: 0.5,
+            10: 0.,
         }
         hel = muon_hel[mo]
         if mo in [5, 6, 7] and da in [11]:  # muon+ to electron neutrino
             return muonplus_to_nue(x_grid, hel)
         elif mo in [5, 6, 7] and da in [14]:  # muon+ to muon anti-neutrino
             return muonplus_to_numubar(x_grid, hel)
-        elif mo in [8, 9, 10] and da in [12
-                                         ]:  # muon- to electron anti-neutrino
+        elif mo in [8, 9, 10] and da in [12]:  # muon- to elec anti-neutrino
             return muonplus_to_nue(x_grid, -1 * hel)
         elif mo in [8, 9, 10] and da in [13]:  # muon- to muon neutrino
             return muonplus_to_numubar(x_grid, -1 * hel)
 
     # neutrinos from beta decays
     elif mo > 99 and da == 11:  # beta-
-        return beta_decay(x_grid, mo, mo + 1)
-    elif mo > 99 and da == 12:  # beta+
+        print 'beta- decay', mo, mo - 1
         return beta_decay(x_grid, mo, mo - 1)
+    elif mo > 99 and da == 12:  # beta+
+        print 'beta+ decay', mo, mo + 1
+        return beta_decay(x_grid, mo, mo + 1)
     else:
         info(
             1,
@@ -105,6 +108,9 @@ def pion_to_numu(x):
     """
     res = np.zeros(x.shape)
 
+    m_muon = spec_data[7]['mass']
+    m_pion = spec_data[2]['mass']
+
     r = m_muon**2 / m_pion**2
     cond = np.where(np.logical_and(0 <= x, x < 1 - r))
 
@@ -123,6 +129,9 @@ def pion_to_muon(x):
     """
     res = np.zeros(x.shape)
 
+    m_muon = spec_data[7]['mass']
+    m_pion = spec_data[2]['mass']
+
     r = m_muon**2 / m_pion**2
     cond = np.where(np.logical_and(r < x, x <= 1))
 
@@ -140,12 +149,18 @@ def prob_muon_hel(x, h):
     Returns:
       float: probability for this helicity
     """
+
+    m_muon = spec_data[7]['mass']
+    m_pion = spec_data[2]['mass']
+
     r = m_muon**2 / m_pion**2
 
     #helicity expectation value
     hel = 2 * r / (1 - r) / x - (1 + r) / (1 - r)
 
-    return (1 + hel * h) / 2  #this result is only correct for x > r
+    res = np.zeros(x.shape)
+    res[x > r] = (1 + hel * h) / 2  #this result is only correct for x > r
+    return res
 
 
 def muonplus_to_numubar(x, h):
@@ -163,7 +178,10 @@ def muonplus_to_numubar(x, h):
     p1 = np.poly1d([4. / 3., -3., 0., 5. / 3.])
     p2 = np.poly1d([-8. / 3., 3., 0., -1. / 3.])
 
-    return p1(x) + h * p2(x)
+    res = np.zeros(x.shape)
+    cond = x <= 1.
+    res[cond] = p1(x[cond]) + h * p2(x[cond])
+    return res
 
 
 def muonplus_to_nue(x, h):
@@ -181,10 +199,10 @@ def muonplus_to_nue(x, h):
     p1 = np.poly1d([4., -6., 0., 2.])
     p2 = np.poly1d([-8., 18., -12., 2.])
 
-    return p1(x) + h * p2(x)
-
-
-mass_el = spec_data[11]
+    res = np.zeros(x.shape)
+    cond = x <= 1.
+    res[cond] = p1(x[cond]) + h * p2(x[cond])
+    return res
 
 
 def beta_decay(x_grid, mother, daughter):
@@ -198,6 +216,7 @@ def beta_decay(x_grid, mother, daughter):
     Returns:
       float: probability density at x
     """
+    mass_el = spec_data[20]['mass']
     mass_mo = spec_data[mother]['mass']
     mass_da = spec_data[daughter]['mass']
 
