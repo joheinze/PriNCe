@@ -21,7 +21,8 @@ def get_particle_channels(mo, mo_energy, da_energy):
     redist = {}
     for branching, daughters in dbentry['branchings']:
         for da in daughters:
-            if da > 99:  # daughter is a nucleus, we have lorentz factor conservation
+            # daughter is a nucleus, we have lorentz factor conservation
+            if da > 99:
                 res = np.zeros(x_grid.shape)
                 res[x_grid == 1.] = 1.
             else:
@@ -51,11 +52,14 @@ def get_decay_matrix(mo, da, x_grid):
 
     # pi+ to mu+ or pi- to mu-
     elif mo in [2, 3] and da in [5, 6, 7, 8, 9, 10]:
-        if da in [7, 10]:  # (any helicity)
+        # (any helicity)
+        if da in [7, 10]:
             return pion_to_muon(x_grid)
-        elif da in [5, 8]:  # left handed, hel = -1
+        # left handed, hel = -1
+        elif da in [5, 8]:
             return pion_to_muon(x_grid) * prob_muon_hel(-1.)
-        elif da in [6, 9]:  # right handed, hel = 1
+        # right handed, hel = 1
+        elif da in [6, 9]:
             return pion_to_muon(x_grid) * prob_muon_hel(1.)
         else:
             raise Exception(
@@ -63,7 +67,8 @@ def get_decay_matrix(mo, da, x_grid):
 
     # muon to neutrino
     elif mo in [5, 6, 7, 8, 9, 10] and da in [11, 12, 13, 14]:
-        muon_hel = {# translating muon ids to helicity
+        # translating muon ids to helicity
+        muon_hel = {
             5: 1.,
             6: -1.,
             7: 0.,
@@ -72,20 +77,26 @@ def get_decay_matrix(mo, da, x_grid):
             10: 0.,
         }
         hel = muon_hel[mo]
-        if mo in [5, 6, 7] and da in [11]:  # muon+ to electron neutrino
+        # muon+ to electron neutrino
+        if mo in [5, 6, 7] and da in [11]:
             return muonplus_to_nue(x_grid, hel)
-        elif mo in [5, 6, 7] and da in [14]:  # muon+ to muon anti-neutrino
+        # muon+ to muon anti-neutrino
+        elif mo in [5, 6, 7] and da in [14]:
             return muonplus_to_numubar(x_grid, hel)
-        elif mo in [8, 9, 10] and da in [12]:  # muon- to elec anti-neutrino
+        # muon- to elec anti-neutrino
+        elif mo in [8, 9, 10] and da in [12]:
             return muonplus_to_nue(x_grid, -1 * hel)
-        elif mo in [8, 9, 10] and da in [13]:  # muon- to muon neutrino
+        # muon- to muon neutrino
+        elif mo in [8, 9, 10] and da in [13]:
             return muonplus_to_numubar(x_grid, -1 * hel)
 
     # neutrinos from beta decays
-    elif mo > 99 and da == 11:  # beta-
+    # beta-
+    elif mo > 99 and da == 11:
         print 'beta- decay', mo, mo - 1
         return beta_decay(x_grid, mo, mo - 1)
-    elif mo > 99 and da == 12:  # beta+
+    # beta+
+    elif mo > 99 and da == 12:
         print 'beta+ decay', mo, mo + 1
         return beta_decay(x_grid, mo, mo + 1)
     else:
