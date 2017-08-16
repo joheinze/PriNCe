@@ -40,8 +40,8 @@ config = {
     "raw_data_dir": path.join(base, 'utils'),
     # # nuclear cross sections
     # "data_dir": '/data',
-    # # File name of particle production yields
-    # "yield_fname": "yield_dict.ppd",
+    # Model file for redistribution functions (from SOPHIA or similar)
+    "redist_fname": "sophia_redistribution.npy",
 
     # full path to libmkl_rt.[so/dylib] (only if kernel=='MKL')
     "MKL_path": mkl_default + lib_ext,

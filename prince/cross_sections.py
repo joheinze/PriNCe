@@ -11,10 +11,11 @@ from prince_config import config, spec_data
 # TODO:
 # - CrossSectionInterpolator._join_incl_diff() does currently not work properly for inclusive differential crossections
 #   there are two problems
-#     - the class combines the channel indices from all models, 
+#     - the class combines the channel indices from all models,
 #       however sophia does not provide these, and still introduces indices for lighter particles
 #     - we need a way to combine channels where one models provides an x distribution, while the other does not.
 #       The problem arrises, as incl refers to x = 1 while incl_diff is distributed over bins with bin_center < 1
+
 
 class CrossSectionBase(object):
     """Base class for cross section interfaces to tabulated models.
@@ -341,15 +342,17 @@ class CrossSectionBase(object):
         """
         from scipy import integrate
 
-        egrid, cross_section = None, None
+        egrid, xbins, cross_section = None, None, None
 
-        if daughter != None:
+        if daughter is not None:
             if (mother, daughter) in self.incl_idcs:
                 egrid, cross_section = self.incl(mother, daughter)
             elif (mother, daughter) in self.incl_diff_idcs:
                 egrid, xbins, cross_section = self.incl_diff(mother, daughter)
             else:
-                raise Exception('Unknown inclusive channel {:} -> {:} for this model'.format(mother, daughter))
+                raise Exception(
+                    'Unknown inclusive channel {:} -> {:} for this model'.
+                    format(mother, daughter))
         else:
             egrid, cross_section = self.nonel(mother)
 
@@ -358,7 +361,7 @@ class CrossSectionBase(object):
         # note that cumtrapz works also for 2d-arrays and will integrate along axis = 1
         integral = integrate.cumtrapz(egrid * cross_section, x=egrid)
 
-        if np.any(xbins):
+        if xbins is not None:
             return ygrid, xbins, integral / (2 * ygrid**2)
 
         return ygrid, integral / (2 * ygrid**2)
@@ -379,9 +382,8 @@ class CrossSectionBase(object):
 
         self.resp_incl_intp = {}
         for mother, daughter in self.incl_idcs:
-            self.resp_incl_intp[(
-                mother, daughter
-            )] = get_interp_object(*self.response_function(mother, daughter))
+            self.resp_incl_intp[(mother, daughter)] = get_interp_object(
+                *self.response_function(mother, daughter))
 
 
 class CrossSectionInterpolator(CrossSectionBase):
@@ -523,21 +525,22 @@ class SophiaSuperposition(CrossSectionBase):
             'sophia_crosssec', delimiter=',', unpack=True)
 
         epsr_grid, self.x_bins, self.redist_proton, self.redist_neutron = np.load(
-            join(config["data_dir"], "sophia_redistribution_tenperdec.npy")) #sophia_redistribution_tenperdec
+            join(config["data_dir"], config["redist_fname"]))
 
-        # check if crosssection and redistribution are defined on the same grid, other wise interpolate crosssection
+        # check if crosssection and redistribution are defined on the same grid,
+        # other wise interpolate crosssection
         if epsr_grid.shape != self._egrid_tab.shape or np.any(
                 epsr_grid != self._egrid_tab):
-            info(0, "Adjunsting crossection by interpolation.")
+            info(1, "Adjusting cross section by interpolation.")
             #print self.cs_proton_grid
             self.cs_proton_grid = np.interp(epsr_grid, self._egrid_tab,
                                             self.cs_proton_grid)
-            #print self.cs_proton_grid 
+            #print self.cs_proton_grid
             self.cs_neutron_grid = np.interp(epsr_grid, self._egrid_tab,
                                              self.cs_neutron_grid)
             self._egrid_tab = epsr_grid
 
-        # siphia crossections are in mubarn, so convers here to cm^2
+        # sophia crossections are in mubarn; convert here to cm^2
         self.cs_proton_grid *= 1e-30
         self.cs_neutron_grid *= 1e-30
 
@@ -614,27 +617,25 @@ class SophiaSuperposition(CrossSectionBase):
         """Returns inclusive differential cross section.
 
         Inclusive differential cross section for daughter in photo-nuclear
-        interactions of `mother`. Only defined, if the daughter is distributed in :math:`x = E_{da} / E_{mo}`
+        interactions of `mother`. Only defined, if the daughter is distributed
+        in :math:`x_{\rm L} = E_{da} / E_{mo}`
 
         Args:
             mother (int): Mother nucleus(on)
             daughter (int): Daughter nucleus(on)
 
         Returns:
-            (numpy.array): Inclusive cross section in :math:`cm^{-2}`
+            (numpy.array): Inclusive differential cross section in :math:`cm^{-2}`
                            on self._egrid_tab
         """
 
         _, Z, N = get_AZN(mother)
 
         csec_diff = None
-
+        # TODO: File shall contain the functions in .T directly
         if daughter in self.redist_proton:
             cgrid = Z * self.cs_proton_grid
-            if np.any(csec_diff):
-                csec_diff += self.redist_proton[daughter].T * cgrid
-            else:
-                csec_diff = self.redist_proton[daughter].T * cgrid
+            csec_diff = self.redist_proton[daughter].T * cgrid
 
         if daughter in self.redist_neutron:
             cgrid = N * self.cs_neutron_grid
