@@ -6,7 +6,7 @@ import numpy as np
 from scipy.sparse import bmat, coo_matrix
 
 from prince.util import (get_AZN, get_interp_object, info,
-                         load_or_convert_array, pru)
+                         load_or_convert_array, PRINCE_UNITS)
 from prince_config import config
 
 
@@ -96,6 +96,33 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
     """Implementation of photo-hadronic/nuclear interaction rates."""
 
     def __init__(self, prince_run, *args, **kwargs):
+        if 'extinit' in kwargs and kwargs['extinit']:
+
+            class PrinceRunMock(object):
+                pass
+
+            from prince.data import SpeciesManager
+            from prince.util import EnergyGrid
+
+            prince_run = PrinceRunMock()
+            if "photon_bins_per_dec" not in kwargs:
+                kwargs["photon_bins_per_dec"] = config["photon_grid"][2]
+            if "cr_bins_per_dec" not in kwargs:
+                kwargs["cr_bins_per_dec"] = config["cosmic_ray_grid"][2]
+
+            prince_run.e_photon = EnergyGrid(config["photon_grid"][0],
+                                             config["photon_grid"][1],
+                                             kwargs["photon_bins_per_dec"])
+            prince_run.e_cosmicray = EnergyGrid(config["cosmic_ray_grid"][0],
+                                                config["cosmic_ray_grid"][1],
+                                                kwargs["cr_bins_per_dec"])
+            prince_run.cross_sections = kwargs['cs']
+            prince_run.photon_field = kwargs['pf']
+
+            prince_run.spec_man = SpeciesManager(
+                prince_run.cross_sections.known_species,
+                prince_run.e_cosmicray.d)
+
         InteractionRateBase.__init__(self, prince_run, *args, **kwargs)
 
     def _setup(self):
@@ -399,7 +426,7 @@ class ContinuousLossRates(InteractionRateBase):
     def adiabatic_losses(self, z):
         """Returns adiabatic loss vector at redshift z"""
         from prince.cosmology import H
-        return H(z) * pru.cm2sec * self.adiabatic_loss_vector
+        return H(z) * PRINCE_UNITS.cm2sec * self.adiabatic_loss_vector
 
     def pprod_losses(self, z):
         """Returns pair production losses at redshift z"""
@@ -423,7 +450,7 @@ class ContinuousLossRates(InteractionRateBase):
         self.phi_xi2 = self._phi() / (self.xi**2)
 
         # Gamma factor of the cosmic ray
-        gamma = self.e_cosmicray.grid / pru.m_proton
+        gamma = self.e_cosmicray.grid / PRINCE_UNITS.m_proton
 
         # Scale vector containing the units and factors of Z**2 for nuclei
         self.scale_vec = self._init_scale_vec()
@@ -432,7 +459,8 @@ class ContinuousLossRates(InteractionRateBase):
         self.adiabatic_loss_vector = self._init_adiabatic_vec()
 
         # Grid of photon energies for interpolation
-        self.photon_grid = np.outer(1 / gamma, self.xi) * pru.m_electron / 2.
+        self.photon_grid = np.outer(1 / gamma,
+                                    self.xi) * PRINCE_UNITS.m_electron / 2.
         self.pg_desort = self.photon_grid.reshape(-1).argsort()
         self.pg_sorted = self.photon_grid.reshape(-1)[self.pg_desort]
 
@@ -472,7 +500,7 @@ class ContinuousLossRates(InteractionRateBase):
         """Prepare vector for scaling with units, charge and mass."""
 
         scale_vec = np.zeros(self.prince_run.dim_states)
-        units = pru.fine_structure * pru.r_electron**2 * pru.m_electron**2
+        units = PRINCE_UNITS.fine_structure * PRINCE_UNITS.r_electron**2 * PRINCE_UNITS.m_electron**2
 
         for spec in self.spec_man.species_refs:
             if not spec.is_nucleus:
@@ -489,7 +517,8 @@ class ContinuousLossRates(InteractionRateBase):
         adiabatic_loss_vector = np.zeros(self.prince_run.dim_states)
 
         for spec in self.spec_man.species_refs:
-            adiabatic_loss_vector[spec.lidx():spec.uidx()] = self.e_cosmicray.grid
+            adiabatic_loss_vector[spec.lidx():
+                                  spec.uidx()] = self.e_cosmicray.grid
 
         return adiabatic_loss_vector
 

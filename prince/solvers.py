@@ -2,7 +2,7 @@
 
 import numpy as np
 from prince.cosmology import H
-from prince.util import info, pru, get_AZN
+from prince.util import info, PRINCE_UNITS, get_AZN
 
 
 class UHECRPropagationSolver(object):
@@ -33,7 +33,7 @@ class UHECRPropagationSolver(object):
         self._init_vode()
 
     def dldz(self, z):
-        return -1. / ((1. + z) * H(z) * pru.cm2sec)
+        return -1. / ((1. + z) * H(z) * PRINCE_UNITS.cm2sec)
 
     def add_source_class(self, source_instance):
         self.list_of_sources.append(source_instance)
@@ -63,7 +63,7 @@ class UHECRPropagationSolver(object):
     def injection(self, dz, z):
         """This needs to return the injection rate
         at each redshift value z"""
-        f = self.dldz(z) * dz / pru.cm2sec
+        f = self.dldz(z) * dz / PRINCE_UNITS.cm2sec
         return f * np.sum(
             [s.injection_rate(z) for s in self.list_of_sources], axis=0)
 
@@ -71,7 +71,7 @@ class UHECRPropagationSolver(object):
     #     sp = self.prince_run.spec_man.ncoid2sref[nco_id]
     #     rate = self.FGmat[sp.lidx():sp.uidx(),
     #                       sp.lidx("ph"):sp.uidx("ph")].dot(self.targ_vec(z))
-    #     return (1. / rate) * pru.cm2Mpc
+    #     return (1. / rate) * PRINCE_UNITS.cm2Mpc
 
     def _update_jacobian(self, z):
         info(5, 'Updating jacobian matrix at redshift', z)

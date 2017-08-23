@@ -81,7 +81,14 @@ config = {
     # means that if a particle is unstable with lifetime smaller than this threshold
     # will be decayed until all final state particles of this chain are stable.
     # In other words: short intermediate states will be integrated out
-    "tau_dec_threshold": 0.5,
+    "tau_dec_threshold": np.inf,
+
+    # Particle ID for which redistribution functions are needed to be taken into
+    # account. The default value is 101 (proton). All particles with smaller
+    # IDs, i.e. neutrinos, pions, muons etc., will have energy redistributions.
+    # For larger IDs (nuclei) the boost conservation is employed.
+    "redist_threshold_ID": 101,
+
     #===========================================================================
     # Parameters of numerical integration
     #===========================================================================
