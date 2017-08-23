@@ -49,8 +49,10 @@ class CrossSectionBase(object):
         self.supports_redistributions = False
         # List of all known particles (after optimization)
         self.known_species = []
-        # List of all known inclusive channels (after optimization)
-        self.known_channels = []
+        # List of all boost conserving inclusive channels (after optimization)
+        self.known_bc_channels = []
+        # List of all differential inclusive channels (after optimization)
+        self.known_diff_channels = []
         # Dictionary of (mother, daughter) reactions for each mother
         self.reactions = {}
 
@@ -122,8 +124,11 @@ class CrossSectionBase(object):
         # in the databases
         self._optimize_channels()
 
+        # Go through all three cross section/response function categories
+        # index contents in the ..known..variable
         self.nonel_idcs = sorted(self._nonel_tab.keys())
         self.incl_idcs = sorted(self._incl_tab.keys())
+        self.incl_diff_idcs = sorted(self._incl_diff_tab.keys())
         self.reactions = {}
 
         for mo, da in self.incl_idcs:
@@ -139,11 +144,36 @@ class CrossSectionBase(object):
             if (mo, da) not in self.reactions[mo]:
                 # Make sure it's a unique list to avoid unnecessary loops
                 self.reactions[mo].append((mo, da))
-                self.known_channels.append((mo, da))
+                self.known_bc_channels.append((mo, da))
                 self.known_species.append(da)
 
+        for mo, da in self.incl_diff_idcs:
+            if da > 100 and get_AZN(da)[0] > get_AZN(mo)[0]:
+                raise Exception(
+                    'Daughter {0} heavier than mother {1}. Physics??'.format(
+                        da, mo))
+
+            if mo not in self.reactions:
+                self.reactions[mo] = []
+                self.known_species.append(mo)
+
+            if (mo, da) not in self.reactions[mo]:
+                # Make sure it's a unique list to avoid unnecessary loops
+                self.reactions[mo].append((mo, da))
+                self.known_diff_channels.append((mo, da))
+                self.known_species.append(da)
+
+        # Remove duplicates
         self.known_species = sorted(list(set(self.known_species)))
-        self.known_channels = sorted(list(set(self.known_channels)))
+        self.known_bc_channels = sorted(list(set(self.known_bc_channels)))
+        self.known_diff_channels = sorted(list(set(self.known_diff_channels)))
+
+        # Count numbers of channels for statistics
+        # Count number of incl channels for activated nuclear species
+        # n_incl = np.sum([
+        #     len(self.reactions[mother])
+        #     for mother in self.spec_man.known_species if mother >= 100
+        # ])
 
     def _optimize_channels(self):
         """Follows decay chains until all inclusive reactions point to
@@ -159,6 +189,7 @@ class CrossSectionBase(object):
 
         # The new dictionary that will replace _incl_tab
         new_incl_tab = {}
+        new_dec_diff_tab = {}
         threshold = config["tau_dec_threshold"]
 
         # How to indent debug printout for recursion
@@ -173,7 +204,14 @@ class CrossSectionBase(object):
 
         def follow_chain(first_mo, da, value, reclev):
             """Recursive function to follow decay chains until all
-            final state particles are stable"""
+            final state particles are stable.ABCMeta
+            
+            The result is saved in two dictionaries; one for the boost
+            conserving inclusive channels and the other one collects
+            channels with meson or lepton decay products, which will
+            need special care due to energy redistributions of these
+            secondaries.
+            """
 
             if da not in spec_data:
                 info(
@@ -186,12 +224,18 @@ class CrossSectionBase(object):
 
             # Daughter is stable. Add it to the new dictionary and terminate
             # recursion
+            
             if spec_data[da]["lifetime"] >= threshold:
                 info(10,
                      dbg_indent(reclev),
                      'daughter {0} stable. Adding to ({1}, {2})'.format(
                          da, first_mo, da))
-                dict_add(new_incl_tab, (first_mo, da), value)
+                if (self.supports_redistributions and da < 100):
+                    # If the daughter is a meson or lepton, it needs special treatment
+                    # since it comes from decays with energy redistributions
+                    dict_add(new_dec_diff_tab, (first_mo, da), value)
+                else:
+                    dict_add(new_incl_tab, (first_mo, da), value)
                 return
 
             # ..otherwise follow decay products of this daughter, tracking the
@@ -208,6 +252,10 @@ class CrossSectionBase(object):
                     follow_chain(first_mo, chained_daughter, br * value,
                                  reclev + 1)
 
+        # TODO: Add convolution with decay redistribution here. 
+        # Loop individually over the diff channels and find convolve it with the
+        # decay matrices to obtained chained distributions 
+
         # Launch the reduction for each inclusive channel
         for (mo, da), value in self._incl_tab.items():
             if mo in spec_data and spec_data[mo]["lifetime"] >= threshold:
@@ -221,9 +269,12 @@ class CrossSectionBase(object):
                 # not live long enough for propagation
                 if mo in self._nonel_tab:
                     _ = self._nonel_tab.pop(mo)
+                
 
         # Overwrite the old dictionary
         self._incl_tab = new_incl_tab
+        # Reduce also the incl_diff_tab by removing the unknown mothers. At this stage
+        # of the code, the particles with redistributions are 
         info(3,
              ("After optimization, the number of known primaries is {0} with "
               + "in total {1} inclusive channels").format(
@@ -414,10 +465,10 @@ class CrossSectionBase(object):
             self.resp_incl_intp[(mother, daughter)] = get_interp_object(
                 *self.response_function(mother, daughter))
         info(5, 'Inclusive (redistributed) response functions h(y)')
-        self.resp_incl_intp = {}
+        self.resp_incl_diff_intp = {}
         for mother, daughter in self.incl_diff_idcs:
             ygr, rfunc = self.response_function(mother, daughter)
-            self.resp_incl_intp[(mother, daughter)] = get_2Dinterp_object(
+            self.resp_incl_diff_intp[(mother, daughter)] = get_2Dinterp_object(
                 0.5 * (self.xbins[1:] + self.xbins[:-1]), ygr, rfunc)
 
 

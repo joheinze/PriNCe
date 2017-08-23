@@ -95,8 +95,11 @@ class InteractionRateBase(object):
 class PhotoNuclearInteractionRate(InteractionRateBase):
     """Implementation of photo-hadronic/nuclear interaction rates."""
 
-    def __init__(self, prince_run, *args, **kwargs):
-        if 'extinit' in kwargs and kwargs['extinit']:
+    def __init__(self, prince_run=None, *args, **kwargs):
+        if prince_run is None:
+            # For debugging and independent calculations define
+            # a strawman class and supply the required paramters as
+            # attributes
 
             class PrinceRunMock(object):
                 pass
@@ -131,97 +134,6 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         self._init_matrices()
         self._init_rate_matstruc()
         self._init_reinjection_mat()
-
-    def interaction_rate_single(self, nco_ids, z):
-        """Compute a single interaction rate using matrix convolution.
-
-        This method is a high performance integration of equation (10)
-        from internal note, using a simple box method.
-
-        Don't use this method if you intend to compute rates for different
-        species at the same redshift value. Use :func:`interaction_rate`
-        instead.
-
-        The last redshift value is cached to avoid interpolation of the
-        photon spectrum at each step.
-
-        Args:
-            nco_id (int or tuple): single particle id (neucosma codes) or tuple
-                                   with (mother, daughter) for inclusive
-                                   reactions
-            z (float): redshift
-
-        Returns:
-            (numpy.array): interaction length :math:`\\Gamma` in cm^-1
-        """
-
-        # Convolve using matrix multiplication
-        if isinstance(nco_ids, tuple):
-            return self.cross_sections.resp_incl_intp[nco_ids](self.ymat).dot(
-                np.diag(self.e_photon.widths)).dot(self.photon_vector(z))
-        else:
-            return self.cross_sections.resp_nonel_intp[nco_ids](self.ymat).dot(
-                np.diag(self.e_photon.widths)).dot(self.photon_vector(z))
-
-    def interaction_rate(self, nco_ids, z):
-        """Compute interaction rates using batch matrix convolution.
-
-        This method is a high performance integration of equation (10)
-        from internal note, using a simple box method.
-
-        All rates for a certain redshift value are computed at once, thus
-        this function is not very efficient if you need a rate for a single
-        species at different redshifts values.
-
-        The last redshift value is cached to avoid interpolation of the
-        photon spectrum at each step.
-
-        Args:
-            nco_id (int or tuple): single particle id (neucosma codes) or tuple
-                                   with (mother, daughter) for inclusive
-                                   reactions
-            z (float): redshift
-
-        Returns:
-            (numpy.array): interaction length :math:`\\Gamma` in cm^-1
-        """
-
-        self._update_rates(z)
-
-        if isinstance(nco_ids, tuple):
-            lidx, uidx = self._incl_batchvec_pointer[nco_ids]
-            return self._incl_batch_vec[lidx:uidx]
-        else:
-            lidx, uidx = self._nonel_batchvec_pointer[nco_ids]
-            return self._nonel_batch_vec[lidx:uidx]
-
-    def get_hadr_jacobian(self, z):
-        """Returns the nonel rate vector and coupling matrix.
-        """
-        from scipy.sparse import csr_matrix, dia_matrix
-        self._update_rates(z)
-        coupl = self.reinjection_smat.multiply(
-            bmat(self.incl_rate_struc, format='coo'))
-        coupl -= dia_matrix((self._nonel_batch_vec, [0]), shape=coupl.shape)
-        return coupl
-
-    def _update_rates(self, z):
-        """Batch compute all nonel and inclusive rates if z changes.
-
-        The result is always stored in the same vectors, since '_init_rate_matstruc'
-        makes use of views to link ranges of the vector to locations in the matrix.
-        """
-        if self._ratemat_zcache != z:
-            info(5, 'Updating batch rate vectors.')
-            np.dot(
-                self._nonel_batch_matrix,
-                self.photon_vector(z),
-                out=self._nonel_batch_vec)
-            np.dot(
-                self.incl_batch_matrix,
-                self.photon_vector(z),
-                out=self._incl_batch_vec)
-            self._ratemat_zcache = z
 
     def _init_matrices(self):
         """Initializes batch computation of rates via matrices."""
@@ -272,13 +184,19 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         self._incl_batchvec_pridx_pointer = {}
 
         # Count number of incl channels for activated nuclear species
-        n_incl = np.sum([
-            len(self.cross_sections.reactions[mother])
-            for mother in self.spec_man.known_species if mother >= 100
-        ])
+        # n_incl = np.sum([
+        #     len(self.cross_sections.reactions[mother])
+        #     for mother in self.spec_man.known_species if mother >= 100
+        # ])
+        n_incl = len(self.cross_sections.known_bc_channels)
+        n_diff = len(self.cross_sections.known_diff_channels)
 
-        # Matrix: (incl-channels * dim_cr) x dim_ph
+        # Convolution matrix for incl: (incl-channels * dim_cr) x dim_ph
         self.incl_batch_matrix = np.zeros((self.dim_cr * n_incl, self.dim_ph))
+
+        # Convolution matrix for incl: (incl_diff_channels * dim_cr * dim_cr) x dim_ph
+        self.incl_batch_matrix = np.zeros((self.dim_cr**2 * n_diff, self.dim_ph))
+
 
         # Result vector, which stores computed incl rates
         self._incl_batch_vec = np.zeros(self.incl_batch_matrix.shape[0])
@@ -404,6 +322,97 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                         shape=shape_submat))
 
         self.reinjection_smat = bmat(self.reinjection_struc, format='coo')
+
+    def interaction_rate_single(self, nco_ids, z):
+        """Compute a single interaction rate using matrix convolution.
+
+        This method is a high performance integration of equation (10)
+        from internal note, using a simple box method.
+
+        Don't use this method if you intend to compute rates for different
+        species at the same redshift value. Use :func:`interaction_rate`
+        instead.
+
+        The last redshift value is cached to avoid interpolation of the
+        photon spectrum at each step.
+
+        Args:
+            nco_id (int or tuple): single particle id (neucosma codes) or tuple
+                                   with (mother, daughter) for inclusive
+                                   reactions
+            z (float): redshift
+
+        Returns:
+            (numpy.array): interaction length :math:`\\Gamma` in cm^-1
+        """
+
+        # Convolve using matrix multiplication
+        if isinstance(nco_ids, tuple):
+            return self.cross_sections.resp_incl_intp[nco_ids](self.ymat).dot(
+                np.diag(self.e_photon.widths)).dot(self.photon_vector(z))
+        else:
+            return self.cross_sections.resp_nonel_intp[nco_ids](self.ymat).dot(
+                np.diag(self.e_photon.widths)).dot(self.photon_vector(z))
+
+    def interaction_rate(self, nco_ids, z):
+        """Compute interaction rates using batch matrix convolution.
+
+        This method is a high performance integration of equation (10)
+        from internal note, using a simple box method.
+
+        All rates for a certain redshift value are computed at once, thus
+        this function is not very efficient if you need a rate for a single
+        species at different redshifts values.
+
+        The last redshift value is cached to avoid interpolation of the
+        photon spectrum at each step.
+
+        Args:
+            nco_id (int or tuple): single particle id (neucosma codes) or tuple
+                                   with (mother, daughter) for inclusive
+                                   reactions
+            z (float): redshift
+
+        Returns:
+            (numpy.array): interaction length :math:`\\Gamma` in cm^-1
+        """
+
+        self._update_rates(z)
+
+        if isinstance(nco_ids, tuple):
+            lidx, uidx = self._incl_batchvec_pointer[nco_ids]
+            return self._incl_batch_vec[lidx:uidx]
+        else:
+            lidx, uidx = self._nonel_batchvec_pointer[nco_ids]
+            return self._nonel_batch_vec[lidx:uidx]
+
+    def get_hadr_jacobian(self, z):
+        """Returns the nonel rate vector and coupling matrix.
+        """
+        from scipy.sparse import csr_matrix, dia_matrix
+        self._update_rates(z)
+        coupl = self.reinjection_smat.multiply(
+            bmat(self.incl_rate_struc, format='coo'))
+        coupl -= dia_matrix((self._nonel_batch_vec, [0]), shape=coupl.shape)
+        return coupl
+
+    def _update_rates(self, z):
+        """Batch compute all nonel and inclusive rates if z changes.
+
+        The result is always stored in the same vectors, since '_init_rate_matstruc'
+        makes use of views to link ranges of the vector to locations in the matrix.
+        """
+        if self._ratemat_zcache != z:
+            info(5, 'Updating batch rate vectors.')
+            np.dot(
+                self._nonel_batch_matrix,
+                self.photon_vector(z),
+                out=self._nonel_batch_vec)
+            np.dot(
+                self.incl_batch_matrix,
+                self.photon_vector(z),
+                out=self._incl_batch_vec)
+            self._ratemat_zcache = z
 
 
 class ContinuousLossRates(InteractionRateBase):

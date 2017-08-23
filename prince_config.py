@@ -64,12 +64,15 @@ config = {
     #===========================================================================
     # Grids
     #===========================================================================
+    # Number of bins in multiples of 4 recommended for maximal vectorization
+    # efficiency for 256 bit AVX or similar
+
     # Format (log10(E_min), log10(E_max), nbins/decade of energy)
     # Main energy grid for solver
-    "cosmic_ray_grid": (7, 13, 10),
+    "cosmic_ray_grid": (7, 13, 8),
 
     # Photon grid of target field, only for calculation of rates
-    "photon_grid": (-15, -8, 10),
+    "photon_grid": (-15, -8, 8),
 
     #===========================================================================
     # Model options
