@@ -86,6 +86,7 @@ def get_interp_object(xgrid, ygrid, **kwargs):
 
     return InterpolatedUnivariateSpline(xgrid, ygrid, **kwargs)
 
+
 def get_2Dinterp_object(xgrid, ygrid, zgrid, **kwargs):
     """Returns simple standard interpolation object for 2-dimentsional
     distribution.
@@ -98,9 +99,8 @@ def get_2Dinterp_object(xgrid, ygrid, zgrid, **kwargs):
         ygrid (numpy.array): y values of function
     """
     if (xgrid.shape[0], ygrid.shape[0]) != zgrid.shape:
-        raise Exception(
-            'x and y grid do not match z grid shape: {0} != {1}'.format(
-                (xgrid.shape, ygrid.shape), zgrid.shape))
+        raise Exception('x and y grid do not match z grid shape: {0} != {1}'.
+                        format((xgrid.shape, ygrid.shape), zgrid.shape))
 
     if 'kx' not in kwargs:
         kwargs['kx'] = 1
@@ -247,3 +247,14 @@ def dict_add(di, key, value):
         di[key] += value
     else:
         di[key] = value
+
+
+def bin_centers(bin_edges):
+    """Computes and returns bin centers from given edges."""
+    edg = np.array(bin_edges)
+    return 0.5 * (edg[1:] + edg[:-1])
+
+def bin_widths(bin_edges):
+    """Computes and returns bin widths from given edges."""
+    edg = np.array(bin_edges)
+    return edg[1:] - edg[:-1]

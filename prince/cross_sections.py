@@ -7,6 +7,7 @@ import numpy as np
 
 from prince.util import *
 from prince_config import config, spec_data
+import prince.decays as decs
 
 # TODO:
 # - CrossSectionInterpolator._join_incl_diff() does currently not work properly for inclusive differential crossections
@@ -201,6 +202,31 @@ class CrossSectionBase(object):
              ("Before optimization, the number of known primaries is {0} with "
               + "in total {1} inclusive channels").format(
                   len(self._nonel_tab), len(self._incl_tab)))
+
+        xcenters = bin_centers(self.xbins)
+        xwidths = bin_widths(self.xbins)
+        # The x array for the convolution matrix. Repeat xbins times
+        # the x array linewise.
+        # | x_0 x_1 .... x_k |
+        # | x_0 x_1 .... x_k |
+        # ...
+        # Decay distribution will be read out on that
+
+        xconv = np.tile(xcenters,(len(xcenters),1))[:,0]
+        xwconv = np.tile(xwidths,(len(widths),1))[:,0]
+
+        def convolve_with_decay_distribution(diff_dist, mother, daughter):
+            r"""Computes the prompt decay xdist by convolving the x distribution
+            of the unstable particle with the decay product distribution.
+
+            :math:`\frac{{\rm d}N^{A\gamma \to \mu}}{{\rm d}x_j} = 
+            \sum_{i=0}^{N_x}~\Delta x_i 
+            \frac{{\rm d}N^{A\gamma \to \pi}}{{\rm d} x_i}~
+            \frac{{\rm d}N^{\pi \to \mu}}{{\rm d} x_j}`
+            """
+            
+            dec_dist = decs.get_decay_matrix(mother, daughter, xcenters)
+
 
         def follow_chain(first_mo, da, value, reclev):
             """Recursive function to follow decay chains until all

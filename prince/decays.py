@@ -32,7 +32,7 @@ def get_particle_channels(mo, mo_energy, da_energy):
     return x_grid, redist
 
 
-def get_decay_matrix(mo, da, x_grid):
+def get_decay_matrix(mo, da, x_grid, x_widths=None):
     """
     Generator function. Will select the correct redistribution for the given channel.
 
@@ -46,21 +46,24 @@ def get_decay_matrix(mo, da, x_grid):
       float: redistribution on the grid mo_energy / da_energy
     """
 
+    if x_widths is None:
+        x_widths = np.ones_like(x_grid)
+
     # pi+ to numu or pi- to nummubar
     if mo in [2, 3] and da in [13, 14]:
-        return pion_to_numu(x_grid)
+        return x_widths * pion_to_numu(x_grid)
 
     # pi+ to mu+ or pi- to mu-
     elif mo in [2, 3] and da in [5, 6, 7, 8, 9, 10]:
         # (any helicity)
         if da in [7, 10]:
-            return pion_to_muon(x_grid)
+            return x_widths * pion_to_muon(x_grid)
         # left handed, hel = -1
         elif da in [5, 8]:
-            return pion_to_muon(x_grid) * prob_muon_hel(-1.)
+            return x_widths * pion_to_muon(x_grid) * prob_muon_hel(-1.)
         # right handed, hel = 1
         elif da in [6, 9]:
-            return pion_to_muon(x_grid) * prob_muon_hel(1.)
+            return x_widths * pion_to_muon(x_grid) * prob_muon_hel(1.)
         else:
             raise Exception(
                 'This should newer have happened, check if-statements above!')
@@ -79,33 +82,33 @@ def get_decay_matrix(mo, da, x_grid):
         hel = muon_hel[mo]
         # muon+ to electron neutrino
         if mo in [5, 6, 7] and da in [11]:
-            return muonplus_to_nue(x_grid, hel)
+            return x_widths * muonplus_to_nue(x_grid, hel)
         # muon+ to muon anti-neutrino
         elif mo in [5, 6, 7] and da in [14]:
-            return muonplus_to_numubar(x_grid, hel)
+            return x_widths * muonplus_to_numubar(x_grid, hel)
         # muon- to elec anti-neutrino
         elif mo in [8, 9, 10] and da in [12]:
-            return muonplus_to_nue(x_grid, -1 * hel)
+            return x_widths * muonplus_to_nue(x_grid, -1 * hel)
         # muon- to muon neutrino
         elif mo in [8, 9, 10] and da in [13]:
-            return muonplus_to_numubar(x_grid, -1 * hel)
+            return x_widths * muonplus_to_numubar(x_grid, -1 * hel)
 
     # neutrinos from beta decays
     # beta-
     elif mo > 99 and da == 11:
         print 'beta- decay', mo, mo - 1
-        return beta_decay(x_grid, mo, mo - 1)
+        return x_widths * beta_decay(x_grid, mo, mo - 1)
     # beta+
     elif mo > 99 and da == 12:
         print 'beta+ decay', mo, mo + 1
-        return beta_decay(x_grid, mo, mo + 1)
+        return x_widths * beta_decay(x_grid, mo, mo + 1)
     else:
         info(
             1,
             'Called with unknown channel {:} to {:}, returning an empty redistribution'.
             format(mo, da))
         # no known channel, return zeros
-        return np.zeros(x_grid.shape)
+        return x_widths * np.zeros(x_grid.shape)
 
 
 def pion_to_numu(x):
