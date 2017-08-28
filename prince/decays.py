@@ -32,7 +32,7 @@ def get_particle_channels(mo, mo_energy, da_energy):
     return x_grid, redist
 
 
-def get_decay_matrix(mo, da, x_grid, x_widths=None):
+def get_decay_matrix(mo, da, x_grid):
     """
     Generator function. Will select the correct redistribution for the given channel.
 
@@ -46,24 +46,23 @@ def get_decay_matrix(mo, da, x_grid, x_widths=None):
       float: redistribution on the grid mo_energy / da_energy
     """
 
-    if x_widths is None:
-        x_widths = np.ones_like(x_grid)
+    info(10, 'Generating decay redistribution for', mo, da)
 
     # pi+ to numu or pi- to nummubar
     if mo in [2, 3] and da in [13, 14]:
-        return x_widths * pion_to_numu(x_grid)
+        return pion_to_numu(x_grid)
 
     # pi+ to mu+ or pi- to mu-
     elif mo in [2, 3] and da in [5, 6, 7, 8, 9, 10]:
         # (any helicity)
         if da in [7, 10]:
-            return x_widths * pion_to_muon(x_grid)
+            return pion_to_muon(x_grid)
         # left handed, hel = -1
         elif da in [5, 8]:
-            return x_widths * pion_to_muon(x_grid) * prob_muon_hel(-1.)
+            return pion_to_muon(x_grid) * prob_muon_hel(x_grid, -1.)
         # right handed, hel = 1
         elif da in [6, 9]:
-            return x_widths * pion_to_muon(x_grid) * prob_muon_hel(1.)
+            return pion_to_muon(x_grid) * prob_muon_hel(x_grid, 1.)
         else:
             raise Exception(
                 'This should newer have happened, check if-statements above!')
@@ -82,33 +81,36 @@ def get_decay_matrix(mo, da, x_grid, x_widths=None):
         hel = muon_hel[mo]
         # muon+ to electron neutrino
         if mo in [5, 6, 7] and da in [11]:
-            return x_widths * muonplus_to_nue(x_grid, hel)
+            return muonplus_to_nue(x_grid, hel)
         # muon+ to muon anti-neutrino
         elif mo in [5, 6, 7] and da in [14]:
-            return x_widths * muonplus_to_numubar(x_grid, hel)
+            return muonplus_to_numubar(x_grid, hel)
         # muon- to elec anti-neutrino
         elif mo in [8, 9, 10] and da in [12]:
-            return x_widths * muonplus_to_nue(x_grid, -1 * hel)
+            return muonplus_to_nue(x_grid, -1 * hel)
         # muon- to muon neutrino
         elif mo in [8, 9, 10] and da in [13]:
-            return x_widths * muonplus_to_numubar(x_grid, -1 * hel)
+            return muonplus_to_numubar(x_grid, -1 * hel)
 
     # neutrinos from beta decays
     # beta-
     elif mo > 99 and da == 11:
-        print 'beta- decay', mo, mo - 1
-        return x_widths * beta_decay(x_grid, mo, mo - 1)
+        info(10, 'nu_e from beta- decay', mo, mo - 1, da)
+        return nu_from_beta_decay(x_grid, mo, mo - 1)
     # beta+
     elif mo > 99 and da == 12:
-        print 'beta+ decay', mo, mo + 1
-        return x_widths * beta_decay(x_grid, mo, mo + 1)
+        info(10, 'anu_e beta+ decay', mo, mo + 1, da)
+        return nu_from_beta_decay(x_grid, mo, mo + 1)
+    elif mo > 99 and 99 < da < 200:
+        info(10, 'beta decay boost conservation', mo, da)
+        return boost_conservation(x_grid)
     else:
         info(
             1,
             'Called with unknown channel {:} to {:}, returning an empty redistribution'.
             format(mo, da))
         # no known channel, return zeros
-        return x_widths * np.zeros(x_grid.shape)
+        return np.zeros(x_grid.shape)
 
 
 def pion_to_numu(x):
@@ -173,7 +175,8 @@ def prob_muon_hel(x, h):
     hel = 2 * r / (1 - r) / x - (1 + r) / (1 - r)
 
     res = np.zeros(x.shape)
-    res[x > r] = (1 + hel * h) / 2  #this result is only correct for x > r
+    cond = np.where(np.logical_and(x > r, x <= 1))
+    res[cond] = (1 + hel * h) / 2  #this result is only correct for x > r
     return res
 
 
@@ -219,7 +222,14 @@ def muonplus_to_nue(x, h):
     return res
 
 
-def beta_decay(x_grid, mother, daughter):
+def boost_conservation(x):
+    """Returns an x=1 distribution for ejected nucleons"""
+    dist = np.zeros_like(x)
+    dist[(x == np.max(x)) & x > 0.9] = 1.
+    return dist
+
+
+def nu_from_beta_decay(x_grid, mother, daughter):
     """
     Energy distribution of a neutrinos from beta-decays of mother to daughter
 
@@ -230,6 +240,9 @@ def beta_decay(x_grid, mother, daughter):
     Returns:
       float: probability density at x
     """
+
+    info(10, 'Calculating neutrino energy from beta decay', mother, daughter)
+
     mass_el = spec_data[20]['mass']
     mass_mo = spec_data[mother]['mass']
     mass_da = spec_data[daughter]['mass']

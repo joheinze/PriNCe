@@ -4,6 +4,7 @@ in different modules of this project."""
 import inspect
 from scipy.interpolate import InterpolatedUnivariateSpline, RectBivariateSpline
 import scipy.constants as spc
+import numpy as np
 from prince_config import config
 
 
@@ -36,7 +37,7 @@ UNITS_AND_CONVERSIONS_DEF = dict(
     Gyr2sec=spc.giga * spc.year,
     cm2sec=1e-2 / spc.c)
 
-#This is the immutable unit object to be imported throughout the code
+# This is the immutable unit object to be imported throughout the code
 PRINCE_UNITS = convert_to_namedtuple(UNITS_AND_CONVERSIONS_DEF, "PriNCeUnits")
 
 
@@ -204,15 +205,28 @@ def load_or_convert_array(fname, **kwargs):
     Returns:
         (numpy.array): Array stored in that file
     """
-    from os.path import join, splitext, isfile
+    from os.path import join, splitext, isfile, isdir
+    from os import listdir
     import numpy as np
     fname = splitext(fname)[0]
     info(3, 'Loading file', fname)
     if not isfile(join(config["data_dir"], fname + '.npy')):
         info(2, 'Converting', fname, "to '.npy'")
-        arr = np.loadtxt(
-            join(config['raw_data_dir'], fname + '.dat'), **kwargs)
-        np.save(join(config["data_dir"], fname + '.npy'), arr)
+        arr = None
+        try:
+            arr = np.loadtxt(
+                join(config['raw_data_dir'], fname + '.dat'), **kwargs)
+        except IOError:
+            for subdir in listdir(config['raw_data_dir']):
+                if (isdir(join(config['raw_data_dir'], subdir)) and isfile(
+                        join(config['raw_data_dir'], subdir, fname + '.dat'))):
+                    arr = np.loadtxt(
+                        join(config['raw_data_dir'], subdir, fname + '.dat'),
+                        **kwargs)
+        finally:
+            if arr is None:
+                raise Exception('Required file', fname + '.dat', 'not found')
+            np.save(join(config["data_dir"], fname + '.npy'), arr)
         return arr
     else:
         return np.load(join(config["data_dir"], fname + '.npy'))
@@ -254,7 +268,9 @@ def bin_centers(bin_edges):
     edg = np.array(bin_edges)
     return 0.5 * (edg[1:] + edg[:-1])
 
+
 def bin_widths(bin_edges):
     """Computes and returns bin widths from given edges."""
     edg = np.array(bin_edges)
+    
     return edg[1:] - edg[:-1]
