@@ -106,7 +106,7 @@ def get_decay_matrix(mo, da, x_grid):
         return boost_conservation(x_grid)
     else:
         info(
-            1,
+            5,
             'Called with unknown channel {:} to {:}, returning an empty redistribution'.
             format(mo, da))
         # no known channel, return zeros
@@ -225,7 +225,7 @@ def muonplus_to_nue(x, h):
 def boost_conservation(x):
     """Returns an x=1 distribution for ejected nucleons"""
     dist = np.zeros_like(x)
-    dist[(x == np.max(x)) & x > 0.9] = 1.
+    dist[(x == np.max(x)) & (x > 0.9)] = 1.
     return dist
 
 

@@ -109,8 +109,8 @@ class CrossSectionBase(object):
         # if not self.supports_redistributions:
         #     info(10, mother, daughter, " model doesn't support redist")
         #     return False
-        if (daughter <= config["redist_threshold_ID"]
-                or (mother, daughter) in self.incl_diff_idcs):
+        if (daughter <= config["redist_threshold_ID"] or
+            (mother, daughter) in self.incl_diff_idcs):
             info(10, 'Daughter requires redistribution.', mother, daughter)
             return True
         info(10, 'Daughter conserves boost.', mother, daughter)
@@ -147,10 +147,16 @@ class CrossSectionBase(object):
             if (mo, da) not in self.reactions[mo]:
                 # Make sure it's a unique list to avoid unnecessary loops
                 self.reactions[mo].append((mo, da))
-                self.known_bc_channels.append((mo, da))
-                self.known_species.append(da)
+                if self.is_differential(mo, da):
+                    # Move the distributions which are expected to be differential
+                    # to _incl_diff_tab
+                    self._incl_diff_tab[(mo, da)] = self._arange_on_xgrid(
+                        self._incl_tab.pop((mo, da)))
+                else:
+                    self.known_bc_channels.append((mo, da))
+                    self.known_species.append(da)
 
-        for mo, da in self.incl_diff_idcs:
+        for mo, da in self._incl_diff_tab.keys():
             if da > 100 and get_AZN(da)[0] > get_AZN(mo)[0]:
                 raise Exception(
                     'Daughter {0} heavier than mother {1}. Physics??'.format(
@@ -291,7 +297,7 @@ class CrossSectionBase(object):
                     # Follow each secondary and increment the recursion level by one
                     if self.is_differential(None, chained_daughter):
                         info(10, 'daughter', chained_daughter, 'of', da,
-                              'is differential')
+                             'is differential')
                         follow_chain(first_mo, chained_daughter,
                                      br * convolve_with_decay_distribution(
                                          self._arange_on_xgrid(value), da,
@@ -306,7 +312,7 @@ class CrossSectionBase(object):
 
         # Remove all unstable particles from the dictionaries
         for mother in sorted(self._nonel_tab.keys()):
-            if mother > 1206 or mother not in spec_data or spec_data[mother]["lifetime"] < threshold:
+            if mother not in spec_data or spec_data[mother]["lifetime"] < threshold:
                 info(
                     20,
                     "Primary species {0} does not fulfill stability criteria.".
@@ -320,6 +326,12 @@ class CrossSectionBase(object):
                      "Removing {0}/{1} from incl, since mother not stable ".
                      format(mother, daughter))
                 _ = self._incl_tab.pop((mother, daughter))
+            elif self.is_differential(mother, daughter):
+                # Move the distributions which are expected to be differential
+                # to _incl_diff_tab
+                self._incl_diff_tab[(
+                    mother, daughter)] = self._arange_on_xgrid(
+                        self._incl_tab.pop((mother, daughter)))
 
         for (mother, daughter) in self._incl_diff_tab.keys():
             if mother not in self.nonel_idcs:
@@ -333,14 +345,20 @@ class CrossSectionBase(object):
         for (mo, da), value in self._incl_tab.items():
             follow_chain(mo, da, value, 0)
 
-        # Overwrite the old dictionary
+        for (mo, da), value in self._incl_diff_tab.items():
+            follow_chain(mo, da, value, 0)
+
+        # Overwrite the old incl dictionary
         self._incl_tab = new_incl_tab
+        # Overwrite the old incl_diff dictionary
+        self._incl_diff_tab = new_dec_diff_tab
         # Reduce also the incl_diff_tab by removing the unknown mothers. At this stage
         # of the code, the particles with redistributions are
         info(3,
              ("After optimization, the number of known primaries is {0} with "
               + "in total {1} inclusive channels").format(
-                  len(self._nonel_tab), len(self._incl_tab)))
+                  len(self._nonel_tab),
+                  len(self._incl_tab) + len(self._incl_diff_tab)))
 
     def nonel_scale(self, mother, scale='A'):
         """Returns the nonel cross section scaled by `scale`.
@@ -458,8 +476,9 @@ class CrossSectionBase(object):
 
         if (mother, daughter) not in self._incl_diff_tab:
             raise Exception(
-                '({0},{1}) combination not in inclusive cross sections'.format(
-                    mother, daughter))
+                self.__class__.__name__ +
+                '({0},{1}) combination not in inclusive differential cross sections'.
+                format(mother, daughter))
 
         # If _nonel_tab contains tuples of (egrid, cs) return tuple
         # otherwise return (egrid, cs) in range defined by self.range
@@ -535,6 +554,10 @@ class CrossSectionBase(object):
 
     def _arange_on_xgrid(self, incl_cs):
         """Returns the inclusive cross section on an xgrid at x=1."""
+        try:
+            incl_cs.shape
+        except:
+            print 'exception', incl_cs
         nxbins = len(self.xbins) - 1
         if len(incl_cs.shape) > 1 and incl_cs.shape[0] != nxbins:
             raise Exception(
@@ -700,11 +723,12 @@ class CrossSectionInterpolator(CrossSectionBase):
 
         for model in self.model_refs:
             egr, csec = None, None
+            if config["debug_level"] > 1:
+                if not np.allclose(self.xbins, model.xbins):
+                    raise Exception('Unequal x bins. Aborting...',
+                                    self.xbins.shape, model.xbins)
             if model.is_differential(mother, daughter):
-                egr, xb, csec = model.incl_diff(mother, daughter)
-                if config["debug_level"] > 1:
-                    assert np.alltrue(
-                        self.xbins == xb), 'Unequal x bins. Aborting...'
+                egr, csec = model.incl_diff(mother, daughter)
                 info(10, model.mname, mother, daughter, 'is differential.')
 
             elif (mother, daughter) in model.incl_idcs:
@@ -874,7 +898,7 @@ class SophiaSuperposition(CrossSectionBase):
             else:
                 csec_diff = self.redist_neutron[daughter].T * cgrid
 
-        return self.egrid, self.xbins, csec_diff[:, self._range]
+        return self.egrid, csec_diff[:, self._range]
 
 
 class NeucosmaFileInterface(CrossSectionBase):
