@@ -256,9 +256,32 @@ class EnergyGrid(object):
 def dict_add(di, key, value):
     """Adds value to previous value of di[key], otherwise the key
     is created with value set to `value`."""
-
+    
     if key in di:
-        di[key] += value
+        if isinstance(value, tuple):
+            new_value = value[1] + di[key][1]
+            di[key] = (di[key][0], new_value)
+            # The code below is a template what to do
+            # if energy grids are unequal and one needs to
+            # sum over common indices
+            # try:
+            # If energy grids are the same
+            # new_value = value[1] + di[key][1]
+            # value[1] += di[key][1]
+            # di[key] = (di[key][0], new_value)
+            # except ValueError:
+            #     # old_egr = di[key][0]
+            #     # old_val = di[key][1]
+            #     # new_egr = value[0]
+            #     # new_val = value[1]
+            #     # if prevval.shape[1] > value.shape[1]:
+            #     #     idcs = np.in1d(di[key][0], value)
+            #     #     value += prevval[idcs]
+            #     print key, value[1].shape, di[key][1].shape, '\n', value, '\n', di[key]
+            #     raise Exception()
+            
+        else:
+            di[key] += value
     else:
         di[key] = value
 

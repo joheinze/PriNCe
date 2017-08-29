@@ -93,6 +93,16 @@ class CrossSectionBase(object):
         """
 
         return self._egrid_tab[self._range]
+    
+    @property
+    def xcenters(self):
+        """Returns centers of the grid in x.
+
+        Returns:
+            (numpy.array): x grid
+        """
+
+        return 0.5*(self.xbins[1:] + self.xbins[:-1])
 
     def is_differential(self, mother, daughter):
         """Returns true if the model supports redistributions and requested
@@ -109,12 +119,20 @@ class CrossSectionBase(object):
         # if not self.supports_redistributions:
         #     info(10, mother, daughter, " model doesn't support redist")
         #     return False
-        if (daughter <= config["redist_threshold_ID"] or
-            (mother, daughter) in self.incl_diff_idcs):
+        if (daughter <= config["redist_threshold_ID"]
+                or (mother, daughter) in self.incl_diff_idcs):
             info(10, 'Daughter requires redistribution.', mother, daughter)
             return True
         info(10, 'Daughter conserves boost.', mother, daughter)
         return False
+    
+    def _update_indices(self):
+        """Updates the list of indices according to entries in the
+        _tab variables"""
+
+        self.nonel_idcs = sorted(self._nonel_tab.keys())
+        self.incl_idcs = sorted(self._incl_tab.keys())
+        self.incl_diff_idcs = sorted(self._incl_diff_tab.keys())
 
     def _optimize_and_generate_index(self):
         """Construct a list of mothers and (mother, daughter) indices.
@@ -125,17 +143,16 @@ class CrossSectionBase(object):
 
         # Integrate out short lived processes and leave only stable particles
         # in the databases
-        self._optimize_channels()
+        self._reduce_channels()
 
         # Go through all three cross section/response function categories
         # index contents in the ..known..variable
-        self.nonel_idcs = sorted(self._nonel_tab.keys())
-        self.incl_idcs = sorted(self._incl_tab.keys())
-        self.incl_diff_idcs = sorted(self._incl_diff_tab.keys())
         self.reactions = {}
+        
+        self._update_indices()
 
         for mo, da in self.incl_idcs:
-            if da > 100 and get_AZN(da)[0] > get_AZN(mo)[0]:
+            if da >= 100 and get_AZN(da)[0] > get_AZN(mo)[0]:
                 raise Exception(
                     'Daughter {0} heavier than mother {1}. Physics??'.format(
                         da, mo))
@@ -145,19 +162,22 @@ class CrossSectionBase(object):
                 self.known_species.append(mo)
 
             if (mo, da) not in self.reactions[mo]:
-                # Make sure it's a unique list to avoid unnecessary loops
+                # Make sure it's a unique list
                 self.reactions[mo].append((mo, da))
-                if self.is_differential(mo, da):
-                    # Move the distributions which are expected to be differential
-                    # to _incl_diff_tab
-                    self._incl_diff_tab[(mo, da)] = self._arange_on_xgrid(
-                        self._incl_tab.pop((mo, da)))
-                else:
-                    self.known_bc_channels.append((mo, da))
-                    self.known_species.append(da)
+            if self.is_differential(mo, da):
+                # Move the distributions which are expected to be differential
+                # to _incl_diff_tab
+                print self.mname, mo, da, 'before xgrid call', len(
+                    self._incl_tab[(mo, da)])
+                self._incl_diff_tab[(mo, da)] = self._arange_on_xgrid(
+                    self._incl_tab.pop((mo, da)))
+                print self.mname, mo, da, 'made differential'
+            else:
+                self.known_bc_channels.append((mo, da))
+                self.known_species.append(da)
 
         for mo, da in self._incl_diff_tab.keys():
-            if da > 100 and get_AZN(da)[0] > get_AZN(mo)[0]:
+            if da >= 100 and get_AZN(da)[0] > get_AZN(mo)[0]:
                 raise Exception(
                     'Daughter {0} heavier than mother {1}. Physics??'.format(
                         da, mo))
@@ -177,6 +197,9 @@ class CrossSectionBase(object):
         self.known_bc_channels = sorted(list(set(self.known_bc_channels)))
         self.known_diff_channels = sorted(list(set(self.known_diff_channels)))
 
+        # Make sure the indices are up to date
+        self._update_indices()
+
         # Count numbers of channels for statistics
         # Count number of incl channels for activated nuclear species
         # n_incl = np.sum([
@@ -184,7 +207,7 @@ class CrossSectionBase(object):
         #     for mother in self.spec_man.known_species if mother >= 100
         # ])
 
-    def _optimize_channels(self):
+    def _reduce_channels(self):
         """Follows decay chains until all inclusive reactions point to
         stable final state particles.
 
@@ -220,7 +243,7 @@ class CrossSectionBase(object):
                 [np.logspace(-8, -2, 40),
                  np.logspace(-2, 0, 120)[1:]])
 
-        bc = bin_centers(self.xbins)
+        bc = self.xcenters
         bw = bin_widths(self.xbins)
         # The x_mu/x_pi grid
         dec_grid = np.fromfunction(
@@ -229,7 +252,8 @@ class CrossSectionBase(object):
         # The differential element dx_mu/x_pi
         int_scale = np.tile(bw / bc, (len(bc), 1))
 
-        def convolve_with_decay_distribution(diff_dist, mother, daughter):
+        def convolve_with_decay_distribution(diff_dist, mother, daughter,
+                                             branching_ratio):
             r"""Computes the prompt decay xdist by convolving the x distribution
             of the unstable particle with the decay product distribution.
 
@@ -241,7 +265,13 @@ class CrossSectionBase(object):
 
             dec_dist = int_scale * decs.get_decay_matrix(
                 mother, daughter, dec_grid)
-            return dec_dist.dot(diff_dist)
+            info(50, 'convolving with decay dist', mother, daughter)
+            # Handle the case where table entry is (energy_grid, matrix)
+            if not isinstance(diff_dist, tuple):
+                return branching_ratio * dec_dist.dot(diff_dist)
+            else:
+                return diff_dist[0], branching_ratio * dec_dist.dot(
+                    diff_dist[1])
 
         def follow_chain(first_mo, da, value, reclev):
             """Recursive function to follow decay chains until all
@@ -267,17 +297,17 @@ class CrossSectionBase(object):
             # Daughter is stable. Add it to the new dictionary and terminate
             # recursion
             if spec_data[da]["lifetime"] >= threshold:
-                if da < 100:
+                if self.is_differential(None, da):
                     # If the daughter is a meson or lepton, it needs special treatment
-                    # since it comes from decays with energy redistributions
+                    # since it always comes from decays with energy redistributions
                     info(
-                        10,
+                        20,
                         dbg_indent(reclev),
                         'daughter {0} stable and differential. Adding to ({1}, {2})'.
                         format(da, first_mo, da))
                     dict_add(new_dec_diff_tab, (first_mo, da), value)
                 else:
-                    info(10,
+                    info(20,
                          dbg_indent(reclev),
                          'daughter {0} stable. Adding to ({1}, {2})'.format(
                              da, first_mo, da))
@@ -299,9 +329,9 @@ class CrossSectionBase(object):
                         info(10, 'daughter', chained_daughter, 'of', da,
                              'is differential')
                         follow_chain(first_mo, chained_daughter,
-                                     br * convolve_with_decay_distribution(
+                                     convolve_with_decay_distribution(
                                          self._arange_on_xgrid(value), da,
-                                         chained_daughter), reclev + 1)
+                                         chained_daughter, br), reclev + 1)
                     else:
                         follow_chain(first_mo, chained_daughter, br * value,
                                      reclev + 1)
@@ -318,28 +348,36 @@ class CrossSectionBase(object):
                     "Primary species {0} does not fulfill stability criteria.".
                     format(mother))
                 _ = self._nonel_tab.pop(mother)
+        # Only stable (interacting) mother particles are left
+        self._update_indices()
 
-        self.nonel_idcs = sorted(self._nonel_tab.keys())
-        for (mother, daughter) in self._incl_tab.keys():
+        for (mother, daughter) in self.incl_idcs:
+            
             if mother not in self.nonel_idcs:
                 info(30,
                      "Removing {0}/{1} from incl, since mother not stable ".
                      format(mother, daughter))
                 _ = self._incl_tab.pop((mother, daughter))
+
             elif self.is_differential(mother, daughter):
                 # Move the distributions which are expected to be differential
                 # to _incl_diff_tab
                 self._incl_diff_tab[(
                     mother, daughter)] = self._arange_on_xgrid(
                         self._incl_tab.pop((mother, daughter)))
-
-        for (mother, daughter) in self._incl_diff_tab.keys():
+        
+        self._update_indices()
+        
+        for (mother, daughter) in self.incl_diff_idcs:
+            
             if mother not in self.nonel_idcs:
                 info(
                     30,
                     "Removing {0}/{1} from diff incl, since mother not stable ".
                     format(mother, daughter))
                 _ = self._incl_diff_tab.pop((mother, daughter))
+
+        self._update_indices()
 
         # Launch the reduction for each inclusive channel
         for (mo, da), value in self._incl_tab.items():
@@ -554,21 +592,29 @@ class CrossSectionBase(object):
 
     def _arange_on_xgrid(self, incl_cs):
         """Returns the inclusive cross section on an xgrid at x=1."""
-        try:
-            incl_cs.shape
-        except:
-            print 'exception', incl_cs
+
+        egr, cs = None, None
+
+        if isinstance(incl_cs, tuple):
+            egr, cs = incl_cs
+        else:
+            cs = incl_cs
+
         nxbins = len(self.xbins) - 1
-        if len(incl_cs.shape) > 1 and incl_cs.shape[0] != nxbins:
+        if len(cs.shape) > 1 and cs.shape[0] != nxbins:
             raise Exception(
                 'One dimensional cross section expected, instead got',
-                incl_cs.shape)
-        elif len(incl_cs.shape) == 2 and incl_cs.shape[0] == nxbins:
+                cs.shape, '\n', cs)
+        elif len(cs.shape) == 2 and cs.shape[0] == nxbins:
             info(5, 'Supplied 2D distribution seems to be distributed in x.')
-            return incl_cs
+            if isinstance(incl_cs, tuple):
+                return egr, cs
+            return cs
 
-        csec = np.zeros((nxbins, incl_cs.shape[0]))
-        csec[-1, :] = incl_cs
+        csec = np.zeros((nxbins, cs.shape[0]))
+        csec[-1, :] = cs
+        if isinstance(incl_cs, tuple):
+            return egr, csec
         return csec
 
 
@@ -604,9 +650,6 @@ class CrossSectionInterpolator(CrossSectionBase):
 
         # Number of modls to join
         nmodels = len(model_list)
-        # Energy ranges of each model
-        m_ranges = []
-        # grid_list = []
 
         self.model_refs = []
         # Construct instances of models and set ranges where they are valid
@@ -641,15 +684,20 @@ class CrossSectionInterpolator(CrossSectionBase):
             self._nonel_tab[mo] = self._join_nonel(mo)
 
         # Create a unique list of inclusive channels from the combination
-        # of all models
+        # of all models, no matter if diff or not. The rearrangement
+        # is performed in the next steps
         self.incl_idcs_all = sorted(
             list(set(sum([m.incl_idcs for m in self.model_refs], []))))
+        self.incl_idcs_all += sorted(
+            list(set(sum([m.incl_diff_idcs for m in self.model_refs], []))))
 
         # Collect the channels, that need redistribution functions in a
         # separate list. Put channels that conserve boost into the normal
         # incl_idcs.
+        self.incl_diff_idcs = []
+        self.incl_idcs = []
         for mo, da in self.incl_idcs_all:
-            if da <= config["redist_threshold_ID"]:
+            if self.is_differential(mo, da):
                 info(10, 'Daughter has redistribution function', mo, da)
                 self.incl_diff_idcs.append((mo, da))
             else:
@@ -666,6 +714,7 @@ class CrossSectionInterpolator(CrossSectionBase):
         for mo, da in self.incl_diff_idcs:
             self._incl_diff_tab[(mo, da)] = self._join_incl_diff(mo, da)
 
+        self._update_indices()
         self._optimize_and_generate_index()
 
         # now also precompute the response function
@@ -727,20 +776,28 @@ class CrossSectionInterpolator(CrossSectionBase):
                 if not np.allclose(self.xbins, model.xbins):
                     raise Exception('Unequal x bins. Aborting...',
                                     self.xbins.shape, model.xbins)
-            if model.is_differential(mother, daughter):
+            if (mother, daughter) in model.incl_diff_idcs:
                 egr, csec = model.incl_diff(mother, daughter)
                 info(10, model.mname, mother, daughter, 'is differential.')
 
             elif (mother, daughter) in model.incl_idcs:
                 # try to use incl and extend by zeros
                 egr, csec_1d = model.incl(mother, daughter)
+                print mother, daughter, csec_1d.shape
                 # no x-distribution given, so x = 1
                 csec = self._arange_on_xgrid(csec_1d)
-                info(10, model.mname, mother, daughter,
+                info(1, model.mname, mother, daughter,
                      'not differential, x=1.')
             else:
-                raise Exception('Why does this happen? Should not...', mother,
-                                daughter)
+                info(5, 'Model', model.mname, 'does not provide cross',
+                     'sections for channel {0}/{1}. Setting to zero.'.format(
+                         mother, daughter))
+                # Tried with reduced energy grids to save memory, but
+                # matrix addition in decay chains becomes untrasparent
+                # egr = np.array((model.egrid[0], model.egrid[-1]))
+                # csec = np.zeros((len(self.xbins) - 1, 2))
+                egr = model.egrid
+                csec = np.zeros((len(self.xbins) - 1, model.egrid.size))
 
             egrid.append(egr)
             incl_diff.append(csec)
@@ -787,10 +844,13 @@ class SophiaSuperposition(CrossSectionBase):
         self.cs_neutron_grid *= 1e-30
 
         # set up inclusive differential channels for protons and neutron
+        # The model can return both, integrated over x and redistributed.
         for da in sorted(self.redist_proton):
             self.incl_diff_idcs.append((101, da))
+            self.incl_idcs.append((101, da))
         for da in sorted(self.redist_neutron):
             self.incl_diff_idcs.append((100, da))
+            self.incl_idcs.append((100, da))
 
         # For more convenient generation of trivial redistribution matrices when joining
         self.redist_shape = (self.xbins.shape[0], self._egrid_tab.shape[0])
