@@ -6,7 +6,7 @@ import numpy as np
 from scipy.sparse import bmat, coo_matrix
 
 from prince.util import (get_AZN, get_interp_object, info,
-                         load_or_convert_array, pru)
+                         load_or_convert_array, PRINCE_UNITS)
 from prince_config import config
 
 
@@ -95,7 +95,37 @@ class InteractionRateBase(object):
 class PhotoNuclearInteractionRate(InteractionRateBase):
     """Implementation of photo-hadronic/nuclear interaction rates."""
 
-    def __init__(self, prince_run, *args, **kwargs):
+    def __init__(self, prince_run=None, *args, **kwargs):
+        if prince_run is None:
+            # For debugging and independent calculations define
+            # a strawman class and supply the required paramters as
+            # attributes
+
+            class PrinceRunMock(object):
+                pass
+
+            from prince.data import SpeciesManager
+            from prince.util import EnergyGrid
+
+            prince_run = PrinceRunMock()
+            if "photon_bins_per_dec" not in kwargs:
+                kwargs["photon_bins_per_dec"] = config["photon_grid"][2]
+            if "cr_bins_per_dec" not in kwargs:
+                kwargs["cr_bins_per_dec"] = config["cosmic_ray_grid"][2]
+
+            prince_run.e_photon = EnergyGrid(config["photon_grid"][0],
+                                             config["photon_grid"][1],
+                                             kwargs["photon_bins_per_dec"])
+            prince_run.e_cosmicray = EnergyGrid(config["cosmic_ray_grid"][0],
+                                                config["cosmic_ray_grid"][1],
+                                                kwargs["cr_bins_per_dec"])
+            prince_run.cross_sections = kwargs['cs']
+            prince_run.photon_field = kwargs['pf']
+
+            prince_run.spec_man = SpeciesManager(
+                prince_run.cross_sections.known_species,
+                prince_run.e_cosmicray.d)
+
         InteractionRateBase.__init__(self, prince_run, *args, **kwargs)
 
     def _setup(self):
@@ -105,99 +135,10 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         self._init_rate_matstruc()
         self._init_reinjection_mat()
 
-    def interaction_rate_single(self, nco_ids, z):
-        """Compute a single interaction rate using matrix convolution.
-
-        This method is a high performance integration of equation (10)
-        from internal note, using a simple box method.
-
-        Don't use this method if you intend to compute rates for different
-        species at the same redshift value. Use :func:`interaction_rate`
-        instead.
-
-        The last redshift value is cached to avoid interpolation of the
-        photon spectrum at each step.
-
-        Args:
-            nco_id (int or tuple): single particle id (neucosma codes) or tuple
-                                   with (mother, daughter) for inclusive
-                                   reactions
-            z (float): redshift
-
-        Returns:
-            (numpy.array): interaction length :math:`\\Gamma` in cm^-1
-        """
-
-        # Convolve using matrix multiplication
-        if isinstance(nco_ids, tuple):
-            return self.cross_sections.resp_incl_intp[nco_ids](self.ymat).dot(
-                np.diag(self.e_photon.widths)).dot(self.photon_vector(z))
-        else:
-            return self.cross_sections.resp_nonel_intp[nco_ids](self.ymat).dot(
-                np.diag(self.e_photon.widths)).dot(self.photon_vector(z))
-
-    def interaction_rate(self, nco_ids, z):
-        """Compute interaction rates using batch matrix convolution.
-
-        This method is a high performance integration of equation (10)
-        from internal note, using a simple box method.
-
-        All rates for a certain redshift value are computed at once, thus
-        this function is not very efficient if you need a rate for a single
-        species at different redshifts values.
-
-        The last redshift value is cached to avoid interpolation of the
-        photon spectrum at each step.
-
-        Args:
-            nco_id (int or tuple): single particle id (neucosma codes) or tuple
-                                   with (mother, daughter) for inclusive
-                                   reactions
-            z (float): redshift
-
-        Returns:
-            (numpy.array): interaction length :math:`\\Gamma` in cm^-1
-        """
-
-        self._update_rates(z)
-
-        if isinstance(nco_ids, tuple):
-            lidx, uidx = self._incl_batchvec_pointer[nco_ids]
-            return self._incl_batch_vec[lidx:uidx]
-        else:
-            lidx, uidx = self._nonel_batchvec_pointer[nco_ids]
-            return self._nonel_batch_vec[lidx:uidx]
-
-    def get_hadr_jacobian(self, z):
-        """Returns the nonel rate vector and coupling matrix.
-        """
-        from scipy.sparse import csr_matrix, dia_matrix
-        self._update_rates(z)
-        coupl = self.reinjection_smat.multiply(
-            bmat(self.incl_rate_struc, format='coo'))
-        coupl -= dia_matrix((self._nonel_batch_vec, [0]), shape=coupl.shape)
-        return coupl
-
+    @abstractmethod
     def _update_rates(self, z):
-        """Batch compute all nonel and inclusive rates if z changes.
-
-        The result is always stored in the same vectors, since '_init_rate_matstruc'
-        makes use of views to link ranges of the vector to locations in the matrix.
-        """
-        if self._ratemat_zcache != z:
-            info(5, 'Updating batch rate vectors.')
-            np.dot(
-                self._nonel_batch_matrix,
-                self.photon_vector(z),
-                out=self._nonel_batch_vec)
-            np.dot(
-                self.incl_batch_matrix,
-                self.photon_vector(z),
-                out=self._incl_batch_vec)
-            self._ratemat_zcache = z
-
-    def _init_matrices(self):
-        """Initializes batch computation of rates via matrices."""
+        """Updates all rates if photon field/redshift changes"""
+        raise Exception("Base class function called.")
 
         from prince.util import get_y
         # Disable pylint warning for since this method is always called
@@ -245,13 +186,19 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         self._incl_batchvec_pridx_pointer = {}
 
         # Count number of incl channels for activated nuclear species
-        n_incl = np.sum([
-            len(self.cross_sections.reactions[mother])
-            for mother in self.spec_man.known_species if mother >= 100
-        ])
+        # n_incl = np.sum([
+        #     len(self.cross_sections.reactions[mother])
+        #     for mother in self.spec_man.known_species if mother >= 100
+        # ])
+        n_incl = len(self.cross_sections.known_bc_channels)
+        n_diff = len(self.cross_sections.known_diff_channels)
 
-        # Matrix: (incl-channels * dim_cr) x dim_ph
+        # Convolution matrix for incl: (incl-channels * dim_cr) x dim_ph
         self.incl_batch_matrix = np.zeros((self.dim_cr * n_incl, self.dim_ph))
+
+        # Convolution matrix for incl: (incl_diff_channels * dim_cr * dim_cr) x dim_ph
+        self.incl_batch_matrix = np.zeros((self.dim_cr**2 * n_diff, self.dim_ph))
+
 
         # Result vector, which stores computed incl rates
         self._incl_batch_vec = np.zeros(self.incl_batch_matrix.shape[0])
@@ -378,6 +325,97 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
 
         self.reinjection_smat = bmat(self.reinjection_struc, format='coo')
 
+    def interaction_rate_single(self, nco_ids, z):
+        """Compute a single interaction rate using matrix convolution.
+
+        This method is a high performance integration of equation (10)
+        from internal note, using a simple box method.
+
+        Don't use this method if you intend to compute rates for different
+        species at the same redshift value. Use :func:`interaction_rate`
+        instead.
+
+        The last redshift value is cached to avoid interpolation of the
+        photon spectrum at each step.
+
+        Args:
+            nco_id (int or tuple): single particle id (neucosma codes) or tuple
+                                   with (mother, daughter) for inclusive
+                                   reactions
+            z (float): redshift
+
+        Returns:
+            (numpy.array): interaction length :math:`\\Gamma` in cm^-1
+        """
+
+        # Convolve using matrix multiplication
+        if isinstance(nco_ids, tuple):
+            return self.cross_sections.resp_incl_intp[nco_ids](self.ymat).dot(
+                np.diag(self.e_photon.widths)).dot(self.photon_vector(z))
+        else:
+            return self.cross_sections.resp_nonel_intp[nco_ids](self.ymat).dot(
+                np.diag(self.e_photon.widths)).dot(self.photon_vector(z))
+
+    def interaction_rate(self, nco_ids, z):
+        """Compute interaction rates using batch matrix convolution.
+
+        This method is a high performance integration of equation (10)
+        from internal note, using a simple box method.
+
+        All rates for a certain redshift value are computed at once, thus
+        this function is not very efficient if you need a rate for a single
+        species at different redshifts values.
+
+        The last redshift value is cached to avoid interpolation of the
+        photon spectrum at each step.
+
+        Args:
+            nco_id (int or tuple): single particle id (neucosma codes) or tuple
+                                   with (mother, daughter) for inclusive
+                                   reactions
+            z (float): redshift
+
+        Returns:
+            (numpy.array): interaction length :math:`\\Gamma` in cm^-1
+        """
+
+        self._update_rates(z)
+
+        if isinstance(nco_ids, tuple):
+            lidx, uidx = self._incl_batchvec_pointer[nco_ids]
+            return self._incl_batch_vec[lidx:uidx]
+        else:
+            lidx, uidx = self._nonel_batchvec_pointer[nco_ids]
+            return self._nonel_batch_vec[lidx:uidx]
+
+    def get_hadr_jacobian(self, z):
+        """Returns the nonel rate vector and coupling matrix.
+        """
+        from scipy.sparse import csr_matrix, dia_matrix
+        self._update_rates(z)
+        coupl = self.reinjection_smat.multiply(
+            bmat(self.incl_rate_struc, format='coo'))
+        coupl -= dia_matrix((self._nonel_batch_vec, [0]), shape=coupl.shape)
+        return coupl
+
+    def _update_rates(self, z):
+        """Batch compute all nonel and inclusive rates if z changes.
+
+        The result is always stored in the same vectors, since '_init_rate_matstruc'
+        makes use of views to link ranges of the vector to locations in the matrix.
+        """
+        if self._ratemat_zcache != z:
+            info(5, 'Updating batch rate vectors.')
+            np.dot(
+                self._nonel_batch_matrix,
+                self.photon_vector(z),
+                out=self._nonel_batch_vec)
+            np.dot(
+                self.incl_batch_matrix,
+                self.photon_vector(z),
+                out=self._incl_batch_vec)
+            self._ratemat_zcache = z
+
 
 class ContinuousLossRates(InteractionRateBase):
     """Implementation of continuous pair production loss rates."""
@@ -399,7 +437,7 @@ class ContinuousLossRates(InteractionRateBase):
     def adiabatic_losses(self, z):
         """Returns adiabatic loss vector at redshift z"""
         from prince.cosmology import H
-        return H(z) * pru.cm2sec * self.adiabatic_loss_vector
+        return H(z) * PRINCE_UNITS.cm2sec * self.adiabatic_loss_vector
 
     def pprod_losses(self, z):
         """Returns pair production losses at redshift z"""
@@ -423,7 +461,7 @@ class ContinuousLossRates(InteractionRateBase):
         self.phi_xi2 = self._phi() / (self.xi**2)
 
         # Gamma factor of the cosmic ray
-        gamma = self.e_cosmicray.grid / pru.m_proton
+        gamma = self.e_cosmicray.grid / PRINCE_UNITS.m_proton
 
         # Scale vector containing the units and factors of Z**2 for nuclei
         self.scale_vec = self._init_scale_vec()
@@ -432,7 +470,8 @@ class ContinuousLossRates(InteractionRateBase):
         self.adiabatic_loss_vector = self._init_adiabatic_vec()
 
         # Grid of photon energies for interpolation
-        self.photon_grid = np.outer(1 / gamma, self.xi) * pru.m_electron / 2.
+        self.photon_grid = np.outer(1 / gamma,
+                                    self.xi) * PRINCE_UNITS.m_electron / 2.
         self.pg_desort = self.photon_grid.reshape(-1).argsort()
         self.pg_sorted = self.photon_grid.reshape(-1)[self.pg_desort]
 
@@ -472,7 +511,7 @@ class ContinuousLossRates(InteractionRateBase):
         """Prepare vector for scaling with units, charge and mass."""
 
         scale_vec = np.zeros(self.prince_run.dim_states)
-        units = pru.fine_structure * pru.r_electron**2 * pru.m_electron**2
+        units = PRINCE_UNITS.fine_structure * PRINCE_UNITS.r_electron**2 * PRINCE_UNITS.m_electron**2
 
         for spec in self.spec_man.species_refs:
             if not spec.is_nucleus:
@@ -489,7 +528,8 @@ class ContinuousLossRates(InteractionRateBase):
         adiabatic_loss_vector = np.zeros(self.prince_run.dim_states)
 
         for spec in self.spec_man.species_refs:
-            adiabatic_loss_vector[spec.lidx():spec.uidx()] = self.e_cosmicray.grid
+            adiabatic_loss_vector[spec.lidx():
+                                  spec.uidx()] = self.e_cosmicray.grid
 
         return adiabatic_loss_vector
 

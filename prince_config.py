@@ -40,8 +40,8 @@ config = {
     "raw_data_dir": path.join(base, 'utils'),
     # # nuclear cross sections
     # "data_dir": '/data',
-    # # File name of particle production yields
-    # "yield_fname": "yield_dict.ppd",
+    # Model file for redistribution functions (from SOPHIA or similar)
+    "redist_fname": "sophia_redistribution.npy",
 
     # full path to libmkl_rt.[so/dylib] (only if kernel=='MKL')
     "MKL_path": mkl_default + lib_ext,
@@ -64,12 +64,15 @@ config = {
     #===========================================================================
     # Grids
     #===========================================================================
+    # Number of bins in multiples of 4 recommended for maximal vectorization
+    # efficiency for 256 bit AVX or similar
+
     # Format (log10(E_min), log10(E_max), nbins/decade of energy)
     # Main energy grid for solver
-    "cosmic_ray_grid": (7, 13, 10),
+    "cosmic_ray_grid": (7, 13, 8),
 
     # Photon grid of target field, only for calculation of rates
-    "photon_grid": (-15, -8, 10),
+    "photon_grid": (-15, -8, 8),
 
     #===========================================================================
     # Model options
@@ -81,7 +84,14 @@ config = {
     # means that if a particle is unstable with lifetime smaller than this threshold
     # will be decayed until all final state particles of this chain are stable.
     # In other words: short intermediate states will be integrated out
-    "tau_dec_threshold": 0.5,
+    "tau_dec_threshold": np.inf,
+
+    # Particle ID for which redistribution functions are needed to be taken into
+    # account. The default value is 101 (proton). All particles with smaller
+    # IDs, i.e. neutrinos, pions, muons etc., will have energy redistributions.
+    # For larger IDs (nuclei) the boost conservation is employed.
+    "redist_threshold_ID": 101,
+
     #===========================================================================
     # Parameters of numerical integration
     #===========================================================================

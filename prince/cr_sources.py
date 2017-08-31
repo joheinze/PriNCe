@@ -5,7 +5,7 @@ from abc import ABCMeta, abstractmethod
 import numpy as np
 
 from prince.cosmology import star_formation_rate
-from prince.util import info, pru
+from prince.util import info, PRINCE_UNITS
 from prince_config import config
 
 
@@ -36,7 +36,7 @@ class CosmicRaySource(object):
         intenergy, _ = integrate.quad(
             lambda energy: energy * self.injection_spectrum(energy), 1e10,
             1e12)
-        newnorm = 1e44 * pru.erg2GeV / pru.Mpc2cm**3 / pru.yr2sec
+        newnorm = 1e44 * PRINCE_UNITS.erg2GeV / PRINCE_UNITS.Mpc2cm**3 / PRINCE_UNITS.yr2sec
 
         info(2, "Integrated energy is in total: " + str(intenergy))
         info(4, "Renormalizing the integrated energy to: " + str(newnorm))
