@@ -135,10 +135,8 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         self._init_rate_matstruc()
         self._init_reinjection_mat()
 
-    @abstractmethod
-    def _update_rates(self, z):
-        """Updates all rates if photon field/redshift changes"""
-        raise Exception("Base class function called.")
+    def _init_matrices(self):
+        """Initializes batch computation of rates via matrices."""
 
         from prince.util import get_y
         # Disable pylint warning for since this method is always called
