@@ -10,13 +10,9 @@ from prince_config import config, spec_data
 import prince.decays as decs
 
 # TODO:
-# - CrossSectionInterpolator._join_incl_diff() does currently not work properly for inclusive differential crossections
-#   there are two problems
+# - CompositeCrossSection._join_incl_diff() does currently not work properly for inclusive differential crossections
 #     - the class combines the channel indices from all models,
 #       however sophia does not provide these, and still introduces indices for lighter particles
-#     - we need a way to combine channels where one models provides an x distribution, while the other does not.
-#       The problem arrises, as incl refers to x = 1 while incl_diff is distributed over bins with bin_center < 1
-
 
 class CrossSectionBase(object):
     """Base class for cross section interfaces to tabulated models.
@@ -48,7 +44,7 @@ class CrossSectionBase(object):
 
         # Flag, which tells if the model supports secondary redistributions
         if not hasattr(self, 'supports_redistributions'):
-            self.supports_redistributions = False
+            self.supports_redistributions = None # JH: to differ from explicitly set False
         # List of all known particles (after optimization)
         self.known_species = []
         # List of all boost conserving inclusive channels (after optimization)
@@ -60,10 +56,6 @@ class CrossSectionBase(object):
 
         # Class name of the model
         self.mname = self.__class__.__name__
-
-        # Dictionary of reponse function interpolators
-        self.resp_nonel_intp = {}
-        self.resp_incl_intp = {}
 
     def set_range(self, e_min=None, e_max=None):
         """Set energy range within which to return tabulated data.
@@ -103,6 +95,16 @@ class CrossSectionBase(object):
         """
 
         return 0.5*(self.xbins[1:] + self.xbins[:-1])
+
+    @property
+    def resp(self):
+        """Return ResponseFunction corresponding to this cross section
+        Will only create the Response function once. 
+        """
+        if not hasattr(self, '_resp'):
+            info(2, 'Creating Instance of ResponseFunction now!')
+            self._resp = ResponseFunction(self)
+        return self._resp
 
     def is_differential(self, mother, daughter):
         """Returns true if the model supports redistributions and requested
@@ -145,7 +147,7 @@ class CrossSectionBase(object):
         # in the databases
         self._reduce_channels()
 
-        # Go through all three cross section/response function categories
+        # Go through all three cross section categories
         # index contents in the ..known..variable
         self.reactions = {}
         
@@ -434,18 +436,6 @@ class CrossSectionBase(object):
 
         return egr, scale * cs
 
-    def response_function_scale(self, mother, daughter=None, scale='A'):
-        """Same meaning as :func:`~cross_sections.CrossSectionBase.nonel_scale`,
-        just for response functions.
-        """
-
-        ygr, cs = self.response_function(mother, daughter)
-
-        if scale == 'A':
-            scale = 1. / get_AZN(mother)[0]
-
-        return ygr, scale * cs
-
     def nonel(self, mother):
         """Returns non-elastic cross section.
 
@@ -526,70 +516,6 @@ class CrossSectionBase(object):
         return self.egrid, self._incl_diff_tab[(mother,
                                                 daughter)][:, self._range]
 
-    def response_function(self, mother, daughter=None):
-        """Reponse function :math:`f(y)` or :math:`g(y)` as
-        defined in the note.
-
-        Returns :math:`f(y)` or :math:`g(y)` if a daughter
-        index is provided. If the inclusive channel has a redistribution,
-        :math:`h(x,y)` will be returned
-
-        Args:
-            mother (int): mother nucleus(on)
-            daughter (int, optional): daughter nucleus(on)
-
-        Returns:
-            (numpy.array) Reponse function on self._ygrid_tab
-        """
-        from scipy import integrate
-
-        egrid, cross_section = None, None
-
-        if daughter is not None:
-            if self.is_differential(mother, daughter):
-                egrid, cross_section = self.incl_diff(mother, daughter)
-            elif (mother, daughter) in self.incl_idcs:
-                egrid, cross_section = self.incl(mother, daughter)
-            else:
-                raise Exception(
-                    'Unknown inclusive channel {:} -> {:} for this model'.
-                    format(mother, daughter))
-        else:
-            egrid, cross_section = self.nonel(mother)
-
-        ygrid = egrid[1:] / 2.
-
-        # note that cumtrapz works also for 2d-arrays and will integrate along axis = 1
-        integral = integrate.cumtrapz(egrid * cross_section, x=egrid)
-
-        return ygrid, integral / (2 * ygrid**2)
-
-    def _precomp_response_func(self):
-        """Interpolate each response function and store interpolators.
-
-        Uses :func:`prince.util.get_interp_object` as interpolator.
-        This might result in too many knots and can be subject to
-        future optimization.
-        """
-
-        info(2, 'Computing interpolators for response functions')
-        info(5, 'Nonelastic response functions f(y)')
-        self.resp_nonel_intp = {}
-        for mother in self.nonel_idcs:
-            self.resp_nonel_intp[mother] = get_interp_object(
-                *self.response_function(mother))
-        info(5, 'Inclusive (boost conserving) response functions g(y)')
-        self.resp_incl_intp = {}
-        for mother, daughter in self.incl_idcs:
-            self.resp_incl_intp[(mother, daughter)] = get_interp_object(
-                *self.response_function(mother, daughter))
-        info(5, 'Inclusive (redistributed) response functions h(y)')
-        self.resp_incl_diff_intp = {}
-        for mother, daughter in self.incl_diff_idcs:
-            ygr, rfunc = self.response_function(mother, daughter)
-            self.resp_incl_diff_intp[(mother, daughter)] = get_2Dinterp_object(
-                0.5 * (self.xbins[1:] + self.xbins[:-1]), ygr, rfunc)
-
     def _arange_on_xgrid(self, incl_cs):
         """Returns the inclusive cross section on an xgrid at x=1."""
 
@@ -618,7 +544,7 @@ class CrossSectionBase(object):
         return csec
 
 
-class CrossSectionInterpolator(CrossSectionBase):
+class CompositeCrossSection(CrossSectionBase):
     """Joins and interpolates between cross section models.
 
     """
@@ -716,9 +642,6 @@ class CrossSectionInterpolator(CrossSectionBase):
 
         self._update_indices()
         self._optimize_and_generate_index()
-
-        # now also precompute the response function
-        self._precomp_response_func()
 
     def _join_nonel(self, mother):
         """Returns the non-elastic cross section of the joined models.
@@ -961,13 +884,13 @@ class SophiaSuperposition(CrossSectionBase):
         return self.egrid, csec_diff[:, self._range]
 
 
-class NeucosmaFileInterface(CrossSectionBase):
+class TabulatedCrossSection(CrossSectionBase):
     """Tabulated disintegration cross sections from Peanut or TALYS.
     Data available from 1 MeV to 1 GeV"""
 
     def __init__(self, model_prefix='peanut', *args, **kwargs):
-        CrossSectionBase.__init__(self)
         self.supports_redistributions = False
+        CrossSectionBase.__init__(self)
         self._load(model_prefix)
         self._optimize_and_generate_index()
 
@@ -1012,6 +935,124 @@ class NeucosmaFileInterface(CrossSectionBase):
         # Set initial range to whole egrid
         self.set_range()
         info(2, "Finished initialization")
+
+
+class ResponseFunction(object):
+    """Redistribution Function based on Crossection model
+    """
+
+    def __init__ (self, cross_section):
+        self.cross_section = cross_section
+
+        self.xcenters = cross_section.xcenters
+
+        # Copy indices from CrossSection Model
+        self.nonel_idcs     = cross_section.nonel_idcs 
+        self.incl_idcs      = cross_section.incl_idcs
+        self.incl_diff_idcs = cross_section.incl_diff_idcs
+
+        # Dictionary of reponse function interpolators
+        self.nonel_intp     = {}
+        self.incl_intp      = {}
+        self.incl_diff_intp = {}
+
+        self._precompute_interpolators()
+
+    # forward is_differential() to CrossSectionBase
+    # that might break in the future...
+    def is_differential(self, mother, daughter):
+        return CrossSectionBase.is_differential(self, mother, daughter)
+
+    def get_channel(self, mother, daughter=None):
+        """Reponse function :math:`f(y)` or :math:`g(y)` as
+        defined in the note.
+
+        Returns :math:`f(y)` or :math:`g(y)` if a daughter
+        index is provided. If the inclusive channel has a redistribution,
+        :math:`h(x,y)` will be returned
+
+        Args:
+            mother (int): mother nucleus(on)
+            daughter (int, optional): daughter nucleus(on)
+
+        Returns:
+            (numpy.array) Reponse function on self._ygrid_tab
+        """
+        from scipy import integrate
+
+        cs_model = self.cross_section
+        egrid, cross_section = None, None
+
+        if daughter is not None:
+            if (mother, daughter) in self.incl_diff_idcs:
+                egrid, cross_section = cs_model.incl_diff(mother, daughter)
+            elif (mother, daughter) in self.incl_idcs:
+                egrid, cross_section = cs_model.incl(mother, daughter)
+            else:
+                raise Exception(
+                    'Unknown inclusive channel {:} -> {:} for this model'.
+                    format(mother, daughter))
+        else:
+            egrid, cross_section = cs_model.nonel(mother)
+
+       # note that cumtrapz works also for 2d-arrays and will integrate along axis = 1
+        integral = integrate.cumtrapz(egrid * cross_section, x=egrid)
+        ygrid = egrid[1:] / 2.
+
+        return ygrid, integral / (2 * ygrid**2)
+
+    def get_channel_scale(self, mother, daughter=None, scale='A'):
+        """Returns the reponse function scaled by `scale`.
+
+        Convenience funtion for plotting, where it is important to
+        compare the cross section/response function per nucleon.
+
+        Args:
+            mother (int): Mother nucleus(on)
+            scale (float): If `A` then nonel/A is returned, otherwise
+                           scale can be any float.
+
+        Returns:
+            (numpy.array, numpy.array): Tuple of Energy grid in GeV,
+                                        scale * inclusive cross section
+                                        in :math:`cm^{-2}`
+        """
+
+        ygr, cs = self.get_channel(mother, daughter)
+
+        if scale == 'A':
+            scale = 1. / get_AZN(mother)[0]
+
+        return ygr, scale * cs
+
+    def _precompute_interpolators(self):
+        """Interpolate each response function and store interpolators.
+
+        Uses :func:`prince.util.get_interp_object` as interpolator.
+        This might result in too many knots and can be subject to
+        future optimization.
+        """
+
+        info(2, 'Computing interpolators for response functions')
+        
+        info(5, 'Nonelastic response functions f(y)')
+        self.nonel_intp = {}
+        for mother in self.nonel_idcs:
+            self.nonel_intp[mother] = get_interp_object(
+                *self.get_channel(mother))
+
+        info(5, 'Inclusive (boost conserving) response functions g(y)')
+        self.incl_intp = {}
+        for mother, daughter in self.incl_idcs:
+            self.incl_intp[(mother, daughter)] = get_interp_object(
+                *self.get_channel(mother, daughter))
+
+        info(5, 'Inclusive (redistributed) response functions h(y)')
+        self.incl_diff_intp = {}
+        for mother, daughter in self.incl_diff_idcs:
+            ygr, rfunc = self.get_channel(mother, daughter)
+            self.incl_diff_intp[(mother, daughter)] = get_2Dinterp_object(
+                self.xcenters, ygr, rfunc)
 
 
 if __name__ == "__main__":

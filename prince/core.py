@@ -29,8 +29,8 @@ class PriNCeRun(object):
         self.ed = self.cr_grid.d
 
         # Cross section handler
-        self.cross_sections = cross_sections.CrossSectionInterpolator(
-            [(0., cross_sections.NeucosmaFileInterface, ()),
+        self.cross_sections = cross_sections.CompositeCrossSection(
+            [(0., cross_sections.TabulatedCrossSection, ()),
              (0.8, cross_sections.SophiaSuperposition, ())])
 
         # Photon field handler

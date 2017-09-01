@@ -95,7 +95,7 @@ class InteractionRateBase(object):
 class PhotoNuclearInteractionRate(InteractionRateBase):
     """Implementation of photo-hadronic/nuclear interaction rates."""
 
-    def __init__(self, prince_run=None, *args, **kwargs):
+    def __init__(self, prince_run = None, *args, **kwargs):
         if prince_run is None:
             # For debugging and independent calculations define
             # a strawman class and supply the required paramters as
@@ -224,7 +224,7 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
             lidx, uidx = fill_idx * self.dim_cr, (fill_idx + 1) * self.dim_cr
 
             self._nonel_batch_matrix[
-                lidx:uidx] = self.cross_sections.resp_nonel_intp[mother](
+                lidx:uidx] = self.cross_sections.resp.nonel_intp[mother](
                     self.ymat).dot(delta_eps)
             self._nonel_batchvec_pointer[mother] = (lidx, uidx)
 
@@ -244,7 +244,7 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
 
                 # Staple ("vstack"") all inclusive (channel) response functions
                 self.incl_batch_matrix[
-                    lidx:uidx] = self.cross_sections.resp_incl_intp[(
+                    lidx:uidx] = self.cross_sections.resp.incl_intp[(
                         mo, da)](self.ymat).dot(delta_eps)
 
                 # Remember how to find the entry for a response function/rate in the
@@ -348,10 +348,10 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
 
         # Convolve using matrix multiplication
         if isinstance(nco_ids, tuple):
-            return self.cross_sections.resp_incl_intp[nco_ids](self.ymat).dot(
+            return self.cross_sections.resp.incl_intp[nco_ids](self.ymat).dot(
                 np.diag(self.e_photon.widths)).dot(self.photon_vector(z))
         else:
-            return self.cross_sections.resp_nonel_intp[nco_ids](self.ymat).dot(
+            return self.cross_sections.resp.nonel_intp[nco_ids](self.ymat).dot(
                 np.diag(self.e_photon.widths)).dot(self.photon_vector(z))
 
     def interaction_rate(self, nco_ids, z):
