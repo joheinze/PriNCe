@@ -6,18 +6,20 @@ from os.path import isfile, join
 import numpy as np
 
 from prince.util import *
-from prince_config import config, spec_data
 import prince.decays as decs
+from prince_config import config, spec_data
 
-# TODO:
+
+# ToDo:
 # - CompositeCrossSection._join_incl_diff() does currently not work properly for inclusive differential crossections
 #     - the class combines the channel indices from all models,
 #       however sophia does not provide these, and still introduces indices for lighter particles
 
+
 class CrossSectionBase(object):
     """Base class for cross section interfaces to tabulated models.
 
-    The class is abstract and it is not inteded to be instatiated.
+    The class is abstract and it is not inteded to be instantiated.
     """
 
     __metaclass__ = ABCMeta
@@ -44,7 +46,7 @@ class CrossSectionBase(object):
 
         # Flag, which tells if the model supports secondary redistributions
         if not hasattr(self, 'supports_redistributions'):
-            self.supports_redistributions = None # JH: to differ from explicitly set False
+            self.supports_redistributions = None  # JH: to differ from explicitly set False
         # List of all known particles (after optimization)
         self.known_species = []
         # List of all boost conserving inclusive channels (after optimization)
@@ -85,7 +87,7 @@ class CrossSectionBase(object):
         """
 
         return self._egrid_tab[self._range]
-    
+
     @property
     def xcenters(self):
         """Returns centers of the grid in x.
@@ -94,7 +96,7 @@ class CrossSectionBase(object):
             (numpy.array): x grid
         """
 
-        return 0.5*(self.xbins[1:] + self.xbins[:-1])
+        return 0.5 * (self.xbins[1:] + self.xbins[:-1])
 
     @property
     def resp(self):
@@ -102,7 +104,7 @@ class CrossSectionBase(object):
         Will only create the Response function once. 
         """
         if not hasattr(self, '_resp'):
-            info(2, 'Creating Instance of ResponseFunction now!')
+            info(2, 'First Call, creating instance of ResponseFunction now')
             self._resp = ResponseFunction(self)
         return self._resp
 
@@ -127,7 +129,7 @@ class CrossSectionBase(object):
             return True
         info(10, 'Daughter conserves boost.', mother, daughter)
         return False
-    
+
     def _update_indices(self):
         """Updates the list of indices according to entries in the
         _tab variables"""
@@ -150,7 +152,7 @@ class CrossSectionBase(object):
         # Go through all three cross section categories
         # index contents in the ..known..variable
         self.reactions = {}
-        
+
         self._update_indices()
 
         for mo, da in self.incl_idcs:
@@ -171,8 +173,9 @@ class CrossSectionBase(object):
                 # to _incl_diff_tab
                 print self.mname, mo, da, 'before xgrid call', len(
                     self._incl_tab[(mo, da)])
-                self._incl_diff_tab[(mo, da)] = self._arange_on_xgrid(
-                    self._incl_tab.pop((mo, da)))
+                self._incl_diff_tab[(
+                    mo,
+                    da)] = self._arange_on_xgrid(self._incl_tab.pop((mo, da)))
                 print self.mname, mo, da, 'made differential'
             else:
                 self.known_bc_channels.append((mo, da))
@@ -354,7 +357,7 @@ class CrossSectionBase(object):
         self._update_indices()
 
         for (mother, daughter) in self.incl_idcs:
-            
+
             if mother not in self.nonel_idcs:
                 info(30,
                      "Removing {0}/{1} from incl, since mother not stable ".
@@ -367,11 +370,11 @@ class CrossSectionBase(object):
                 self._incl_diff_tab[(
                     mother, daughter)] = self._arange_on_xgrid(
                         self._incl_tab.pop((mother, daughter)))
-        
+
         self._update_indices()
-        
+
         for (mother, daughter) in self.incl_diff_idcs:
-            
+
             if mother not in self.nonel_idcs:
                 info(
                     30,
@@ -770,10 +773,10 @@ class SophiaSuperposition(CrossSectionBase):
         # The model can return both, integrated over x and redistributed.
         for da in sorted(self.redist_proton):
             self.incl_diff_idcs.append((101, da))
-            self.incl_idcs.append((101, da))
+            #self.incl_idcs.append((101, da))
         for da in sorted(self.redist_neutron):
             self.incl_diff_idcs.append((100, da))
-            self.incl_idcs.append((100, da))
+            #self.incl_idcs.append((100, da))
 
         # For more convenient generation of trivial redistribution matrices when joining
         self.redist_shape = (self.xbins.shape[0], self._egrid_tab.shape[0])
@@ -941,19 +944,19 @@ class ResponseFunction(object):
     """Redistribution Function based on Crossection model
     """
 
-    def __init__ (self, cross_section):
+    def __init__(self, cross_section):
         self.cross_section = cross_section
 
         self.xcenters = cross_section.xcenters
 
         # Copy indices from CrossSection Model
-        self.nonel_idcs     = cross_section.nonel_idcs 
-        self.incl_idcs      = cross_section.incl_idcs
+        self.nonel_idcs = cross_section.nonel_idcs
+        self.incl_idcs = cross_section.incl_idcs
         self.incl_diff_idcs = cross_section.incl_diff_idcs
 
         # Dictionary of reponse function interpolators
-        self.nonel_intp     = {}
-        self.incl_intp      = {}
+        self.nonel_intp = {}
+        self.incl_intp = {}
         self.incl_diff_intp = {}
 
         self._precompute_interpolators()
@@ -995,7 +998,7 @@ class ResponseFunction(object):
         else:
             egrid, cross_section = cs_model.nonel(mother)
 
-       # note that cumtrapz works also for 2d-arrays and will integrate along axis = 1
+    # note that cumtrapz works also for 2d-arrays and will integrate along axis = 1
         integral = integrate.cumtrapz(egrid * cross_section, x=egrid)
         ygrid = egrid[1:] / 2.
 
@@ -1034,7 +1037,7 @@ class ResponseFunction(object):
         """
 
         info(2, 'Computing interpolators for response functions')
-        
+
         info(5, 'Nonelastic response functions f(y)')
         self.nonel_intp = {}
         for mother in self.nonel_idcs:
