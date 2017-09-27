@@ -177,9 +177,13 @@ class CrossSectionBase(object):
                     mo,
                     da)] = self._arange_on_xgrid(self._incl_tab.pop((mo, da)))
                 print self.mname, mo, da, 'made differential'
-            else:
+            elif mo != da:
                 self.known_bc_channels.append((mo, da))
                 self.known_species.append(da)
+            else:
+                # TODO: For now we do not include channels mo -> mo
+                # as it would break PhotoNuclearInteractionRateCSC._init_matrix_incl()
+                pass
 
         for mo, da in self._incl_diff_tab.keys():
             if da >= 100 and get_AZN(da)[0] > get_AZN(mo)[0]:
@@ -196,6 +200,7 @@ class CrossSectionBase(object):
                 self.reactions[mo].append((mo, da))
                 self.known_diff_channels.append((mo, da))
                 self.known_species.append(da)
+
 
         # Remove duplicates
         self.known_species = sorted(list(set(self.known_species)))
