@@ -108,7 +108,7 @@ class UHECRPropagationSolver(object):
             'rtol': 0.2,
             # 'order': 5,
             'max_step': 0.2,
-            'with_jacobian': True
+            'with_jacobian': False
         }
 
         ode_params_lsoda = {

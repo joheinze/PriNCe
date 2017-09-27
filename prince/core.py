@@ -53,7 +53,7 @@ class PriNCeRun(object):
         self.dim_states = self.ed * self.spec_man.nspec
 
         # Initialize the interaction rates
-        self.int_rates = interaction_rates.PhotoNuclearInteractionRate(
+        self.int_rates = interaction_rates.PhotoNuclearInteractionRateCSC(
             prince_run=self)
 
         # Initialize continuous energy losses

@@ -632,7 +632,6 @@ class PhotoNuclearInteractionRateCSC(PhotoNuclearInteractionRate):
         self._init_matrix_nonel()
         self._init_matrix_incl()
         #self._init_matrix_incl_diff()
-        #        self._init_matrices()
         self._init_coupling_mat()
 
     def _init_matrix_base(self):
@@ -762,7 +761,6 @@ class PhotoNuclearInteractionRateCSC(PhotoNuclearInteractionRate):
                     A = 0.8
                     B = 1
 
-                # TODO: check this again, A / B correct prefactor? Reproduces old sheme
                 self._incl_batch_vec_prefac[lidx:uidx].fill(A / B)
 
                 # Remember how to find the entry for a response function/rate in the
@@ -778,7 +776,6 @@ class PhotoNuclearInteractionRateCSC(PhotoNuclearInteractionRate):
                 prindices_mo = species[mo].indices()
                 prindices_da = species[da].indices()
 
-                # TODO: check again: mother in column, daughter in row correct?
                 self._incl_batch_rows[lidx:uidx] = prindices_da
                 self._incl_batch_cols[lidx:uidx] = prindices_mo
 
@@ -787,28 +784,8 @@ class PhotoNuclearInteractionRateCSC(PhotoNuclearInteractionRate):
         info(2, 'Finished filling of inclusive batch matrix')
 
     def _concatenate_vectors(self):
-        # TODO: This part seems be unnecessary, one could directly fill the full array
-        #print '-------------------------------------------------------------'
-        #print 'in nonel batch:'
-        #ij = np.column_stack((self._nonel_batch_rows, self._nonel_batch_cols))
-        #ij_unique = np.unique(ij, axis=0)
-        #print ij
-        #print ij_unique
-        #print 'len unique:', len(ij_unique)
-
-        #print 'row_ind, col_ind', self._nonel_batch_rows.shape, self._nonel_batch_cols.shape
-        #print 'batch vec shape', self._nonel_batch_vec.shape
-        #print '-------------------------------------------------------------'
-        #print 'in incl batch:'
-        #ij = np.column_stack((self._incl_batch_rows, self._incl_batch_cols))
-        #ij_unique = np.unique(ij, axis=0)
-        #print ij
-        #print ij_unique
-        #print 'len unique:', len(ij_unique)
-
-        #print 'row_ind, col_ind', self._incl_batch_rows.shape, self._incl_batch_cols.shape
-        #print 'batch vec shape', self._incl_batch_vec.shape
-
+        # TODO: This part seems be unnecessary one could directly fill the full array
+        # However for now it is convenient to keep the individual arrays
         self._full_batch_matrix = np.concatenate(
             (self._nonel_batch_matrix, self._incl_batch_matrix), axis=0)
         self._full_batch_vec = np.concatenate(
@@ -821,63 +798,33 @@ class PhotoNuclearInteractionRateCSC(PhotoNuclearInteractionRate):
         self._full_batch_cols = np.concatenate(
             (self._nonel_batch_cols, self._incl_batch_cols), axis=0)
 
-        #print '-------------------------------------------------------------'
-        #print 'in full batch:'
-        #ij = np.column_stack((self._full_batch_rows, self._full_batch_cols))
-        #ij_unique = np.unique(ij, axis=0)
-        #print ij
-        #print ij_unique
-        #print 'len unique:', len(ij_unique)
-
-        #print 'row_ind, col_ind', self._full_batch_rows.shape, self._full_batch_cols.shape
-        #print 'batch vec shape', self._full_batch_vec.shape
-        #print '-------------------------------------------------------------'
-
     def _init_coupling_mat(self):
-        """Initialises the coupling matrix directly in sparse (csr) format.
+        """Initialises the coupling matrix directly in sparse (csc) format.
         """
         from scipy.sparse import csc_matrix
         self._concatenate_vectors()
-        self._update_rates(1.)
+        #self._update_rates(1.)
 
         self.coupling_mat = csc_matrix(
             (self._full_batch_vec, (self._full_batch_rows,
                                     self._full_batch_cols)),
             copy=True)
-        #return None
-
-        info(1, 'Coupling matrix initiated, data status {:}'.format(
-            self.coupling_mat.data.flags.owndata))
-        print 'Sorted indices?', self.coupling_mat.has_sorted_indices
-
-        # now resort into the correct order to recompute data:
-        # WORKS FOR CSR ONLY!!!!
-        #sortkeys = self._full_batch_cols * np.max(
-        #    self._full_batch_rows + 1) + self._full_batch_rows
-        #sortidx = np.argsort(sortkeys)
 
         # lexsort sorts by last argument first!!!
         sortidx = np.lexsort((self._full_batch_rows, self._full_batch_cols))
         self.sortidx = sortidx
 
-        return
-        #self._full_batch_matrix = self._full_batch_matrix[sortidx]
+        # TODO: For now the reordering is done in each step in _update_coupling_mat()
+        #   Doing the reordering and multiplying the prefactor vector here
+        #   can speed up the each step by ~0.7 ms (vs ~4.5 ms, so about 20%)
+        # the reordering as commented out below does however not seem to work properly
+        # maybe reordering on the 2D array does not work as expected
+
+        #self._full_batch_matrix = self._full_batch_matrix[sortidx] # JH: this might not work
         #self._full_batch_vec = self._full_batch_vec[sortidx]
         #self._full_batch_vec = self._full_batch_vec_prefac[sortidx]
         #self._full_batch_rows = self._full_batch_rows[sortidx]
         #self._full_batch_cols = self._full_batch_cols[sortidx]
-        info(1,
-             'batch matrix /vectors resorted, coupling matrix data status {:}'.
-             format(self.coupling_mat.data.flags.owndata))
-        # cross checks
-        print 'Comparing data in vector and coupling mat:', np.all(
-            self.coupling_mat.data == self._full_batch_vec)
-        print 'Rows sorted?', np.all(
-            np.sort(self._full_batch_rows) == self._full_batch_rows)
-        print 'Sparse matrix dimension', self.coupling_mat.shape
-
-        print 'Equal to old method?', np.all(
-            self.coupling_mat == self.get_hadr_jacobian(1.))
 
     def _update_coupling_mat(self, z):
         """Updates the sparse (csr) coupling matrix
@@ -885,8 +832,11 @@ class PhotoNuclearInteractionRateCSC(PhotoNuclearInteractionRate):
         """
         from scipy.sparse import csc_matrix
         self._update_rates(z)
-        new_data = (self._full_batch_vec * self._full_batch_vec_prefac)[self.sortidx]
-        self.coupling_mat.data = new_data
+
+        # TODO: The reording here does currently take 0.3 ms (vs 4.5 ms for the complete call)
+        # If this will get time critical with further optimization,
+        # one can do the reordring in _init_coupling_mat(self) once for the batch matrix
+        self.coupling_mat.data = (self._full_batch_vec * self._full_batch_vec_prefac)[self.sortidx]
 
     def get_hadr_jacobian(self, z):
         """Returns the nonel rate vector and coupling matrix.
