@@ -29,8 +29,8 @@ class PriNCeRun(object):
         self.ed = self.cr_grid.d
 
         # Cross section handler
-        self.cross_sections = cross_sections.CrossSectionInterpolator(
-            [(0., cross_sections.NeucosmaFileInterface, ()),
+        self.cross_sections = cross_sections.CompositeCrossSection(
+            [(0., cross_sections.TabulatedCrossSection, ()),
              (0.8, cross_sections.SophiaSuperposition, ())])
 
         # Photon field handler
@@ -53,7 +53,7 @@ class PriNCeRun(object):
         self.dim_states = self.ed * self.spec_man.nspec
 
         # Initialize the interaction rates
-        self.int_rates = interaction_rates.PhotoNuclearInteractionRate(
+        self.int_rates = interaction_rates.PhotoNuclearInteractionRateCSC(
             prince_run=self)
 
         # Initialize continuous energy losses

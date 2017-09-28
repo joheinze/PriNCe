@@ -130,10 +130,211 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
 
     def _setup(self):
         """Initialization of all members."""
-
-        self._init_matrices()
+        self._init_matrix_base()
+        self._init_matrix_nonel()
+        self._init_matrix_incl()
+        #self._init_matrix_incl_diff()
+        #        self._init_matrices()
         self._init_rate_matstruc()
         self._init_reinjection_mat()
+
+    def _init_matrix_base(self):
+        """Initializes convenicen matrices for batch computation"""
+        from prince.util import get_y
+
+        # Dense zero matrix
+        self.zeros = np.zeros((self.dim_cr, self.dim_ph))
+
+        # Sparse zero matrix
+        self.sp_zeros = coo_matrix(
+            (np.zeros(self.dim_cr), (np.arange(self.dim_cr),
+                                     np.arange(self.dim_cr))),
+            shape=(self.dim_cr, self.dim_cr),
+            copy=False)
+
+        # Iniialize cross section matrices, evaluated on a grid of y values
+        eph_mat, ecr_mat = np.meshgrid(self.e_photon.grid,
+                                       self.e_cosmicray.grid)
+        # Compute y matrix only once and then rescale by A
+        self.ymat = get_y(ecr_mat, eph_mat, 100)
+
+        ecr_mat_in, ecr_mat_out = np.meshgrid(self.e_cosmicray.grid,
+                                              self.e_cosmicray.grid)
+        self.xmat = ecr_mat_out / ecr_mat_in
+
+        # Sparse matrix structure (see :func:`_init_rate_matstruc`)
+        self.reinjection_struc = []
+
+        # Sparse matrix structure (see :func:`_init_rate_matstruc`)
+        self.incl_rate_struc = []
+
+        # Sparse matrix structure (see :func:`_init_reinjection_mat`)
+        self.reinjection_smat = None
+
+    def _init_matrix_nonel(self):
+        """ Create one big matrix for batch-compute all nonel rates at once"""
+        info(2, 'Starting to fill nonelastic batch matrix')
+        nnonel = self.spec_man.nspec
+        self._nonel_batchvec_pointer = {}
+        self._nonel_batch_matrix = np.zeros((self.dim_cr * nnonel,
+                                             self.dim_ph))
+        self._nonel_batch_vec = np.zeros(self._nonel_batch_matrix.shape[0])
+
+        info(2, 'Size of nonel batch matrix: {0}x{1}'.format(
+            *self._nonel_batch_matrix.shape))
+
+        # Delta eps (photon energy) bin widths
+        delta_eps = np.diag(self.e_photon.widths)
+
+        fill_idx = 0
+        for mother in self.spec_man.known_species:
+            if mother < 100:
+                info(3, "Can not compute interaction rate for", mother)
+                fill_idx += 1
+                continue
+
+            A = get_AZN(mother)[0]
+            lidx = fill_idx * self.dim_cr
+            uidx = (fill_idx + 1) * self.dim_cr
+
+            self._nonel_batch_matrix[
+                lidx:uidx] = self.cross_sections.resp.nonel_intp[mother](
+                    self.ymat).dot(delta_eps)
+            self._nonel_batchvec_pointer[mother] = (lidx, uidx)
+
+            fill_idx += 1
+
+        info(2, 'Finished filling of nonelastic batch matrix')
+
+    def _init_matrix_incl(self):
+        """ Create one big matrix for batch-compute all incl rates at once"""
+        info(2, 'Starting to fill inclusive batch matrix')
+
+        n_incl = len(self.cross_sections.known_bc_channels)
+        # [mother_ncoid,daughter_ncoid] -> _incl_batch_vec[lidx:uidx]
+        self._incl_batchvec_pointer = {}
+        # [mother_princeidx,daughter_princeidx] -> _incl_batch_vec[lidx:uidx]
+        self._incl_batchvec_pridx_pointer = {}
+
+        # Convolution matrix for incl: (incl-channels * dim_cr) x dim_ph
+        self._incl_batch_matrix = np.zeros((self.dim_cr * n_incl, self.dim_ph))
+        # Result vector, which stores computed incl rates
+        self._incl_batch_vec = np.zeros(self._incl_batch_matrix.shape[0])
+
+        info(2, 'Size of incl batch matrix: {0}x{1}'.format(
+            *self._incl_batch_matrix.shape))
+
+        # Delta eps (photon energy) bin widths
+        delta_eps = np.diag(self.e_photon.widths)
+
+        pridx = self.spec_man.ncoid2princeidx
+
+        # Repeat the same stuff for inclusive channels
+        fill_idx = 0
+        for mother in self.spec_man.known_species:
+            if mother < 100:
+                info(3, 'Skip non-hadronic species {:}'.format(mother))
+                continue
+            for (mo, da) in self.cross_sections.reactions[mother]:
+
+                if (mo, da) not in self.cross_sections.known_bc_channels:
+                    # these are differential channels, next loop
+                    continue
+                # Indices in batch matrix
+                lidx = fill_idx * self.dim_cr
+                uidx = (fill_idx + 1) * self.dim_cr
+
+                # Staple ("vstack"") all inclusive (channel) response functions
+                self._incl_batch_matrix[
+                    lidx:uidx] = self.cross_sections.resp.incl_intp[(
+                        mo, da)](self.ymat).dot(delta_eps)
+
+                # Remember how to find the entry for a response function/rate in the
+                # matrix or result vector
+                self._incl_batchvec_pointer[(mo, da)] = (lidx, uidx)
+
+                # Create association between prince_idx and position in resulting
+                # rate vector
+                mo_pridx, da_pridx = pridx[mo], pridx[da]
+                self._incl_batchvec_pridx_pointer[(mo_pridx,
+                                                   da_pridx)] = (lidx, uidx)
+
+                fill_idx += 1
+
+        info(2, 'Finished filling of inclusive batch matrix')
+
+    def _init_matrix_incl_diff(self):
+        """ Create one big matrix for batch-compute all incl diff rates at once"""
+        info(2, 'Starting to fill inclusive differential batch matrix')
+        n_diff = len(self.cross_sections.known_diff_channels)
+
+        self._incl_diff_batchvec_pointer = {}
+        self._incl_diff_batchvec_pridx_pointer = {}
+
+        self.incl_diff_batch_matrix = np.zeros(
+            (self.dim_cr**2 * n_diff,
+             self.dim_ph))  # Result vector, which stores computed incl rates
+        self._incl_diff_batch_vec = np.zeros(
+            self.incl_diff_batch_matrix.shape[0])
+
+        info(2, 'Size of incl diff batch matrix: {0}x{1}'.format(
+            *self._incl_batch_matrix.shape))
+
+        # Delta eps (photon energy) bin widths
+        delta_eps = np.diag(self.e_photon.widths)
+
+        pridx = self.spec_man.ncoid2princeidx
+
+        # Repeat the same stuff for inclusive differential channels
+        fill_idx = 0
+        for mother in self.spec_man.known_species:
+            if mother < 100:
+                info(3, 'Skip non-hadronic species {:}'.format(mother))
+                continue
+            for (mo, da) in self.cross_sections.reactions[mother]:
+
+                if (mo, da) not in self.cross_sections.known_diff_channels:
+                    # these are not differential channels, next loop
+                    continue
+
+                # Indices in batch matrix
+                lidx, uidx = fill_idx * self.dim_cr**2, (
+                    fill_idx + 1) * self.dim_cr**2
+
+                # Staple ("vstack"") all inclusive (channel) response functions
+                #print self.incl_diff_batch_matrix[lidx:uidx].shape
+                #print self.cross_sections.resp.incl_diff_intp[(mo, da)](
+                #    self.xmat, self.ymat).dot(delta_eps)
+                # JH: currently the interpolator gives and error code in the line above
+                #   Error code returned by bispev: 10
+                #   that means invalid input data
+                #   the reason is, that 2D splines do not accept higher order input than vectors
+
+                tmp_func = np.vectorize(
+                    self.cross_sections.resp.incl_diff_intp[(mo, da)])
+                print self.xmat.shape
+                print self.ymat.shape
+                tmp = tmp_func(self.xmat, self.ymat)
+                print tmp
+                print delta_eps
+                tmp = tmp.dot(delta_eps)
+                self.incl_diff_batch_matrix[lidx:uidx] = tmp.reshape(
+                    self.incl_diff_batch_matrix[lidx:uidx].shape)
+
+                # Remember how to find the entry for a response function/rate in the
+                # matrix or result vector
+                self._incl_diff_batchvec_pointer[(mo, da)] = (lidx, uidx)
+
+                # Create association between prince_idx and position in resulting
+                # rate vector
+                mo_pridx, da_pridx = pridx[mo], pridx[da]
+                self._incl_diff_batchvec_pridx_pointer[(mo_pridx,
+                                                        da_pridx)] = (lidx,
+                                                                      uidx)
+
+                fill_idx += 1
+
+        info(2, 'Finished filling of inclusive differential batch matrix')
 
     def _init_matrices(self):
         """Initializes batch computation of rates via matrices."""
@@ -192,14 +393,14 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         n_diff = len(self.cross_sections.known_diff_channels)
 
         # Convolution matrix for incl: (incl-channels * dim_cr) x dim_ph
-        self.incl_batch_matrix = np.zeros((self.dim_cr * n_incl, self.dim_ph))
+        self._incl_batch_matrix = np.zeros((self.dim_cr * n_incl, self.dim_ph))
 
         # Convolution matrix for incl: (incl_diff_channels * dim_cr * dim_cr) x dim_ph
-        self.incl_batch_matrix = np.zeros((self.dim_cr**2 * n_diff, self.dim_ph))
-
+        self.incl_diff_batch_matrix = np.zeros((self.dim_cr**2 * n_diff,
+                                                self.dim_ph))
 
         # Result vector, which stores computed incl rates
-        self._incl_batch_vec = np.zeros(self.incl_batch_matrix.shape[0])
+        self._incl_batch_vec = np.zeros(self._incl_batch_matrix.shape[0])
 
         # Sparse matrix structure (see :func:`_init_rate_matstruc`)
         self.incl_rate_struc = []
@@ -208,7 +409,7 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         self.reinjection_smat = None
 
         info(2, 'Size of incl batch matrix: {0}x{1}'.format(
-            *self.incl_batch_matrix.shape))
+            *self._incl_batch_matrix.shape))
 
         # Define shortcut for converting ncoid to prince index
         pridx = self.spec_man.ncoid2princeidx
@@ -224,7 +425,7 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
             lidx, uidx = fill_idx * self.dim_cr, (fill_idx + 1) * self.dim_cr
 
             self._nonel_batch_matrix[
-                lidx:uidx] = self.cross_sections.resp_nonel_intp[mother](
+                lidx:uidx] = self.cross_sections.resp.nonel_intp[mother](
                     self.ymat).dot(delta_eps)
             self._nonel_batchvec_pointer[mother] = (lidx, uidx)
 
@@ -234,17 +435,20 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         fill_idx = 0
         for mother in self.spec_man.known_species:
             if mother < 100:
-                info(3, 'Skip non-hadronic species')
+                info(3, 'Skip non-hadronic species {:}'.format(mother))
                 continue
             for (mo, da) in self.cross_sections.reactions[mother]:
 
+                if (mo, da) in self.cross_sections.known_diff_channels:
+                    # these are differential channels, next loop
+                    continue
                 # Indices in batch matrix
                 lidx, uidx = fill_idx * self.dim_cr, (
                     fill_idx + 1) * self.dim_cr
 
                 # Staple ("vstack"") all inclusive (channel) response functions
-                self.incl_batch_matrix[
-                    lidx:uidx] = self.cross_sections.resp_incl_intp[(
+                self._incl_batch_matrix[
+                    lidx:uidx] = self.cross_sections.resp.incl_intp[(
                         mo, da)](self.ymat).dot(delta_eps)
 
                 # Remember how to find the entry for a response function/rate in the
@@ -288,8 +492,9 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                         copy=False))
 
     def _init_reinjection_mat(self):
-        # Initialize coupling matrix structure, containing the references
-        # to views of the batch vector
+        """ Initialize coupling matrix structure,
+        containing the references to views of the batch vector
+        """
 
         idcs = np.arange(self.dim_cr)
         shape_submat = (self.dim_cr, self.dim_cr)
@@ -312,6 +517,7 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                 lidx, uidx = self._incl_batchvec_pridx_pointer[(mo_pridx,
                                                                 da_pridx)]
                 if da_pridx == mo_pridx and prnco[da_pridx] == 101:
+                    # for protons: intermediate solution: 20% energy loss
                     A = 0.8
                     B = 1
 
@@ -348,10 +554,10 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
 
         # Convolve using matrix multiplication
         if isinstance(nco_ids, tuple):
-            return self.cross_sections.resp_incl_intp[nco_ids](self.ymat).dot(
+            return self.cross_sections.resp.incl_intp[nco_ids](self.ymat).dot(
                 np.diag(self.e_photon.widths)).dot(self.photon_vector(z))
         else:
-            return self.cross_sections.resp_nonel_intp[nco_ids](self.ymat).dot(
+            return self.cross_sections.resp.nonel_intp[nco_ids](self.ymat).dot(
                 np.diag(self.e_photon.widths)).dot(self.photon_vector(z))
 
     def interaction_rate(self, nco_ids, z):
@@ -392,7 +598,7 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         from scipy.sparse import csr_matrix, dia_matrix
         self._update_rates(z)
         coupl = self.reinjection_smat.multiply(
-            bmat(self.incl_rate_struc, format='coo'))
+            bmat(self.incl_rate_struc, format='csr'))
         coupl -= dia_matrix((self._nonel_batch_vec, [0]), shape=coupl.shape)
         return coupl
 
@@ -409,9 +615,247 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                 self.photon_vector(z),
                 out=self._nonel_batch_vec)
             np.dot(
-                self.incl_batch_matrix,
+                self._incl_batch_matrix,
                 self.photon_vector(z),
                 out=self._incl_batch_vec)
+            self._ratemat_zcache = z
+
+
+class PhotoNuclearInteractionRateCSC(PhotoNuclearInteractionRate):
+    """Implementation of photo-hadronic/nuclear interaction rates.
+    This Version directly writes the data into a CSC-matrix and only updates the data each time.
+    """
+
+    def _setup(self):
+        """Initialization of all members."""
+        self._init_matrix_base()
+        self._init_matrix_nonel()
+        self._init_matrix_incl()
+        #self._init_matrix_incl_diff()
+        self._init_coupling_mat()
+
+    def _init_matrix_base(self):
+        """Initializes convenicen matrices for batch computation"""
+        from prince.util import get_y
+
+        # Iniialize cross section matrices, evaluated on a grid of y values
+        eph_mat, ecr_mat = np.meshgrid(self.e_photon.grid,
+                                       self.e_cosmicray.grid)
+        # Compute y matrix only once and then rescale by A
+        self.ymat = get_y(ecr_mat, eph_mat, 100)
+
+        ecr_mat_in, ecr_mat_out = np.meshgrid(self.e_cosmicray.grid,
+                                              self.e_cosmicray.grid)
+        self.xmat = ecr_mat_out / ecr_mat_in
+
+    def _init_matrix_nonel(self):
+        """ Create one big matrix for batch-compute all nonel rates at once"""
+        info(2, 'Starting to fill nonelastic batch matrix')
+        n_nonel = self.spec_man.nspec
+        self._nonel_batchvec_pointer = {}
+        self._nonel_batch_matrix = np.zeros((self.dim_cr * n_nonel,
+                                             self.dim_ph))
+        self._nonel_batch_vec = np.zeros(self._nonel_batch_matrix.shape[0])
+        self._nonel_batch_vec_prefac = -1 * np.ones(
+            self._nonel_batch_matrix.shape[0])
+        self._nonel_batch_rows = np.zeros(
+            self._nonel_batch_matrix.shape[0], dtype=np.int)
+        self._nonel_batch_cols = np.zeros(
+            self._nonel_batch_matrix.shape[0], dtype=np.int)
+
+        info(2, 'Size of nonel batch matrix: {0}x{1}'.format(
+            *self._nonel_batch_matrix.shape))
+
+        # Delta eps (photon energy) bin widths
+        delta_eps = np.diag(self.e_photon.widths)
+
+        species = self.spec_man.ncoid2sref
+
+        fill_idx = 0
+        for mother in self.spec_man.known_species:
+
+            lidx = fill_idx * self.dim_cr
+            uidx = (fill_idx + 1) * self.dim_cr
+
+            prindices = species[mother].indices()
+            self._nonel_batch_rows[lidx:uidx] = prindices
+            self._nonel_batch_cols[lidx:uidx] = prindices
+
+            if mother < 100:
+                # Note: in this case the batch vector will be zero anyway
+                info(3, "Can not compute interaction rate for", mother)
+                fill_idx += 1
+                continue
+
+            self._nonel_batch_matrix[
+                lidx:uidx] = self.cross_sections.resp.nonel_intp[mother](
+                    self.ymat).dot(delta_eps)
+            self._nonel_batchvec_pointer[mother] = (lidx, uidx)
+
+            fill_idx += 1
+
+        info(2, 'Finished filling of nonelastic batch matrix')
+
+    def _init_matrix_incl(self):
+        """ Create one big matrix for batch-compute all incl rates at once"""
+        info(2, 'Starting to fill inclusive batch matrix')
+
+        n_incl = len(self.cross_sections.known_bc_channels)
+        # [mother_ncoid,daughter_ncoid] -> _incl_batch_vec[lidx:uidx]
+        self._incl_batchvec_pointer = {}
+        # [mother_princeidx,daughter_princeidx] -> _incl_batch_vec[lidx:uidx]
+        self._incl_batchvec_pridx_pointer = {}
+
+        # Convolution matrix for incl: (incl-channels * dim_cr) x dim_ph
+        self._incl_batch_matrix = np.zeros((self.dim_cr * n_incl, self.dim_ph))
+        # Result vector, which stores computed incl rates
+        self._incl_batch_vec = np.zeros(self._incl_batch_matrix.shape[0])
+        self._incl_batch_vec_prefac = np.zeros(
+            self._incl_batch_matrix.shape[0])
+        self._incl_batch_rows = np.zeros(
+            self._incl_batch_matrix.shape[0], dtype=np.int)
+        self._incl_batch_cols = np.zeros(
+            self._incl_batch_matrix.shape[0], dtype=np.int)
+
+        info(2, 'Size of incl batch matrix: {0}x{1}'.format(
+            *self._incl_batch_matrix.shape))
+
+        # Delta eps (photon energy) bin widths
+        delta_eps = np.diag(self.e_photon.widths)
+
+        pridx = self.spec_man.ncoid2princeidx
+        species = self.spec_man.ncoid2sref
+
+        # Repeat the same stuff for inclusive channels
+        fill_idx = 0
+        for mother in self.spec_man.known_species:
+            if mother < 100:
+                info(3, 'Skip non-hadronic species {:}'.format(mother))
+                continue
+            for (mo, da) in self.cross_sections.reactions[mother]:
+
+                if (mo, da) not in self.cross_sections.known_bc_channels:
+                    # these are differential channels, next loop
+                    continue
+                if mo == da:
+                    # TODO: For now we exclude these quasi elastic reaction as they conflict with nonel
+                    # This should only have a very small effect,
+                    # but a proper treatment should handle maybe in cross sections directly
+                    print 'inclusive channel with mother equal daughter, mo {:}, da {:}'.format(
+                        mo, da)
+                    continue
+
+                # Indices in batch matrix
+                lidx = fill_idx * self.dim_cr
+                uidx = (fill_idx + 1) * self.dim_cr
+
+                # Staple ("vstack"") all inclusive (channel) response functions
+                self._incl_batch_matrix[
+                    lidx:uidx] = self.cross_sections.resp.incl_intp[(
+                        mo, da)](self.ymat).dot(delta_eps)
+
+                B = float(get_AZN(da)[0])
+                A = float(get_AZN(mo)[0])
+                if da == mo and da == 101:
+                    # for protons: intermediate solution: 20% energy loss
+                    A = 0.8
+                    B = 1
+
+                self._incl_batch_vec_prefac[lidx:uidx].fill(A / B)
+
+                # Remember how to find the entry for a response function/rate in the
+                # matrix or result vector
+                self._incl_batchvec_pointer[(mo, da)] = (lidx, uidx)
+
+                # Create association between prince_idx and position in resulting
+                # rate vector
+                mo_pridx, da_pridx = pridx[mo], pridx[da]
+                self._incl_batchvec_pridx_pointer[(mo_pridx,
+                                                   da_pridx)] = (lidx, uidx)
+
+                prindices_mo = species[mo].indices()
+                prindices_da = species[da].indices()
+
+                self._incl_batch_rows[lidx:uidx] = prindices_da
+                self._incl_batch_cols[lidx:uidx] = prindices_mo
+
+                fill_idx += 1
+
+        info(2, 'Finished filling of inclusive batch matrix')
+
+    def _concatenate_vectors(self):
+        # TODO: This part seems be unnecessary one could directly fill the full array
+        # However for now it is convenient to keep the individual arrays
+        self._full_batch_matrix = np.concatenate(
+            (self._nonel_batch_matrix, self._incl_batch_matrix), axis=0)
+        self._full_batch_vec = np.concatenate(
+            (self._nonel_batch_vec, self._incl_batch_vec), axis=0)
+        self._full_batch_vec_prefac = np.concatenate(
+            (self._nonel_batch_vec_prefac, self._incl_batch_vec_prefac),
+            axis=0)
+        self._full_batch_rows = np.concatenate(
+            (self._nonel_batch_rows, self._incl_batch_rows), axis=0)
+        self._full_batch_cols = np.concatenate(
+            (self._nonel_batch_cols, self._incl_batch_cols), axis=0)
+
+    def _init_coupling_mat(self):
+        """Initialises the coupling matrix directly in sparse (csc) format.
+        """
+        from scipy.sparse import csc_matrix
+        self._concatenate_vectors()
+        #self._update_rates(1.)
+
+        self.coupling_mat = csc_matrix(
+            (self._full_batch_vec, (self._full_batch_rows,
+                                    self._full_batch_cols)),
+            copy=True)
+
+        # lexsort sorts by last argument first!!!
+        sortidx = np.lexsort((self._full_batch_rows, self._full_batch_cols))
+        self.sortidx = sortidx
+
+        # TODO: For now the reordering is done in each step in _update_coupling_mat()
+        #   Doing the reordering and multiplying the prefactor vector here
+        #   can speed up the each step by ~0.7 ms (vs ~4.5 ms, so about 20%)
+        # the reordering as commented out below does however not seem to work properly
+        # maybe reordering on the 2D array does not work as expected
+
+        #self._full_batch_matrix = self._full_batch_matrix[sortidx] # JH: this might not work
+        #self._full_batch_vec = self._full_batch_vec[sortidx]
+        #self._full_batch_vec = self._full_batch_vec_prefac[sortidx]
+        #self._full_batch_rows = self._full_batch_rows[sortidx]
+        #self._full_batch_cols = self._full_batch_cols[sortidx]
+
+    def _update_coupling_mat(self, z):
+        """Updates the sparse (csr) coupling matrix
+        Only the data vector is updated to minimize computation
+        """
+        from scipy.sparse import csc_matrix
+        self._update_rates(z)
+
+        # TODO: The reording here does currently take 0.3 ms (vs 4.5 ms for the complete call)
+        # If this will get time critical with further optimization,
+        # one can do the reordring in _init_coupling_mat(self) once for the batch matrix
+        self.coupling_mat.data = (self._full_batch_vec * self._full_batch_vec_prefac)[self.sortidx]
+
+    def get_hadr_jacobian(self, z):
+        """Returns the nonel rate vector and coupling matrix.
+        """
+        self._update_coupling_mat(z)
+        return self.coupling_mat
+
+    def _update_rates(self, z):
+        """Batch compute all nonel and inclusive rates if z changes.
+
+        The result is always stored in the same vectors, since '_init_rate_matstruc'
+        makes use of views to link ranges of the vector to locations in the matrix.
+        """
+        if self._ratemat_zcache != z:
+            info(5, 'Updating batch rate vectors.')
+            np.dot(
+                self._full_batch_matrix,
+                self.photon_vector(z),
+                out=self._full_batch_vec)
             self._ratemat_zcache = z
 
 
