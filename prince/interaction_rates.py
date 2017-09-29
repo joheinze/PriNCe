@@ -438,6 +438,9 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                 info(3, 'Skip non-hadronic species {:}'.format(mother))
                 continue
             for (mo, da) in self.cross_sections.reactions[mother]:
+                if (mo,da) not in self.cross_sections.resp_incl_intp:
+                    print 'Skipped!', mo, da
+                    continue
 
                 if (mo, da) in self.cross_sections.known_diff_channels:
                     # these are differential channels, next loop
@@ -600,7 +603,7 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         coupl = self.reinjection_smat.multiply(
             bmat(self.incl_rate_struc, format='csr'))
         coupl -= dia_matrix((self._nonel_batch_vec, [0]), shape=coupl.shape)
-        return coupl
+        return coupl.tocsc()
 
     def _update_rates(self, z):
         """Batch compute all nonel and inclusive rates if z changes.

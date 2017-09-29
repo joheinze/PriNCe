@@ -26,6 +26,7 @@ class UHECRPropagationSolver(object):
         self.targ_vec = prince_run.int_rates.photon_vector
 
         self.state = np.zeros(prince_run.dim_states)
+        self.dim_states = prince_run.dim_states
         self.last_z = self.initial_z
 
         self.solution_vector = []
@@ -76,11 +77,13 @@ class UHECRPropagationSolver(object):
     def _update_jacobian(self, z):
         info(5, 'Updating jacobian matrix at redshift', z)
         self.continuous_losses = self.continuous_loss_rates.loss_vector(z)
-        self.sp_jacobian = self.int_rates.get_hadr_jacobian(z)
-        self.jacobian = self.sp_jacobian.todense()
+        self.jacobian = self.int_rates.get_hadr_jacobian(z)
+        self.djacobian = self.jacobian.todense()
 
-    def eqn_jac(self, z, state):
-        return self.dldz(z) * self.jacobian
+    def eqn_jac(self, z, state, *jac_args):
+        self.ncallsj += 1
+        
+        return self.dldz(z) * self.djacobian
 
     def semi_lagrangian(self, delta_z, z, state):
 
@@ -93,42 +96,39 @@ class UHECRPropagationSolver(object):
         return state
 
     def eqn_deriv(self, z, state, *args):
-        state[state < 1e-50] *= 0.
-
-        r = self.dldz(z) * self.sp_jacobian.dot(state)
+        # state[state < 1e-50] *= 0.
+        self.ncallsf += 1
+        # print self.dldz(z)
+        r = self.jacobian.dot(self.dldz(z)*state) + self.injection(1., z)
         return r
 
     def _init_vode(self):
         from scipy.integrate import ode
-
+        self._update_jacobian(self.initial_z)
+        self.ncallsf = 0
+        self.ncallsj = 0
         ode_params_vode = {
-            'name': 'vode',
+            'name': 'lsodes',
             'method': 'bdf',
-            'nsteps': 10000,
-            'rtol': 0.2,
+            # 'nsteps': 10000,
+            'rtol': 1e-2,
+            'atol': 1e5,
+            'ndim': self.dim_states,
+            'nnz':self.jacobian.nnz,
+            'csc_jacobian': self.jacobian,
             # 'order': 5,
-            'max_step': 0.2,
+            # 'max_step': 0.2,
             'with_jacobian': False
-        }
-
-        ode_params_lsoda = {
-            'name': 'lsoda',
-            'nsteps': 10000,
-            'rtol': 0.2,
-            'max_order_ns': 5,
-            'max_order_s': 2,
-            'max_step': 0.2,
-            # 'first_step': 1e-4,
         }
 
         ode_params = ode_params_vode
 
         # Setup solver
-        self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
+        self.r = ode(self.eqn_deriv,self.eqn_jac).set_integrator(**ode_params)
 
     def solve(self):
         from time import time
-        dz = -2e-2
+        dz = -1e-2
         now = time()
         self.r.set_initial_value(
             self.injection(dz, self.r.t), self.r.t)
@@ -140,14 +140,36 @@ class UHECRPropagationSolver(object):
             #print self.r.y
 
             self._update_jacobian(self.r.t)
-            self.r.integrate(self.r.t + dz)
+            stepin = time()
+            self.r.integrate(self.r.t + dz)#, 
+                # step=True if self.r.t < self.initial_z else False)
+            print 'step took',time() - stepin
+            print 'At t =',self.r.t
+            print 'jacobian calls', self.ncallsj
+            print 'function calls', self.ncallsf
+            NST = self.r._integrator.iwork[10]
+            NFE = self.r._integrator.iwork[11]
+            NJE = self.r._integrator.iwork[13]
+            NLU = self.r._integrator.iwork[20]
+            NNZ = self.r._integrator.iwork[19]
+            NNZLU = self.r._integrator.iwork[24] + self.r._integrator.iwork[26] + 12
+            print 'NST', NST
+            print 'NFE', NFE
+            print 'NJE', NJE
+            print 'NLU', NLU
+            print 'NNZLU', NNZLU
+            print 'LAST STEP {0:4.3e}'.format(self.r._integrator.rwork[10])
+            self.ncallsf = 0
+            self.ncallsj = 0
+
 
             #print self.r.y
 
             if self.enable_cont_losses:
                 self.r.set_initial_value(
-                    self.semi_lagrangian(dz, self.r.t, self.r.y) +
-                    self.injection(dz, self.r.t), self.r.t)
+                    self.semi_lagrangian(dz, self.r.t, self.r.y), self.r.t)
+            
+            
 
             # reduce step size at local redshift
             #if self.r.t <= 0.1:
