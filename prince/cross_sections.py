@@ -195,6 +195,11 @@ class CrossSectionBase(object):
                 self.reactions[mo] = []
                 self.known_species.append(mo)
 
+            if mo == da:
+                # TODO: For now we do not include channels mo -> mo
+                # as it would break PhotoNuclearInteractionRateCSC._init_matrix_incl()
+                continue
+
             if (mo, da) not in self.reactions[mo]:
                 # Make sure it's a unique list to avoid unnecessary loops
                 self.reactions[mo].append((mo, da))
