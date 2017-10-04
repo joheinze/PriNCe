@@ -9,7 +9,6 @@ from prince.util import *
 import prince.decays as decs
 from prince_config import config, spec_data
 
-
 # ToDo:
 # - CompositeCrossSection._join_incl_diff() does currently not work properly for inclusive differential crossections
 #     - the class combines the channel indices from all models,
@@ -205,7 +204,6 @@ class CrossSectionBase(object):
                 self.reactions[mo].append((mo, da))
                 self.known_diff_channels.append((mo, da))
                 self.known_species.append(da)
-
 
         # Remove duplicates
         self.known_species = sorted(list(set(self.known_species)))
@@ -975,6 +973,28 @@ class ResponseFunction(object):
     # that might break in the future...
     def is_differential(self, mother, daughter):
         return CrossSectionBase.is_differential(self, mother, daughter)
+
+    def get_full(self, mother, daughter, ygrid, xgrid=None):
+        """Return the full response function :math:`f(y) + g(y) + h(x,y)`
+        on the grid that is provided. xgrid is ignored if `h(x,y)` not in the channel.
+        """
+        if xgrid is not None and ygrid.shape != xgrid.shape:
+            raise Exception('ygrid and xgrid do not have the same shape!!')
+
+        res = np.zeros(ygrid.shape)
+
+        if mother == daughter and mother in self.nonel_intp:
+            # nonel is absorption, therefore the minus
+            res -= self.nonel_intp[mother](ygrid)
+
+        if (mother, daughter) in self.incl_intp:
+            res += self.incl_intp[(mother, daughter)](ygrid)
+
+        if (mother, daughter) in self.incl_diff_intp:
+            res += self.incl_diff_intp[(mother, daughter)](
+                xgrid, ygrid, grid=False)
+
+        return res
 
     def get_channel(self, mother, daughter=None):
         """Reponse function :math:`f(y)` or :math:`g(y)` as
