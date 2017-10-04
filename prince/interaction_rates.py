@@ -824,7 +824,7 @@ class PhotoNuclearInteractionRateCSC(PhotoNuclearInteractionRate):
         x_repeat = np.repeat(
             self.xmat[:, :, np.newaxis], self.ymat.shape[1], axis=2)
         y_repeat = np.repeat(
-            self.ymat[:, np.newaxis, :, ], self.xmat.shape[1], axis=1)
+            self.ymat[:, np.newaxis, :], self.xmat.shape[1], axis=1)
 
         fill_idx = 0
         for mother in self.spec_man.known_species:
@@ -845,17 +845,13 @@ class PhotoNuclearInteractionRateCSC(PhotoNuclearInteractionRate):
                     x_repeat, y_repeat, grid=False)
 
                 # TODO: This does propably not reshape along the correct axis
-                resp_temp = resp_temp.swapaxes(1, 2).reshape(
+                resp_temp = resp_temp.reshape(
                     (-1, resp_temp.shape[2])).dot(delta_eps)
 
                 self._incl_diff_batch_matrix[lidx:uidx] = resp_temp
 
                 B = float(get_AZN(da)[0])
                 A = float(get_AZN(mo)[0])
-                if da == mo and da == 101:
-                    # for protons: intermediate solution: 20% energy loss
-                    A = 0.8
-                    B = 1
 
                 self._incl_diff_batch_vec_prefac[lidx:uidx].fill(A / B)
 
@@ -875,6 +871,8 @@ class PhotoNuclearInteractionRateCSC(PhotoNuclearInteractionRate):
 
                 prindices_mo = np.repeat(prindices_mo, self.xmat.shape[1])
                 prindices_da = np.tile(prindices_da, self.xmat.shape[0])
+                #prindices_mo = np.tile(prindices_mo, self.xmat.shape[1])
+                #prindices_da = np.repeat(prindices_da, self.xmat.shape[0])
 
                 self._incl_diff_batch_rows[lidx:uidx] = prindices_da
                 self._incl_diff_batch_cols[lidx:uidx] = prindices_mo
@@ -920,6 +918,8 @@ class PhotoNuclearInteractionRateCSC(PhotoNuclearInteractionRate):
                 (self._full_batch_vec, (self._full_batch_rows,
                                         self._full_batch_cols)),
                 copy=True)
+            # create an index to sort by columns and then rows,
+            # which is the same ordering CSC has internally
             # lexsort sorts by last argument first!!!
             self.sortidx = np.lexsort((self._full_batch_rows,
                                        self._full_batch_cols))
@@ -929,6 +929,8 @@ class PhotoNuclearInteractionRateCSC(PhotoNuclearInteractionRate):
                 (self._full_batch_vec, (self._full_batch_rows,
                                         self._full_batch_cols)),
                 copy=True)
+            # create an index to sort by rows and then columns,
+            # which is the same ordering CSR has internally
             # lexsort sorts by last argument first!!!
             self.sortidx = np.lexsort((self._full_batch_cols,
                                        self._full_batch_rows))
