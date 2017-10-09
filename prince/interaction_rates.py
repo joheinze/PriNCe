@@ -134,13 +134,13 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         """Initialization of all members."""
         self._init_matrices()
 
-        #self._init_matrix_nonel()
-        #self._init_matrix_incl()
-        #self._init_matrix_incl_diff()
+        #self._fill_matrix_nonel()
+        #self._fill_matrix_incl()
+        #self._fill_matrix_incl_diff()
 
         self._fill_batch_matrix()
 
-        self._init_coupling_mat(sp_format='csc')
+        self._init_coupling_mat(sp_format='csr')
 
     def _init_matrices(self):
         """Initializes convenicen matrices for batch computation"""
@@ -156,9 +156,18 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                                               self.e_cosmicray.grid)
         self.xmat = ecr_mat_out / ecr_mat_in
 
-        n_nonel = self.spec_man.nspec
-        n_incl = len(self.cross_sections.known_bc_channels)
-        n_incl_diff = len(self.cross_sections.known_diff_channels)
+        n_nonel_diff = len([
+            species for species in self.spec_man.species_refs
+            if species.has_redist
+        ])
+        n_nonel = self.spec_man.nspec - n_nonel_diff
+        n_incl = len([(mo, da)
+                      for (mo, da) in self.cross_sections.known_bc_channels
+                      if mo != da])
+        n_incl_diff = len([(mo, da)
+                           for (mo,
+                                da) in self.cross_sections.known_diff_channels
+                           if mo != da])
 
         # [mother_ncoid,daughter_ncoid] -> _batch_vec[lidx:uidx]
         self._nonel_batchvec_pointer = {}
@@ -168,7 +177,7 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         self._incl_batchvec_pridx_pointer = {}
         self._incl_diff_batchvec_pridx_pointer = {}
 
-        dim_nonel = self.dim_cr * n_nonel
+        dim_nonel = self.dim_cr * n_nonel + self.dim_cr**2 * n_nonel_diff
         dim_incl = self.dim_cr * n_incl
         dim_incl_diff = self.dim_cr**2 * n_incl_diff
         dim_ph = self.dim_ph
@@ -202,8 +211,7 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         self._incl_diff_batch_vec = self._full_batch_vec[dim_nonel + dim_incl:]
 
         # Vector which stores constant prefactors for batch vector
-        self._full_batch_vec_prefac = np.zeros(
-            self._full_batch_matrix.shape[0])
+        self._full_batch_vec_prefac = np.ones(self._full_batch_matrix.shape[0])
         self._nonel_batch_vec_prefac = self._full_batch_vec_prefac[:dim_nonel]
         self._incl_batch_vec_prefac = self._full_batch_vec_prefac[
             dim_nonel + 1:dim_nonel + dim_incl]
@@ -231,7 +239,6 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         # Delta eps (photon energy) bin widths
         delta_eps = np.diag(self.e_photon.widths)
 
-        pridx = self.spec_man.ncoid2princeidx
         species = self.spec_man.ncoid2sref
         resp = self.cross_sections.resp
 
@@ -244,27 +251,47 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         # reshape to 2D grid, to fit the batch matrix
         x_repeat = x_repeat.reshape((-1, x_repeat.shape[2]))
         y_repeat = y_repeat.reshape((-1, y_repeat.shape[2]))
-
         fill_idx = 0
+
         for mother in self.spec_man.known_species:
+            if species[mother].has_redist:
+                lidx = fill_idx
+                uidx = fill_idx + self.dim_cr**2
 
-            lidx = fill_idx
-            uidx = fill_idx + self.dim_cr
+                prindices_mo = species[mother].indices()
+                prindices_in = np.repeat(prindices_mo, self.xmat.shape[1])
+                prindices_out = np.tile(prindices_mo, self.xmat.shape[0])
+                self._full_batch_rows[lidx:uidx] = prindices_out
+                self._full_batch_cols[lidx:uidx] = prindices_in
 
-            prindices = species[mother].indices()
-            self._full_batch_rows[lidx:uidx] = prindices
-            self._full_batch_cols[lidx:uidx] = prindices
+                if mother < 100:
+                    # Note: in this case the batch vector will be zero anyway
+                    info(3, "Can not compute interaction rate for", mother)
+                    fill_idx += self.dim_cr**2
+                    continue
 
-            if mother < 100:
-                # Note: in this case the batch vector will be zero anyway
-                info(3, "Can not compute interaction rate for", mother)
+                self._full_batch_matrix[lidx:uidx] = resp.get_full(
+                    mother, mother, y_repeat, xgrid=x_repeat).dot(delta_eps)
+
+                fill_idx += self.dim_cr**2
+            else:
+                lidx = fill_idx
+                uidx = fill_idx + self.dim_cr
+
+                prindices = species[mother].indices()
+                self._full_batch_rows[lidx:uidx] = prindices
+                self._full_batch_cols[lidx:uidx] = prindices
+
+                if mother < 100:
+                    # Note: in this case the batch vector will be zero anyway
+                    info(3, "Can not compute interaction rate for", mother)
+                    fill_idx += self.dim_cr
+                    continue
+
+                self._full_batch_matrix[lidx:uidx] = resp.get_full(
+                    mother, mother, self.ymat).dot(delta_eps)
+
                 fill_idx += self.dim_cr
-                continue
-
-            self._full_batch_matrix[lidx:uidx] = resp.get_full(
-                mother, mother, self.ymat).dot(delta_eps)
-
-            fill_idx += self.dim_cr
 
             for (mo, da) in self.cross_sections.reactions[mother]:
 
@@ -300,7 +327,7 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                     uidx = fill_idx + self.dim_cr**2
 
                     self._full_batch_matrix[lidx:uidx] = resp.get_full(
-                        mo, da, x_repeat, y_repeat).dot(delta_eps)
+                        mo, da, y_repeat, xgrid=x_repeat).dot(delta_eps)
 
                     B = float(get_AZN(da)[0])
                     A = float(get_AZN(mo)[0])
@@ -318,9 +345,8 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
 
                     fill_idx += self.dim_cr**2
         info(2, 'Finished filling of batch matrix!')
-        print 'fill index', fill_idx, 'matrix dimension', self._full_batch_matrix.shape
 
-    def _init_matrix_nonel(self):
+    def _fill_matrix_nonel(self):
         """ Create one big matrix for batch-compute all nonel rates at once"""
         info(2, 'Starting to fill nonelastic batch matrix')
         self._nonel_batch_vec_prefac[:] = -1 * np.ones(
@@ -356,7 +382,7 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
 
         info(2, 'Finished filling of nonelastic batch matrix')
 
-    def _init_matrix_incl(self):
+    def _fill_matrix_incl(self):
         """ Create one big matrix for batch-compute all incl rates at once"""
         info(2, 'Starting to fill inclusive batch matrix')
 
@@ -421,7 +447,7 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
 
         info(2, 'Finished filling of inclusive batch matrix')
 
-    def _init_matrix_incl_diff(self):
+    def _fill_matrix_incl_diff(self):
         """ Create one big matrix for batch-compute all diff rates at once"""
         info(2, 'Starting to fill inclusive differential batch matrix')
 

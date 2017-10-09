@@ -176,13 +176,9 @@ class CrossSectionBase(object):
                     mo,
                     da)] = self._arange_on_xgrid(self._incl_tab.pop((mo, da)))
                 print self.mname, mo, da, 'made differential'
-            elif mo != da:
+            else:
                 self.known_bc_channels.append((mo, da))
                 self.known_species.append(da)
-            else:
-                # TODO: For now we do not include channels mo -> mo
-                # as it would break PhotoNuclearInteractionRateCSC._init_matrix_incl()
-                pass
 
         for mo, da in self._incl_diff_tab.keys():
             if da >= 100 and get_AZN(da)[0] > get_AZN(mo)[0]:
@@ -980,19 +976,27 @@ class ResponseFunction(object):
         """
         if xgrid is not None and ygrid.shape != xgrid.shape:
             raise Exception('ygrid and xgrid do not have the same shape!!')
+        if mother < daughter:
+            info(
+                3,
+                'WARNING: channel {:} -> {:} with daughter heavier than mother!'.
+                format(mother, daughter))
 
         res = np.zeros(ygrid.shape)
 
-        if mother == daughter and mother in self.nonel_intp:
-            # nonel is absorption, therefore the minus
-            res -= self.nonel_intp[mother](ygrid)
-
         if (mother, daughter) in self.incl_intp:
             res += self.incl_intp[(mother, daughter)](ygrid)
-
-        if (mother, daughter) in self.incl_diff_intp:
+        elif (mother, daughter) in self.incl_diff_intp:
             res += self.incl_diff_intp[(mother, daughter)](
                 xgrid, ygrid, grid=False)
+
+        if mother == daughter and mother in self.nonel_intp:
+            # nonel cross section leads to absorption, therefore the minus
+            if xgrid is None:
+                res -= self.nonel_intp[mother](ygrid)
+            else:
+                diagonal = xgrid == 1.
+                res[diagonal] -= self.nonel_intp[mother](ygrid[diagonal])
 
         return res
 
