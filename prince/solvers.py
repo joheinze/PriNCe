@@ -93,7 +93,7 @@ class UHECRPropagationSolver(object):
         return state
 
     def eqn_deriv(self, z, state, *args):
-        #state[state < 1e-50] *= 0.
+        state[state < 1e-50] *= 0.
 
         r = self.dldz(z) * self.sp_jacobian.dot(state)
         return r
@@ -105,7 +105,7 @@ class UHECRPropagationSolver(object):
             'name': 'vode',
             'method': 'bdf',
             'nsteps': 10000,
-            'rtol': 1e-2,
+            'rtol': 1e-1,
             'atol':1e10,
             # 'order': 5,
             'max_step': 0.2,
