@@ -269,9 +269,6 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                 fill_idx += self.dim_cr
 
             for (mo, da) in self.cross_sections.reactions[mother]:
-                if (mo,da) not in self.cross_sections.resp.incl_intp:
-                    print 'Skipped!', mo, da
-                    continue
 
                 if mo == da:
                     # these were already covered before the loop
