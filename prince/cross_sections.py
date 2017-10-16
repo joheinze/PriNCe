@@ -895,13 +895,13 @@ class TabulatedCrossSection(CrossSectionBase):
     """Tabulated disintegration cross sections from Peanut or TALYS.
     Data available from 1 MeV to 1 GeV"""
 
-    def __init__(self, model_prefix='peanut', *args, **kwargs):
+    def __init__(self, model_prefix='peanut',max_mass=np.inf, *args, **kwargs):
         self.supports_redistributions = False
         CrossSectionBase.__init__(self)
-        self._load(model_prefix)
+        self._load(model_prefix, max_mass=max_mass)
         self._optimize_and_generate_index()
 
-    def _load(self, model_prefix):
+    def _load(self, model_prefix, max_mass):
 
         cspath = config['data_dir']
 
@@ -929,11 +929,19 @@ class TabulatedCrossSection(CrossSectionBase):
         # Now write the raw data into a dict structure
         _nonel_tab = {}
         for pid, csgrid in zip(pid_nonel, nonel_raw):
+            # TODO: dirty workarround, pass max mass to config
+            # to delete heavier particle from crosssection
+            if pid > config["max_mass"]:
+                continue
             _nonel_tab[pid] = csgrid
 
         # mo = mother, da = daughter
         _incl_tab = {}
         for (mo, da), csgrid in zip(pids_incl, incl_raw):
+            # TODO: dirty workarround, pass max mass to config
+            # to delete heavier particle from crosssection
+            if mo > config["max_mass"]:
+                continue
             _incl_tab[mo, da] = csgrid
 
         self._egrid_tab = egrid

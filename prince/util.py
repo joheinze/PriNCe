@@ -110,7 +110,21 @@ def get_2Dinterp_object(xgrid, ygrid, zgrid, **kwargs):
     if 's' not in kwargs:
         kwargs['s'] = 0.
 
-    return RectBivariateSpline(xgrid, ygrid, zgrid, **kwargs)
+    return RectBivariateSplineExtrap(xgrid, ygrid, zgrid, **kwargs)
+
+
+class RectBivariateSplineExtrap(RectBivariateSpline):
+    def __call__(self, x, y, **kwargs):
+        xknots, yknots = self.get_knots()
+        xmin, xmax = np.min(xknots), np.max(xknots)
+        ymin, ymax = np.min(yknots), np.max(yknots)
+        #info(1, 'Inherited Spline called, xmin {}, xmax {}'.format(xmin, xmax))
+
+        result = RectBivariateSpline.__call__(self, x, y, **kwargs)
+
+        result = np.where((x <= xmax) & (x >= xmin), result, 0.)
+        #result = np.where(x >= xmin, result, 0.)
+        return result
 
 
 def get_y(e, eps, nco_id):
@@ -256,7 +270,7 @@ class EnergyGrid(object):
 def dict_add(di, key, value):
     """Adds value to previous value of di[key], otherwise the key
     is created with value set to `value`."""
-    
+
     if key in di:
         if isinstance(value, tuple):
             new_value = value[1] + di[key][1]
@@ -279,7 +293,7 @@ def dict_add(di, key, value):
             #     #     value += prevval[idcs]
             #     print key, value[1].shape, di[key][1].shape, '\n', value, '\n', di[key]
             #     raise Exception()
-            
+
         else:
             di[key] += value
     else:
@@ -295,5 +309,5 @@ def bin_centers(bin_edges):
 def bin_widths(bin_edges):
     """Computes and returns bin widths from given edges."""
     edg = np.array(bin_edges)
-    
+
     return edg[1:] - edg[:-1]

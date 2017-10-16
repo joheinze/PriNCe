@@ -19,6 +19,11 @@ class PriNCeRun(object):
 
     def __init__(self, *args, **kwargs):
 
+        # TODO: dirty workarround, pass max mass to config
+        # to delete heavier particle from crosssection
+        if "max_mass" in kwargs:
+            config["max_mass"] = 100 * (kwargs["max_mass"] + 1)
+
         # Initialize energy grid
         self.cr_grid = util.EnergyGrid(*config["cosmic_ray_grid"])
 
