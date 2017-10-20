@@ -92,6 +92,9 @@ config = {
     # For larger IDs (nuclei) the boost conservation is employed.
     "redist_threshold_ID": 101,
 
+    # Build equation system up to a maximal nuclear mass of
+    "max_mass": np.inf,
+
     #===========================================================================
     # Parameters of numerical integration
     #===========================================================================

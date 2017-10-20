@@ -895,13 +895,13 @@ class TabulatedCrossSection(CrossSectionBase):
     """Tabulated disintegration cross sections from Peanut or TALYS.
     Data available from 1 MeV to 1 GeV"""
 
-    def __init__(self, model_prefix='peanut',max_mass=np.inf, *args, **kwargs):
+    def __init__(self, model_prefix='peanut',max_mass=config["max_mass"], *args, **kwargs):
         self.supports_redistributions = False
         CrossSectionBase.__init__(self)
-        self._load(model_prefix, max_mass=max_mass)
+        self._load(model_prefix)
         self._optimize_and_generate_index()
 
-    def _load(self, model_prefix, max_mass):
+    def _load(self, model_prefix):
 
         cspath = config['data_dir']
 
