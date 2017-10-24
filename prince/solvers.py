@@ -117,8 +117,8 @@ class UHECRPropagationSolver(object):
             'name': 'lsodes',
             'method': 'bdf',
             # 'nsteps': 10000,
-            'rtol': 1e-1,
-            'atol': 1e10,
+            'rtol': 1e-4,
+            'atol': 1e5,
             'ndim': self.dim_states,
             'nnz': self.jacobian.nnz,
             'csc_jacobian': csc_matrix(self.jacobian.todense()),
@@ -187,8 +187,8 @@ class UHECRPropagationSolver(object):
                 print 'NLU', NLU
                 print 'NNZLU', NNZLU
                 print 'LAST STEP {0:4.3e}'.format(self.r._integrator.rwork[10])
-                self.ncallsf = 0
-                self.ncallsj = 0
+            self.ncallsf = 0
+            self.ncallsj = 0
 
             if self.enable_cont_losses:
                 self.r._integrator.call_args[3] = 20

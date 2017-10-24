@@ -3,7 +3,7 @@
 import cPickle as pickle
 from os import path
 from prince import photonfields, cross_sections, interaction_rates, data, util, solvers
-from prince.util import info
+from prince.util import info, get_AZN
 from prince_config import config, spec_data
 import numpy as np
 
@@ -22,7 +22,7 @@ class PriNCeRun(object):
         # TODO: dirty workarround, pass max mass to config
         # to delete heavier particle from crosssection
         if "max_mass" in kwargs:
-            config["max_mass"] = 100 * (kwargs["max_mass"] + 1)
+            config["max_mass"] = kwargs["max_mass"]
 
         # Initialize energy grid
         self.cr_grid = util.EnergyGrid(*config["cosmic_ray_grid"])
@@ -48,7 +48,7 @@ class PriNCeRun(object):
         # Limit max nuclear mass of eqn system
         system_species = [
             s for s in self.cross_sections.known_species
-            if s < 100 * (config["max_mass"] + 1)
+            if get_AZN(s)[0] <= config["max_mass"]
         ]
         # Initialize species manager for all species for which cross sections are known
         self.spec_man = data.SpeciesManager(system_species, self.ed)

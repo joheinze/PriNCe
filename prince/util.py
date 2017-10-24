@@ -163,12 +163,12 @@ def caller_name(skip=2):
     parentframe = stack[start][0]
 
     name = []
-    module = inspect.getmodule(parentframe)
-
-    # `modname` can be None when frame is executed directly in console
-
-    if module:
-        name.append(module.__name__ + '.')
+    
+    if config["print_module"]:
+        module = inspect.getmodule(parentframe)
+        # `modname` can be None when frame is executed directly in console
+        if module:
+            name.append(module.__name__ + '.')
 
     # detect classname
     if 'self' in parentframe.f_locals:

@@ -155,7 +155,7 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         ecr_mat_in, ecr_mat_out = np.meshgrid(self.e_cosmicray.grid,
                                               self.e_cosmicray.grid)
         self.xmat = ecr_mat_out / ecr_mat_in
-
+        
         n_nonel_diff = len([
             species for species in self.spec_man.species_refs
             if species.has_redist
@@ -226,14 +226,13 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
 
         for mother in self.spec_man.known_species:
             if species[mother].has_redist:
+                print 'mother with redist', mother
                 lidx = fill_idx
                 uidx = fill_idx + self.dim_cr**2
 
                 prindices_mo = species[mother].indices()
                 prindices_in = np.tile(prindices_mo, self.xmat.shape[0])
                 prindices_out = np.repeat(prindices_mo, self.xmat.shape[1])
-                #prindices_in = np.repeat(prindices_mo, self.xmat.shape[1])
-                #prindices_out = np.tile(prindices_mo, self.xmat.shape[0])
                 self._batch_rows[lidx:uidx] = prindices_out
                 self._batch_cols[lidx:uidx] = prindices_in
 
@@ -249,6 +248,7 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
 
                 fill_idx += self.dim_cr**2
             else:
+                print 'mother without redist', mother
                 lidx = fill_idx
                 uidx = fill_idx + self.dim_cr
 

@@ -30,6 +30,9 @@ config = {
     # Debug flag for verbose printing, 0 = minimum
     "debug_level": 3,
 
+    # When printing output, prepend module name
+    "print_module" : False,
+
     #=========================================================================
     # Paths and library locations
     #=========================================================================
