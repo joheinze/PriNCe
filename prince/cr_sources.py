@@ -17,7 +17,7 @@ class CosmicRaySource(object):
         self.prince_run = prince_run
         self.spec_man = prince_run.spec_man
         self.cr_grid = prince_run.cr_grid.grid
-
+        
         self.norm = 1.
         self.m = m
 

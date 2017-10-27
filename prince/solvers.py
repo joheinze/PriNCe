@@ -46,10 +46,26 @@ class UHECRPropagationSolver(object):
         return trapz(A * self.egrid * self.get_solution(nco_id),
                      A * self.egrid)
 
-    def get_solution(self, nco_id, redshift=0.):
+    def get_solution(self, nco_id):
+        """Returns the spectrum in energy per nucleon"""
         sp = self.prince_run.spec_man.ncoid2sref[nco_id]
-        return self.r.y[sp.lidx():sp.uidx()]
-        # return self.solution_vector[-1][sp.lidx():sp.uidx()]
+        return self.egrid, self.r.y[sp.lidx():sp.uidx()]
+
+    def get_solution_scale(self, nco_id):
+        """Returns the spectrum scaled back to total energy"""
+        A = get_AZN(nco_id)[0]
+        sp = self.prince_run.spec_man.ncoid2sref[nco_id]
+        return A * self.egrid, self.r.y[sp.lidx():sp.uidx()] / A
+
+    def get_solution_group(self, nco_ids):
+        """Return the summed spectrum (in total energy) for all elements in the range"""
+        # Take egrid from first id
+        com_egrid, spec = self.get_solution_scale(nco_ids[0])
+        for pid in nco_ids[1:]:
+            curr_egrid, curr_spec = self.get_solution_scale(pid)
+            spec += np.interp(com_egrid, curr_egrid, curr_spec, left=0., right=0.)
+
+        return com_egrid, spec
 
     def set_initial_condition(self, spectrum=None, nco_id=None):
         self.state *= 0.
@@ -80,6 +96,11 @@ class UHECRPropagationSolver(object):
         self.jacobian = self.int_rates.get_hadr_jacobian(z)
         self.djacobian = self.jacobian.todense()
 
+        #TODO: no hadronic losses, take this out after testing
+        #self.jacobian.data = np.zeros(self.jacobian.data.shape)
+        #self.djacobian = np.zeros(self.djacobian.shape)
+
+
     def eqn_jac(self, z, state, *jac_args):
         self.ncallsj += 1
         
@@ -91,7 +112,7 @@ class UHECRPropagationSolver(object):
         for s in self.spec_man.species_refs:
             lidx, uidx = s.lidx(), s.uidx()
             state[lidx:uidx] = np.interp(
-                self.egrid, self.egrid + conloss[lidx:uidx], state[lidx:uidx])
+                self.egrid, self.egrid - conloss[lidx:uidx], state[lidx:uidx])
 
         return state
 
@@ -111,14 +132,14 @@ class UHECRPropagationSolver(object):
         ode_params_lsodes = {
             'name': 'lsodes',
             'method': 'bdf',
-            # 'nsteps': 10000,
-            'rtol': 1e-2,
-            'atol': 1e5,
+            #'nsteps': 10000,
+            'rtol': 1e-6,
+            'atol': 1e3,
             'ndim': self.dim_states,
             'nnz':self.jacobian.nnz,
-            'csc_jacobian': self.jacobian,
-            # 'order': 5,
-            # 'max_step': 0.2,
+            #'csc_jacobian': self.jacobian,
+            #'order': 5,
+            #'max_step': 0.2,
             'with_jacobian': False
         }
 
@@ -143,14 +164,14 @@ class UHECRPropagationSolver(object):
             # 'first_step': 1e-4,
         }
 
-        ode_params = ode_params_lsodes
+        ode_params = ode_params_lsoda
 
         # Setup solver
         self.r = ode(self.eqn_deriv,self.eqn_jac).set_integrator(**ode_params)
-
-    def solve(self):
+        #self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
+    def solve(self, dz=1e-2, verbose=True):
         from time import time
-        dz = -1e-2
+        dz = -1 * dz
         now = time()
         self.r.set_initial_value(
             self.injection(dz, self.r.t), self.r.t)
@@ -165,22 +186,24 @@ class UHECRPropagationSolver(object):
             stepin = time()
             self.r.integrate(self.r.t + dz)#, 
                 # step=True if self.r.t < self.initial_z else False)
-            print 'step took',time() - stepin
-            print 'At t =',self.r.t
-            print 'jacobian calls', self.ncallsj
-            print 'function calls', self.ncallsf
+            if verbose:
+                print 'step took',time() - stepin
+                print 'At t =',self.r.t
+                print 'jacobian calls', self.ncallsj
+                print 'function calls', self.ncallsf
             NST = self.r._integrator.iwork[10]
             NFE = self.r._integrator.iwork[11]
             NJE = self.r._integrator.iwork[13]
             NLU = self.r._integrator.iwork[20]
             NNZ = self.r._integrator.iwork[19]
             NNZLU = self.r._integrator.iwork[24] + self.r._integrator.iwork[26] + 12
-            print 'NST', NST
-            print 'NFE', NFE
-            print 'NJE', NJE
-            print 'NLU', NLU
-            print 'NNZLU', NNZLU
-            print 'LAST STEP {0:4.3e}'.format(self.r._integrator.rwork[10])
+            if verbose:
+                print 'NST', NST
+                print 'NFE', NFE
+                print 'NJE', NJE
+                print 'NLU', NLU
+                print 'NNZLU', NNZLU
+                print 'LAST STEP {0:4.3e}'.format(self.r._integrator.rwork[10])
             self.ncallsf = 0
             self.ncallsj = 0
 
@@ -189,7 +212,9 @@ class UHECRPropagationSolver(object):
 
             if self.enable_cont_losses:
                 self.r.set_initial_value(
-                    self.semi_lagrangian(dz, self.r.t, self.r.y), self.r.t)
+                    self.semi_lagrangian(dz, self.r.t, self.r.y)
+                    #+ self.injection(dz, self.r.t)
+                    , self.r.t)
             
             
 
