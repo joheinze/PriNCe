@@ -333,16 +333,16 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
 
                     self._batch_matrix[lidx:uidx] = resp.get_full(
                         mo, da, y_repeat, xgrid=x_repeat).dot(delta_eps)
-                    if mo == 101:
-                        print 'for daugter {:}:'.format(da)
-                        print self._batch_matrix[lidx:uidx]
+                    #if mo == 101:
+                    #    print 'for daugter {:}:'.format(da)
+                    #    print self._batch_matrix[lidx:uidx]
                     self._batch_matrix[lidx:uidx] = integ_corr_repeat * self._batch_matrix[lidx:uidx]
-                    if mo == 101:
-                        print 'after multiplying correction'
-                        print self._batch_matrix[lidx:uidx]
-                        print 'correction matrix:'
-                        print integ_corr_repeat
-                        print '-'*25
+                    #if mo == 101:
+                    #    print 'after multiplying correction'
+                    #    print self._batch_matrix[lidx:uidx]
+                    #    print 'correction matrix:'
+                    #    print integ_corr_repeat
+                    #    print '-'*25
                     B = float(get_AZN(da)[0])
                     A = float(get_AZN(mo)[0])
 

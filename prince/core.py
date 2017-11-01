@@ -40,10 +40,14 @@ class PriNCeRun(object):
 
         # Photon field handler
         #self.photon_field = photonfields.CMBPhotonSpectrum()
-        self.photon_field = photonfields.CombinedPhotonField(
-            [photonfields.CMBPhotonSpectrum, photonfields.CIBInoue2D])
-        self.photon_field = photonfields.CombinedPhotonField(
-            [photonfields.CMBPhotonSpectrum, photonfields.CIBFranceschini2D])
+        #self.photon_field = photonfields.CombinedPhotonField(
+        #    [photonfields.CMBPhotonSpectrum, photonfields.CIBInoue2D])
+        if 'photon_field' in kwargs:
+            self.photon_field = kwargs['photon_field']
+        else:
+            self.photon_field = photonfields.CombinedPhotonField(
+                [photonfields.CMBPhotonSpectrum, 
+                 photonfields.CIBFranceschini2D])
 
         # Store adv_set
         self.adv_set = config["adv_settings"]
