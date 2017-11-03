@@ -161,13 +161,20 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         # matrix for numeric correction of differential redist:
         # factor D_Ein for integral, factor 1 / E_in for x substitution
         # and factor D_Ein / D_Eout for bin width correction
-        
-        #print 'integral correction:'
-        self.integ_corr_mat = decr_mat_in ** 2 / ecr_mat_in / decr_mat_out
-        #print self.integ_corr_mat
+
+        # TODO: Correction factor, that accounts for different bin widths in j -> i
+
+        # 1st correction: Delta_E_j / E_j
+        # 1/E_j for x substitution, Delta_E_j for integral over E_j
         self.integ_corr_mat = decr_mat_in / ecr_mat_in
+
+        # 2nd correction: Delta_E_j / E_j * Delta_E_j / Delta_E_i
+        # 1/E_j for x substitution, Delta_E_j for integral over E_j
+        # Delta_E_j / Delta_E_i for relative bin width correction
+        #self.integ_corr_mat = decr_mat_in ** 2 / ecr_mat_in / decr_mat_out
+
+        # 3rd correction: no correction for cross check
         #self.integ_corr_mat = np.ones(self.integ_corr_mat.shape)
-        #print self.integ_corr_mat
 
         n_nonel_diff = len([
             species for species in self.spec_man.species_refs

@@ -120,7 +120,7 @@ class UHECRPropagationSolver(object):
         # state[state < 1e-50] *= 0.
         self.ncallsf += 1
         # print self.dldz(z)
-        r = self.jacobian.dot(self.dldz(z)*state) + self.injection(1., z)
+        r = self.jacobian.dot(self.dldz(z)*state) + self.injection(1., z) * 1e-3
         return r
 
     def _init_vode(self):

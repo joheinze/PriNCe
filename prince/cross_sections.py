@@ -1001,8 +1001,8 @@ class ResponseFunction(object):
             #    incl_diff_res = np.where(xgrid < 0.9, incl_diff_res, 0.)
             #res += incl_diff_res
             #if not(mother == daughter):
-            res += self.incl_diff_intp[(mother, daughter)](
-                xgrid, ygrid, grid=False)
+                res += self.incl_diff_intp[(mother, daughter)](
+                    xgrid, ygrid, grid=False)
 
         if mother == daughter and mother in self.nonel_intp:
             # nonel cross section leads to absorption, therefore the minus
