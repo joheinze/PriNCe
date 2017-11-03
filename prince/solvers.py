@@ -2,7 +2,7 @@
 
 import numpy as np
 from prince.cosmology import H
-from prince.util import info, pru, get_AZN
+from prince.util import info, PRINCE_UNITS, get_AZN
 
 
 class UHECRPropagationSolver(object):
@@ -26,6 +26,7 @@ class UHECRPropagationSolver(object):
         self.targ_vec = prince_run.int_rates.photon_vector
 
         self.state = np.zeros(prince_run.dim_states)
+        self.dim_states = prince_run.dim_states
         self.last_z = self.initial_z
 
         self.solution_vector = []
@@ -33,7 +34,7 @@ class UHECRPropagationSolver(object):
         self._init_vode()
 
     def dldz(self, z):
-        return -1. / ((1. + z) * H(z) * pru.cm2sec)
+        return -1. / ((1. + z) * H(z) * PRINCE_UNITS.cm2sec)
 
     def add_source_class(self, source_instance):
         self.list_of_sources.append(source_instance)
@@ -45,10 +46,27 @@ class UHECRPropagationSolver(object):
         return trapz(A * self.egrid * self.get_solution(nco_id),
                      A * self.egrid)
 
-    def get_solution(self, nco_id, redshift=0.):
+    def get_solution(self, nco_id):
+        """Returns the spectrum in energy per nucleon"""
+        sp = self.prince_run.spec_man.ncoid2sref[nco_id]
+        return self.egrid, self.r.y[sp.lidx():sp.uidx()]
+
+    def get_solution_scale(self, nco_id):
+        """Returns the spectrum scaled back to total energy"""
+        A = get_AZN(nco_id)[0]
         sp = self.prince_run.spec_man.ncoid2sref[nco_id]
         return self.r.y[sp.lidx():sp.uidx()]
-        # return self.solution_vector[-1][sp.lidx():sp.uidx()]
+        return A * self.egrid, self.r.y[sp.lidx():sp.uidx()] / A
+
+    def get_solution_group(self, nco_ids):
+        """Return the summed spectrum (in total energy) for all elements in the range"""
+        # Take egrid from first id
+        com_egrid, spec = self.get_solution_scale(nco_ids[0])
+        for pid in nco_ids[1:]:
+            curr_egrid, curr_spec = self.get_solution_scale(pid)
+            spec += np.interp(com_egrid, curr_egrid, curr_spec, left=0., right=0.)
+
+        return com_egrid, spec
 
     def set_initial_condition(self, spectrum=None, nco_id=None):
         self.state *= 0.
@@ -63,79 +81,145 @@ class UHECRPropagationSolver(object):
     def injection(self, dz, z):
         """This needs to return the injection rate
         at each redshift value z"""
-        f = self.dldz(z) * dz / pru.cm2sec
+        f = self.dldz(z) * dz / PRINCE_UNITS.cm2sec
         return f * np.sum(
             [s.injection_rate(z) for s in self.list_of_sources], axis=0)
-
-    # def energy_loss_legth_Mpc(self, nco_id, z):
-    #     sp = self.prince_run.spec_man.ncoid2sref[nco_id]
-    #     rate = self.FGmat[sp.lidx():sp.uidx(),
-    #                       sp.lidx("ph"):sp.uidx("ph")].dot(self.targ_vec(z))
-    #     return (1. / rate) * pru.cm2Mpc
 
     def _update_jacobian(self, z):
         info(5, 'Updating jacobian matrix at redshift', z)
         self.continuous_losses = self.continuous_loss_rates.loss_vector(z)
-        self.sp_jacobian = self.int_rates.get_hadr_jacobian(z)
-        # self.jacobian = self.sp_jacobian.todense()
+        self.jacobian = self.int_rates.get_hadr_jacobian(z)
+        self.djacobian = None
 
-    def eqn_jac(self, z, state):
-        return self.dldz(z) * self.jacobian
+    def eqn_jac(self, z, state, *jac_args):
+        self.ncallsj += 1
+        if self.djacobian is None:
+            self.djacobian = self.jacobian.todense()
+        return self.dldz(z) * self.djacobian
 
     def semi_lagrangian(self, delta_z, z, state):
-
         conloss = self.continuous_losses * delta_z * self.dldz(z)
-        for s in self.spec_man.species_refs:
-            lidx, uidx = s.lidx(), s.uidx()
+        for spec in self.spec_man.species_refs:
+            lidx, uidx = spec.lidx(), spec.uidx()
             state[lidx:uidx] = np.interp(
-                self.egrid, self.egrid + conloss[lidx:uidx], state[lidx:uidx])
-
+                self.egrid, self.egrid - conloss[lidx:uidx], state[lidx:uidx])
         return state
 
-    def eqn_deriv(self, z, state, *args):
-        state[state < 1e-50] *= 0.
+    def conloss_deriv(self, z, state, delta_z=1e-2):
+        conloss = self.continuous_losses * delta_z * self.dldz(z)
+        conloss_deriv = np.zeros_like(state)
+        for spec in self.spec_man.species_refs:
+            lidx, uidx = spec.lidx(), spec.uidx()
+            sup = np.interp(self.egrid, self.egrid + conloss[lidx:uidx],
+                            state[lidx:uidx])
+            sd = np.interp(self.egrid, self.egrid - conloss[lidx:uidx],
+                           state[lidx:uidx])
+            conloss_deriv[lidx:uidx] = (sup - sd) / (2. * delta_z)
+        return -conloss_deriv
 
-        r = self.dldz(z) * self.sp_jacobian.dot(state)
+    def eqn_deriv(self, z, state, *args):
+        self.ncallsf += 1
+        # self._update_jacobian(self.r.t)
+        r = self.jacobian.dot(self.dldz(z) * state) + self.injection(1., z)
+        # r = self.injection(1., z)
         return r
 
     def _init_vode(self):
         from scipy.integrate import ode
+        from scipy.sparse import csc_matrix
+        self._update_jacobian(self.initial_z)
+        self.ncallsf = 0
+        self.ncallsj = 0
 
-        ode_params = {
+        ode_params_lsodes = {
+            'name': 'lsodes',
+            'method': 'bdf',
+            # 'nsteps': 10000,
+            'rtol': 1e-4,
+            'atol': 1e5,
+            'ndim': self.dim_states,
+            'nnz': self.jacobian.nnz,
+            'csc_jacobian': csc_matrix(self.jacobian.todense()),
+            # 'max_order_s': 5,
+            # 'with_jacobian': True
+        }
+
+        ode_params_vode = {
             'name': 'vode',
             'method': 'bdf',
             'nsteps': 10000,
-            'rtol': 0.2,
-            # 'max_order_s': 2,
+            'rtol': 1e-1,
+            'atol': 1e10,
             # 'order': 5,
             'max_step': 0.2,
-
-            # 'first_step': 1e-4,
-            # 'with_jacobian': False
+            'with_jacobian': False
         }
 
-        # Setup solver
-        self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
-        #, jac=self.eqn_jac
+        ode_params_lsoda = {
+            'name': 'lsoda',
+            'nsteps': 10000,
+            'rtol': 0.2,
+            'max_order_ns': 5,
+            'max_order_s': 2,
+            'max_step': 0.2,
+            # 'first_step': 1e-4,
+        }
 
-    def solve(self):
+        ode_params = ode_params_lsodes
+
+        # Setup solver
+
+        self.r = ode(self.eqn_deriv, self.eqn_jac).set_integrator(**ode_params)
+        # self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
+        
+
+    def solve(self, dz=1e-2, verbose=True, extended_output = False):
         from time import time
-        dz = -1e-2
+        
+        dz = -1 * dz
         now = time()
+        self.r.set_initial_value(np.zeros(self.dim_states), self.r.t)
+
         info(2, 'Starting integration.')
+
         while self.r.successful() and (self.r.t + dz) > self.final_z:
             info(3, "Integrating at z={0}".format(self.r.t))
+
             self._update_jacobian(self.r.t)
-            self.r.integrate(self.r.t + dz)
+            stepin = time()
+            self.r.integrate(self.r.t + dz)#, 
+                # step=True if self.r.t < self.initial_z else False)
+            if verbose:
+                print 'step took',time() - stepin
+                print 'At t =',self.r.t
+                print 'jacobian calls', self.ncallsj
+                print 'function calls', self.ncallsf
+                if extended_output:
+                    NST = self.r._integrator.iwork[10]
+                    NFE = self.r._integrator.iwork[11]
+                    NJE = self.r._integrator.iwork[13]
+                    NLU = self.r._integrator.iwork[20]
+                    NNZ = self.r._integrator.iwork[19]
+                    NNZLU = self.r._integrator.iwork[24] + self.r._integrator.iwork[26] + 12
+                    print 'NST', NST
+                    print 'NFE', NFE
+                    print 'NJE', NJE
+                    print 'NLU', NLU
+                    print 'NNZLU', NNZLU
+                    print 'LAST STEP {0:4.3e}'.format(self.r._integrator.rwork[10])
+            self.ncallsf = 0
+            self.ncallsj = 0
+
             if self.enable_cont_losses:
-                self.r.set_initial_value(
-                    self.semi_lagrangian(dz, self.r.t, self.r.y) +
-                    self.injection(dz, self.r.t), self.r.t)
+                self.r._integrator.call_args[3] = 20
+                self.r._y = self.semi_lagrangian(dz, self.r.t, self.r.y)
+                # self.r.set_initial_value(
+                #     self.semi_lagrangian(dz, self.r.t, self.r.y), self.r.t)
+
+        self.r.integrate(self.final_z)
 
         if not self.r.successful():
             raise Exception(
                 'Integration failed. Change integrator setup and retry.')
-
-        self.r.integrate(self.final_z)
 
         info(2, 'Integration completed in {0} s'.format(time() - now))

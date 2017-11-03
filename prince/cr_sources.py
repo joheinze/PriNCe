@@ -5,7 +5,7 @@ from abc import ABCMeta, abstractmethod
 import numpy as np
 
 from prince.cosmology import star_formation_rate
-from prince.util import info, pru
+from prince.util import info, PRINCE_UNITS, get_AZN
 from prince_config import config
 
 
@@ -17,12 +17,11 @@ class CosmicRaySource(object):
         self.prince_run = prince_run
         self.spec_man = prince_run.spec_man
         self.cr_grid = prince_run.cr_grid.grid
-
+        
         self.norm = 1.
         self.m = m
 
         self.injection_grid = np.zeros(self.prince_run.dim_states)
-
         self.inj_spec = self.spec_man.ncoid2sref[self.ncoid]
         # compute the injection rate on the fixed energy grid
         self.injection_grid[self.inj_spec.lidx():self.inj_spec.uidx(
@@ -36,7 +35,7 @@ class CosmicRaySource(object):
         intenergy, _ = integrate.quad(
             lambda energy: energy * self.injection_spectrum(energy), 1e10,
             1e12)
-        newnorm = 1e44 * pru.erg2GeV / pru.Mpc2cm**3 / pru.yr2sec
+        newnorm = 1e44 * PRINCE_UNITS.erg2GeV / PRINCE_UNITS.Mpc2cm**3 / PRINCE_UNITS.yr2sec
 
         info(2, "Integrated energy is in total: " + str(intenergy))
         info(4, "Renormalizing the integrated energy to: " + str(newnorm))
@@ -65,13 +64,15 @@ class SimpleSource(CosmicRaySource):
     def __init__(self,
                  prince_run,
                  spectral_index=2.,
-                 emax=1e12,
+                 emax=1e13,
                  m=0.,
                  ncoid=101):
 
         self.spectral_index = spectral_index
-        self.emax = emax
         self.ncoid = ncoid
+
+        self.emax = emax/get_AZN(ncoid)[0]
+        
         CosmicRaySource.__init__(self, prince_run, m)
 
     def injection_spectrum(self, energy):
@@ -79,7 +80,7 @@ class SimpleSource(CosmicRaySource):
         power-law injection spectrum with spectral index and maximal energy cutoff
         """
         from numpy import exp
-        result = self.norm * energy**(
+        result = energy**(
             -self.spectral_index) * exp(-energy / self.emax)
 
         return result

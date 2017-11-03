@@ -3,7 +3,7 @@
 import cPickle as pickle
 from os import path
 from prince import photonfields, cross_sections, interaction_rates, data, util, solvers
-from prince.util import info
+from prince.util import info, get_AZN
 from prince_config import config, spec_data
 import numpy as np
 
@@ -19,6 +19,11 @@ class PriNCeRun(object):
 
     def __init__(self, *args, **kwargs):
 
+        # TODO: dirty workarround, pass max mass to config
+        # to delete heavier particle from crosssection
+        if "max_mass" in kwargs:
+            config["max_mass"] = kwargs["max_mass"]
+
         # Initialize energy grid
         self.cr_grid = util.EnergyGrid(*config["cosmic_ray_grid"])
 
@@ -29,23 +34,29 @@ class PriNCeRun(object):
         self.ed = self.cr_grid.d
 
         # Cross section handler
-        self.cross_sections = intcs.CrossSectionInterpolator(
-            [(0., intcs.NeucosmaFileInterface, ()),
-             (0.8, intcs.SophiaSuperposition, ())])
+        self.cross_sections = cross_sections.CompositeCrossSection(
+            [(0., cross_sections.TabulatedCrossSection, ()),
+             (0.8, cross_sections.SophiaSuperposition, ())])
 
         # Photon field handler
-        self.photon_field = photonfields.CombinedPhotonField(
-            [photonfields.CMBPhotonSpectrum, photonfields.CIBInoue2D])
+        #self.photon_field = photonfields.CMBPhotonSpectrum()
+        #self.photon_field = photonfields.CombinedPhotonField(
+        #    [photonfields.CMBPhotonSpectrum, photonfields.CIBInoue2D])
+        if 'photon_field' in kwargs:
+            self.photon_field = kwargs['photon_field']
+        else:
+            self.photon_field = photonfields.CombinedPhotonField(
+                [photonfields.CMBPhotonSpectrum, 
+                 photonfields.CIBFranceschini2D])
 
         # Store adv_set
         self.adv_set = config["adv_settings"]
 
         # Limit max nuclear mass of eqn system
-        system_species = self.cross_sections.known_species
-        if "max_mass" in kwargs:
-            system_species = [
-                s for s in system_species if s < 100 * (kwargs["max_mass"] + 1)
-            ]
+        system_species = [
+            s for s in self.cross_sections.known_species
+            if get_AZN(s)[0] <= config["max_mass"]
+        ]
         # Initialize species manager for all species for which cross sections are known
         self.spec_man = data.SpeciesManager(system_species, self.ed)
 
@@ -60,6 +71,7 @@ class PriNCeRun(object):
         self.continuous_losses = interaction_rates.ContinuousLossRates(
             prince_run=self)
 
+        self.cross_sections
         # Let species manager know about the photon grid dimensions (for idx calculations)
         # it is accesible under index "ph" for lidx(), uidx() calls
         self.spec_man.add_grid('ph', self.int_rates.dim_ph)

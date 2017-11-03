@@ -2,8 +2,9 @@
 in different modules of this project."""
 
 import inspect
-from scipy.interpolate import InterpolatedUnivariateSpline
+from scipy.interpolate import InterpolatedUnivariateSpline, RectBivariateSpline
 import scipy.constants as spc
+import numpy as np
 from prince_config import config
 
 
@@ -20,7 +21,7 @@ def convert_to_namedtuple(dictionary, name='GenericNamedTuple'):
 # Convert them if not standard unit
 # Accept only arguments in the units above
 
-units_and_conversions_def = dict(
+UNITS_AND_CONVERSIONS_DEF = dict(
     c=1e2 * spc.c,
     cm2Mpc=1. / (spc.parsec * spc.mega * 1e2),
     Mpc2cm=spc.mega * spc.parsec * 1e2,
@@ -33,11 +34,12 @@ units_and_conversions_def = dict(
     GeV2erg=1. / 624.15,
     erg2GeV=624.15,
     km2cm=1e5,
+    yr2sec=spc.year,
     Gyr2sec=spc.giga * spc.year,
     cm2sec=1e-2 / spc.c)
 
-#This is the immutable unit object to be imported throughout the code
-pru = convert_to_namedtuple(units_and_conversions_def, "PriNCeUnits")
+# This is the immutable unit object to be imported throughout the code
+PRINCE_UNITS = convert_to_namedtuple(UNITS_AND_CONVERSIONS_DEF, "PriNCeUnits")
 
 
 def get_AZN(nco_id):
@@ -87,6 +89,60 @@ def get_interp_object(xgrid, ygrid, **kwargs):
     return InterpolatedUnivariateSpline(xgrid, ygrid, **kwargs)
 
 
+def get_2Dinterp_object(xgrid, ygrid, zgrid, **kwargs):
+    """Returns simple standard interpolation object for 2-dimentsional
+    distribution.
+
+    Default type of interpolation is a spline of order
+    one without extrapolation (extrapolation to zero).
+
+    Args:
+        xgrid (numpy.array): x values of function
+        ygrid (numpy.array): y values of function
+    """
+    if (xgrid.shape[0], ygrid.shape[0]) != zgrid.shape:
+        raise Exception('x and y grid do not match z grid shape: {0} != {1}'.
+                        format((xgrid.shape, ygrid.shape), zgrid.shape))
+
+    if 'kx' not in kwargs:
+        kwargs['kx'] = 1
+    if 'ky' not in kwargs:
+        kwargs['ky'] = 1
+    if 's' not in kwargs:
+        kwargs['s'] = 0.
+
+    return RectBivariateSplineNoExtrap(xgrid, ygrid, zgrid, **kwargs)
+
+class RectBivariateSplineNoExtrap(RectBivariateSpline):
+    """Same as RectBivariateSpline but makes sure, that extrapolated data is alway 0"""
+    def __call__(self, x, y, **kwargs):
+        xknots, yknots = self.get_knots()
+        xmin, xmax = np.min(xknots), np.max(xknots)
+        ymin, ymax = np.min(yknots), np.max(yknots)
+        #info(1, 'Inherited Spline called, xmin {}, xmax {}'.format(xmin, xmax))
+
+        result = RectBivariateSpline.__call__(self, x, y, **kwargs)
+
+        result = np.where((x <= xmax) & (x >= xmin), result, 0.)
+        #result = np.where(x >= xmin, result, 0.)
+        return result
+
+class RectBivariateSplineLogData(RectBivariateSplineNoExtrap):
+    """Same as RectBivariateSpline but data is internally interpoled as log(data)"""
+    def __init__(self, x, y, z, *args, **kwargs):
+        x = np.log10(x)
+        y = np.log10(y)
+
+        info(2,'Spline created')
+        RectBivariateSplineNoExtrap.__init__(self, x, y, z, *args, **kwargs)
+
+    def __call__(self, x, y, **kwargs):
+        x = np.log10(x)
+        y = np.log10(y)
+
+        result = RectBivariateSplineNoExtrap.__call__(self, x, y, **kwargs)
+        return result
+
 def get_y(e, eps, nco_id):
     """Retrns center of mass energy of nucleus-photon system.
 
@@ -101,7 +157,7 @@ def get_y(e, eps, nco_id):
 
     A = get_AZN(nco_id)[0]
 
-    return e * eps / (A * pru.m_proton)
+    return e * eps / (A * PRINCE_UNITS.m_proton)
 
 
 def caller_name(skip=2):
@@ -123,12 +179,12 @@ def caller_name(skip=2):
     parentframe = stack[start][0]
 
     name = []
-    module = inspect.getmodule(parentframe)
-
-    # `modname` can be None when frame is executed directly in console
-
-    if module:
-        name.append(module.__name__ + '.')
+    
+    if config["print_module"]:
+        module = inspect.getmodule(parentframe)
+        # `modname` can be None when frame is executed directly in console
+        if module:
+            name.append(module.__name__ + '.')
 
     # detect classname
     if 'self' in parentframe.f_locals:
@@ -179,15 +235,28 @@ def load_or_convert_array(fname, **kwargs):
     Returns:
         (numpy.array): Array stored in that file
     """
-    from os.path import join, splitext, isfile
+    from os.path import join, splitext, isfile, isdir
+    from os import listdir
     import numpy as np
     fname = splitext(fname)[0]
     info(3, 'Loading file', fname)
     if not isfile(join(config["data_dir"], fname + '.npy')):
         info(2, 'Converting', fname, "to '.npy'")
-        arr = np.loadtxt(
-            join(config['raw_data_dir'], fname + '.dat'), **kwargs)
-        np.save(join(config["data_dir"], fname + '.npy'), arr)
+        arr = None
+        try:
+            arr = np.loadtxt(
+                join(config['raw_data_dir'], fname + '.dat'), **kwargs)
+        except IOError:
+            for subdir in listdir(config['raw_data_dir']):
+                if (isdir(join(config['raw_data_dir'], subdir)) and isfile(
+                        join(config['raw_data_dir'], subdir, fname + '.dat'))):
+                    arr = np.loadtxt(
+                        join(config['raw_data_dir'], subdir, fname + '.dat'),
+                        **kwargs)
+        finally:
+            if arr is None:
+                raise Exception('Required file', fname + '.dat', 'not found')
+            np.save(join(config["data_dir"], fname + '.npy'), arr)
         return arr
     else:
         return np.load(join(config["data_dir"], fname + '.npy'))
@@ -219,6 +288,42 @@ def dict_add(di, key, value):
     is created with value set to `value`."""
 
     if key in di:
-        di[key] += value
+        if isinstance(value, tuple):
+            new_value = value[1] + di[key][1]
+            di[key] = (di[key][0], new_value)
+            # The code below is a template what to do
+            # if energy grids are unequal and one needs to
+            # sum over common indices
+            # try:
+            # If energy grids are the same
+            # new_value = value[1] + di[key][1]
+            # value[1] += di[key][1]
+            # di[key] = (di[key][0], new_value)
+            # except ValueError:
+            #     # old_egr = di[key][0]
+            #     # old_val = di[key][1]
+            #     # new_egr = value[0]
+            #     # new_val = value[1]
+            #     # if prevval.shape[1] > value.shape[1]:
+            #     #     idcs = np.in1d(di[key][0], value)
+            #     #     value += prevval[idcs]
+            #     print key, value[1].shape, di[key][1].shape, '\n', value, '\n', di[key]
+            #     raise Exception()
+
+        else:
+            di[key] += value
     else:
         di[key] = value
+
+
+def bin_centers(bin_edges):
+    """Computes and returns bin centers from given edges."""
+    edg = np.array(bin_edges)
+    return 0.5 * (edg[1:] + edg[:-1])
+
+
+def bin_widths(bin_edges):
+    """Computes and returns bin widths from given edges."""
+    edg = np.array(bin_edges)
+
+    return edg[1:] - edg[:-1]

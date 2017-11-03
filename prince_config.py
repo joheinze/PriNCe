@@ -30,6 +30,9 @@ config = {
     # Debug flag for verbose printing, 0 = minimum
     "debug_level": 3,
 
+    # When printing output, prepend module name
+    "print_module" : False,
+
     #=========================================================================
     # Paths and library locations
     #=========================================================================
@@ -40,8 +43,8 @@ config = {
     "raw_data_dir": path.join(base, 'utils'),
     # # nuclear cross sections
     # "data_dir": '/data',
-    # # File name of particle production yields
-    # "yield_fname": "yield_dict.ppd",
+    # Model file for redistribution functions (from SOPHIA or similar)
+    "redist_fname": "sophia_redistribution.npy",
 
     # full path to libmkl_rt.[so/dylib] (only if kernel=='MKL')
     "MKL_path": mkl_default + lib_ext,
@@ -64,12 +67,15 @@ config = {
     #===========================================================================
     # Grids
     #===========================================================================
+    # Number of bins in multiples of 4 recommended for maximal vectorization
+    # efficiency for 256 bit AVX or similar
+
     # Format (log10(E_min), log10(E_max), nbins/decade of energy)
     # Main energy grid for solver
-    "cosmic_ray_grid": (7, 13, 10),
+    "cosmic_ray_grid": (5, 13, 16),
 
     # Photon grid of target field, only for calculation of rates
-    "photon_grid": (-15, -8, 10),
+    "photon_grid": (-25, -5, 8),
 
     #===========================================================================
     # Model options
@@ -77,11 +83,22 @@ config = {
     # The sophia tables are on a grid with 2000 points. The number will use every
     # N-th entry of the table to reduce memory usage of the interpolator
     "sophia_grid_skip": 4,
-    # Threshold lifetime value to consider a particle as woth propagating. It
+    # Threshold lifetime value to consider a particle as worth propagating. It
     # means that if a particle is unstable with lifetime smaller than this threshold
     # will be decayed until all final state particles of this chain are stable.
     # In other words: short intermediate states will be integrated out
-    "tau_dec_threshold": 0.5,
+    #"tau_dec_threshold": np.inf,
+    "tau_dec_threshold": 0.,
+
+    # Particle ID for which redistribution functions are needed to be taken into
+    # account. The default value is 101 (proton). All particles with smaller
+    # IDs, i.e. neutrinos, pions, muons etc., will have energy redistributions.
+    # For larger IDs (nuclei) the boost conservation is employed.
+    "redist_threshold_ID": 101,
+
+    # Build equation system up to a maximal nuclear mass of
+    "max_mass": np.inf,
+
     #===========================================================================
     # Parameters of numerical integration
     #===========================================================================
