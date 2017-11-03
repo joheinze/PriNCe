@@ -122,8 +122,8 @@ class CrossSectionBase(object):
         # if not self.supports_redistributions:
         #     info(10, mother, daughter, " model doesn't support redist")
         #     return False
-        if (daughter <= config["redist_threshold_ID"]
-                or (mother, daughter) in self.incl_diff_idcs):
+        if (daughter <= config["redist_threshold_ID"] or
+            (mother, daughter) in self.incl_diff_idcs):
             info(20, 'Daughter requires redistribution.', mother, daughter)
             return True
         info(20, 'Daughter conserves boost.', mother, daughter)

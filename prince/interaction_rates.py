@@ -9,6 +9,7 @@ from prince.util import (get_AZN, get_interp_object, info,
                          load_or_convert_array, PRINCE_UNITS)
 from prince_config import config
 
+#import matplotlib.pyplot as plt
 
 class InteractionRateBase(object):
     __metaclass__ = ABCMeta
@@ -154,8 +155,20 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
 
         ecr_mat_in, ecr_mat_out = np.meshgrid(self.e_cosmicray.grid,
                                               self.e_cosmicray.grid)
+        decr_mat_in, decr_mat_out = np.meshgrid(self.e_cosmicray.widths,
+                                              self.e_cosmicray.widths)
         self.xmat = ecr_mat_out / ecr_mat_in
+        # matrix for numeric correction of differential redist:
+        # factor D_Ein for integral, factor 1 / E_in for x substitution
+        # and factor D_Ein / D_Eout for bin width correction
         
+        #print 'integral correction:'
+        self.integ_corr_mat = decr_mat_in ** 2 / ecr_mat_in / decr_mat_out
+        #print self.integ_corr_mat
+        self.integ_corr_mat = decr_mat_in / ecr_mat_in
+        #self.integ_corr_mat = np.ones(self.integ_corr_mat.shape)
+        #print self.integ_corr_mat
+
         n_nonel_diff = len([
             species for species in self.spec_man.species_refs
             if species.has_redist
@@ -219,20 +232,37 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
             self.xmat[:, :, np.newaxis], self.ymat.shape[1], axis=2)
         y_repeat = np.repeat(
             self.ymat[:, np.newaxis, :], self.xmat.shape[1], axis=1)
+        #print 'integration correction matrix'
+        #print 'shape:', self.integ_corr_mat.shape
+        #print self.integ_corr_mat
+        #plt.spy(self.integ_corr_mat,precision=0.01)
+        integ_corr_repeat = np.repeat(
+            self.integ_corr_mat[:, :, np.newaxis], self.ymat.shape[1], axis=2)        
+        #print 'in repeated form:'
+        #print 'shape:', integ_corr_repeat.shape
+        #print integ_corr_repeat
+
         # reshape to 2D grid, to fit the batch matrix
         x_repeat = x_repeat.reshape((-1, x_repeat.shape[2]))
         y_repeat = y_repeat.reshape((-1, y_repeat.shape[2]))
+        integ_corr_repeat = integ_corr_repeat.reshape((-1, integ_corr_repeat.shape[2]))
+
+        #print 'repeated correction matrix:'
+        #print 'shape:', integ_corr_repeat.shape
+        #print integ_corr_repeat
+        #plt.spy(integ_corr_repeat,precision=0.01)
         fill_idx = 0
 
         for mother in self.spec_man.known_species:
             if species[mother].has_redist:
-                print 'mother with redist', mother
                 lidx = fill_idx
                 uidx = fill_idx + self.dim_cr**2
 
                 prindices_mo = species[mother].indices()
                 prindices_in = np.tile(prindices_mo, self.xmat.shape[0])
                 prindices_out = np.repeat(prindices_mo, self.xmat.shape[1])
+                #prindices_in = np.repeat(prindices_mo, self.xmat.shape[1])
+                #prindices_out = np.tile(prindices_mo, self.xmat.shape[0])
                 self._batch_rows[lidx:uidx] = prindices_out
                 self._batch_cols[lidx:uidx] = prindices_in
 
@@ -248,7 +278,6 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
 
                 fill_idx += self.dim_cr**2
             else:
-                print 'mother without redist', mother
                 lidx = fill_idx
                 uidx = fill_idx + self.dim_cr
 
@@ -304,7 +333,16 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
 
                     self._batch_matrix[lidx:uidx] = resp.get_full(
                         mo, da, y_repeat, xgrid=x_repeat).dot(delta_eps)
-
+                    #if mo == 101:
+                    #    print 'for daugter {:}:'.format(da)
+                    #    print self._batch_matrix[lidx:uidx]
+                    self._batch_matrix[lidx:uidx] = integ_corr_repeat * self._batch_matrix[lidx:uidx]
+                    #if mo == 101:
+                    #    print 'after multiplying correction'
+                    #    print self._batch_matrix[lidx:uidx]
+                    #    print 'correction matrix:'
+                    #    print integ_corr_repeat
+                    #    print '-'*25
                     B = float(get_AZN(da)[0])
                     A = float(get_AZN(mo)[0])
 
