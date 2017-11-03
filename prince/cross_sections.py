@@ -996,6 +996,12 @@ class ResponseFunction(object):
         if (mother, daughter) in self.incl_intp:
             res += self.incl_intp[(mother, daughter)](ygrid)
         elif (mother, daughter) in self.incl_diff_intp:
+            #incl_diff_res = self.incl_diff_intp[(mother, daughter)](
+            #    xgrid, ygrid, grid=False)
+            #if mother == 101:
+            #    incl_diff_res = np.where(xgrid < 0.9, incl_diff_res, 0.)
+            #res += incl_diff_res
+            #if not(mother == daughter):
             res += self.incl_diff_intp[(mother, daughter)](
                 xgrid, ygrid, grid=False)
 

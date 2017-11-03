@@ -39,8 +39,15 @@ class PriNCeRun(object):
              (0.8, cross_sections.SophiaSuperposition, ())])
 
         # Photon field handler
-        self.photon_field = photonfields.CombinedPhotonField(
-            [photonfields.CMBPhotonSpectrum, photonfields.CIBInoue2D])
+        #self.photon_field = photonfields.CMBPhotonSpectrum()
+        #self.photon_field = photonfields.CombinedPhotonField(
+        #    [photonfields.CMBPhotonSpectrum, photonfields.CIBInoue2D])
+        if 'photon_field' in kwargs:
+            self.photon_field = kwargs['photon_field']
+        else:
+            self.photon_field = photonfields.CombinedPhotonField(
+                [photonfields.CMBPhotonSpectrum, 
+                 photonfields.CIBFranceschini2D])
 
         # Store adv_set
         self.adv_set = config["adv_settings"]
@@ -64,6 +71,7 @@ class PriNCeRun(object):
         self.continuous_losses = interaction_rates.ContinuousLossRates(
             prince_run=self)
 
+        self.cross_sections
         # Let species manager know about the photon grid dimensions (for idx calculations)
         # it is accesible under index "ph" for lidx(), uidx() calls
         self.spec_man.add_grid('ph', self.int_rates.dim_ph)

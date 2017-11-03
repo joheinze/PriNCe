@@ -74,6 +74,24 @@ class CombinedPhotonField(PhotonField):
         return res
 
 
+class FlatPhotonSpectrum(PhotonField):
+    """Constant photon density for testing.
+    """
+
+    def get_photon_density(self, E, z):
+        """Returns the redshift-scaled number density of CMB photons
+
+        Args:
+          z (float): redshift
+          E (float): photon energy (GeV)
+
+        Returns:
+          float: CMB photon spectrum in :math:`{\\rm GeV}}^{-1} {\\rm cm}}^{-3}`
+        """
+        # density at z = 0
+        nlocal = np.ones_like(E, dtype='double') * 1e12
+        return (1. + z)**2 * nlocal  # JH: Fixed, was (1. + z) ** 3 before
+    
 class CMBPhotonSpectrum(PhotonField):
     """Redshift-scaled number density of CMB photons
 

@@ -46,9 +46,27 @@ class UHECRPropagationSolver(object):
         return trapz(A * self.egrid * self.get_solution(nco_id),
                      A * self.egrid)
 
-    def get_solution(self, nco_id, redshift=0.):
+    def get_solution(self, nco_id):
+        """Returns the spectrum in energy per nucleon"""
+        sp = self.prince_run.spec_man.ncoid2sref[nco_id]
+        return self.egrid, self.r.y[sp.lidx():sp.uidx()]
+
+    def get_solution_scale(self, nco_id):
+        """Returns the spectrum scaled back to total energy"""
+        A = get_AZN(nco_id)[0]
         sp = self.prince_run.spec_man.ncoid2sref[nco_id]
         return self.r.y[sp.lidx():sp.uidx()]
+        return A * self.egrid, self.r.y[sp.lidx():sp.uidx()] / A
+
+    def get_solution_group(self, nco_ids):
+        """Return the summed spectrum (in total energy) for all elements in the range"""
+        # Take egrid from first id
+        com_egrid, spec = self.get_solution_scale(nco_ids[0])
+        for pid in nco_ids[1:]:
+            curr_egrid, curr_spec = self.get_solution_scale(pid)
+            spec += np.interp(com_egrid, curr_egrid, curr_spec, left=0., right=0.)
+
+        return com_egrid, spec
 
     def set_initial_condition(self, spectrum=None, nco_id=None):
         self.state *= 0.
@@ -153,11 +171,12 @@ class UHECRPropagationSolver(object):
 
         self.r = ode(self.eqn_deriv, self.eqn_jac).set_integrator(**ode_params)
         # self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
+        
 
-    def solve(self):
+    def solve(self, dz=1e-2, verbose=True, extended_output = False):
         from time import time
-        extended_output = False
-        dz = -1e-2
+        
+        dz = -1 * dz
         now = time()
         self.r.set_initial_value(np.zeros(self.dim_states), self.r.t)
 
@@ -165,28 +184,29 @@ class UHECRPropagationSolver(object):
 
         while self.r.successful() and (self.r.t + dz) > self.final_z:
             info(3, "Integrating at z={0}".format(self.r.t))
+
             self._update_jacobian(self.r.t)
             stepin = time()
-
-            self.r.integrate(self.r.t + dz)
-
-            print 'step took', time() - stepin
-            print 'At t =', self.r.t
-            print 'jacobian calls', self.ncallsj
-            print 'function calls', self.ncallsf
-            if extended_output:
-                NST = self.r._integrator.iwork[10]
-                NFE = self.r._integrator.iwork[11]
-                NJE = self.r._integrator.iwork[13]
-                NLU = self.r._integrator.iwork[20]
-                NNZ = self.r._integrator.iwork[19]
-                NNZLU = self.r._integrator.iwork[24] + self.r._integrator.iwork[26] + 12
-                print 'NST', NST
-                print 'NFE', NFE
-                print 'NJE', NJE
-                print 'NLU', NLU
-                print 'NNZLU', NNZLU
-                print 'LAST STEP {0:4.3e}'.format(self.r._integrator.rwork[10])
+            self.r.integrate(self.r.t + dz)#, 
+                # step=True if self.r.t < self.initial_z else False)
+            if verbose:
+                print 'step took',time() - stepin
+                print 'At t =',self.r.t
+                print 'jacobian calls', self.ncallsj
+                print 'function calls', self.ncallsf
+                if extended_output:
+                    NST = self.r._integrator.iwork[10]
+                    NFE = self.r._integrator.iwork[11]
+                    NJE = self.r._integrator.iwork[13]
+                    NLU = self.r._integrator.iwork[20]
+                    NNZ = self.r._integrator.iwork[19]
+                    NNZLU = self.r._integrator.iwork[24] + self.r._integrator.iwork[26] + 12
+                    print 'NST', NST
+                    print 'NFE', NFE
+                    print 'NJE', NJE
+                    print 'NLU', NLU
+                    print 'NNZLU', NNZLU
+                    print 'LAST STEP {0:4.3e}'.format(self.r._integrator.rwork[10])
             self.ncallsf = 0
             self.ncallsj = 0
 

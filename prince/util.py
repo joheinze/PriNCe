@@ -34,6 +34,7 @@ UNITS_AND_CONVERSIONS_DEF = dict(
     GeV2erg=1. / 624.15,
     erg2GeV=624.15,
     km2cm=1e5,
+    yr2sec=spc.year,
     Gyr2sec=spc.giga * spc.year,
     cm2sec=1e-2 / spc.c)
 
@@ -110,10 +111,10 @@ def get_2Dinterp_object(xgrid, ygrid, zgrid, **kwargs):
     if 's' not in kwargs:
         kwargs['s'] = 0.
 
-    return RectBivariateSplineExtrap(xgrid, ygrid, zgrid, **kwargs)
+    return RectBivariateSplineNoExtrap(xgrid, ygrid, zgrid, **kwargs)
 
-
-class RectBivariateSplineExtrap(RectBivariateSpline):
+class RectBivariateSplineNoExtrap(RectBivariateSpline):
+    """Same as RectBivariateSpline but makes sure, that extrapolated data is alway 0"""
     def __call__(self, x, y, **kwargs):
         xknots, yknots = self.get_knots()
         xmin, xmax = np.min(xknots), np.max(xknots)
@@ -126,6 +127,21 @@ class RectBivariateSplineExtrap(RectBivariateSpline):
         #result = np.where(x >= xmin, result, 0.)
         return result
 
+class RectBivariateSplineLogData(RectBivariateSplineNoExtrap):
+    """Same as RectBivariateSpline but data is internally interpoled as log(data)"""
+    def __init__(self, x, y, z, *args, **kwargs):
+        x = np.log10(x)
+        y = np.log10(y)
+
+        info(2,'Spline created')
+        RectBivariateSplineNoExtrap.__init__(self, x, y, z, *args, **kwargs)
+
+    def __call__(self, x, y, **kwargs):
+        x = np.log10(x)
+        y = np.log10(y)
+
+        result = RectBivariateSplineNoExtrap.__call__(self, x, y, **kwargs)
+        return result
 
 def get_y(e, eps, nco_id):
     """Retrns center of mass energy of nucleus-photon system.
