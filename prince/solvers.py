@@ -18,6 +18,8 @@ class UHECRPropagationSolver(object):
 
         self.egrid = prince_run.egrid
         self.egr_state = np.tile(self.egrid, prince_run.spec_man.nspec)
+        self.ewi_state = np.tile(self.prince_run.cr_grid.widths, 
+                                 prince_run.spec_man.nspec)
         self.dim_cr = prince_run.int_rates.dim_cr
         self.dim_ph = prince_run.int_rates.dim_ph
         self.int_rates = self.prince_run.int_rates
@@ -55,7 +57,6 @@ class UHECRPropagationSolver(object):
         """Returns the spectrum scaled back to total energy"""
         A = get_AZN(nco_id)[0]
         sp = self.prince_run.spec_man.ncoid2sref[nco_id]
-        return self.r.y[sp.lidx():sp.uidx()]
         return A * self.egrid, self.r.y[sp.lidx():sp.uidx()] / A
 
     def get_solution_group(self, nco_ids):
@@ -119,9 +120,8 @@ class UHECRPropagationSolver(object):
 
     def eqn_deriv(self, z, state, *args):
         self.ncallsf += 1
-        # self._update_jacobian(self.r.t)
-        r = self.jacobian.dot(self.dldz(z) * state) + self.injection(1., z)
-        # r = self.injection(1., z)
+        # print self.dldz(z)
+        r = self.jacobian.dot(self.dldz(z)*state) + self.injection(1., z)
         return r
 
     def _init_vode(self):
@@ -135,11 +135,11 @@ class UHECRPropagationSolver(object):
             'name': 'lsodes',
             'method': 'bdf',
             # 'nsteps': 10000,
-            'rtol': 1e-4,
-            'atol': 1e5,
+            'rtol': 1e-2,
+            # 'atol': 1e5,
             'ndim': self.dim_states,
             'nnz': self.jacobian.nnz,
-            'csc_jacobian': csc_matrix(self.jacobian.todense()),
+            # 'csc_jacobian': csc_matrix(self.jacobian.todense()),
             # 'max_order_s': 5,
             # 'with_jacobian': True
         }
@@ -183,7 +183,8 @@ class UHECRPropagationSolver(object):
         info(2, 'Starting integration.')
 
         while self.r.successful() and (self.r.t + dz) > self.final_z:
-            info(3, "Integrating at z={0}".format(self.r.t))
+            if verbose:
+                info(3, "Integrating at z={0}".format(self.r.t))
 
             self._update_jacobian(self.r.t)
             stepin = time()

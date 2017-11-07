@@ -96,6 +96,16 @@ class CrossSectionBase(object):
         """
 
         return 0.5 * (self.xbins[1:] + self.xbins[:-1])
+    
+    @property
+    def xwidths(self):
+        """Returns bin widths of the grid in x.
+
+        Returns:
+            (numpy.array): x widths
+        """
+
+        return self.xbins[1:] - self.xbins[:-1]
 
     @property
     def resp(self):
@@ -188,11 +198,11 @@ class CrossSectionBase(object):
                 self.reactions[mo] = []
                 self.known_species.append(mo)
 
-            if mo == da:
-                info(1, "Workaround, excluding mother -> mother channels.")
-                # TODO: For now we do not include channels mo -> mo
-                # as it would break PhotoNuclearInteractionRateCSC._init_matrix_incl()
-                continue
+            # if mo == da:
+            #     info(1, "Workaround, excluding mother -> mother channels.")
+            #     # TODO: For now we do not include channels mo -> mo
+            #     # as it would break PhotoNuclearInteractionRateCSC._init_matrix_incl()
+            #     continue
 
             if (mo, da) not in self.reactions[mo]:
                 # Make sure it's a unique list to avoid unnecessary loops
@@ -204,6 +214,12 @@ class CrossSectionBase(object):
         self.known_species = sorted(list(set(self.known_species)))
         self.known_bc_channels = sorted(list(set(self.known_bc_channels)))
         self.known_diff_channels = sorted(list(set(self.known_diff_channels)))
+
+        for sp in self.known_species:
+            if sp >= 100 and (sp, sp) not in self.known_diff_channels:
+                self.known_bc_channels.append((mo, mo))
+            if (mo, mo) not in self.reactions[mo]:
+                self.reactions[mo].append((mo, mo))
 
         # Make sure the indices are up to date
         self._update_indices()
@@ -1002,8 +1018,8 @@ class ResponseFunction(object):
             #    incl_diff_res = np.where(xgrid < 0.9, incl_diff_res, 0.)
             #res += incl_diff_res
             #if not(mother == daughter):
-            res += self.incl_diff_intp[(mother, daughter)](
-                xgrid, ygrid, grid=False)
+                res += self.incl_diff_intp[(mother, daughter)].inteval(
+                    xgrid, ygrid, grid=False)
 
         if mother == daughter and mother in self.nonel_intp:
             # nonel cross section leads to absorption, therefore the minus
@@ -1104,7 +1120,7 @@ class ResponseFunction(object):
         for mother, daughter in self.incl_diff_idcs:
             ygr, rfunc = self.get_channel(mother, daughter)
             self.incl_diff_intp[(mother, daughter)] = get_2Dinterp_object(
-                self.xcenters, ygr, rfunc)
+                self.xcenters, ygr, rfunc, self.cross_section.xbins)
 
 
 if __name__ == "__main__":

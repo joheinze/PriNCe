@@ -11,6 +11,7 @@ from prince_config import config
 
 #import matplotlib.pyplot as plt
 
+
 class InteractionRateBase(object):
     __metaclass__ = ABCMeta
 
@@ -139,228 +140,396 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         #self._fill_matrix_incl()
         #self._fill_matrix_incl_diff()
 
-        self._fill_batch_matrix()
+        # self._fill_batch_matrix()
 
-        self._init_coupling_mat(sp_format='csr')
+        # self._init_coupling_mat(sp_format='csr')
 
     def _init_matrices(self):
-        """Initializes convenicen matrices for batch computation"""
-        from prince.util import get_y
+        """ A new take on filling the matrices"""
 
-        # Iniialize cross section matrices, evaluated on a grid of y values
-        eph_mat, ecr_mat = np.meshgrid(self.e_photon.grid,
-                                       self.e_cosmicray.grid)
-        # Compute y matrix only once and then rescale by A
-        self.ymat = get_y(ecr_mat, eph_mat, 100)
-
-        ecr_mat_in, ecr_mat_out = np.meshgrid(self.e_cosmicray.grid,
-                                              self.e_cosmicray.grid)
-        decr_mat_in, decr_mat_out = np.meshgrid(self.e_cosmicray.widths,
-                                              self.e_cosmicray.widths)
-        self.xmat = ecr_mat_out / ecr_mat_in
-        # matrix for numeric correction of differential redist:
-        # factor D_Ein for integral, factor 1 / E_in for x substitution
-        # and factor D_Ein / D_Eout for bin width correction
-        
-        #print 'integral correction:'
-        self.integ_corr_mat = decr_mat_in ** 2 / ecr_mat_in / decr_mat_out
-        #print self.integ_corr_mat
-        self.integ_corr_mat = decr_mat_in / ecr_mat_in
-        #self.integ_corr_mat = np.ones(self.integ_corr_mat.shape)
-        #print self.integ_corr_mat
-
-        n_nonel_diff = len([
-            species for species in self.spec_man.species_refs
-            if species.has_redist
-        ])
-        n_nonel = self.spec_man.nspec - n_nonel_diff
-        n_incl = len([(mo, da)
-                      for (mo, da) in self.cross_sections.known_bc_channels
-                      if mo != da])
-        n_incl_diff = len([(mo, da)
-                           for (mo,
-                                da) in self.cross_sections.known_diff_channels
-                           if mo != da])
-
-        # [mother_ncoid,daughter_ncoid] -> _batch_vec[lidx:uidx]
-        self._nonel_batchvec_pointer = {}
-        self._incl_batchvec_pointer = {}
-        self._incl_diff_batchvec_pointer = {}
-        # [mother_princeidx,daughter_princeidx] -> _batch_vec[lidx:uidx]
-        self._incl_batchvec_pridx_pointer = {}
-        self._incl_diff_batchvec_pridx_pointer = {}
-
-        dim_nonel = self.dim_cr * n_nonel + self.dim_cr**2 * n_nonel_diff
-        dim_incl = self.dim_cr * n_incl
-        dim_incl_diff = self.dim_cr**2 * n_incl_diff
-        dim_ph = self.dim_ph
-        info(3, 'Batch matrix nonel dimension: {0}'.format(dim_nonel))
-        info(3, 'Batch matrix incl dimension: {0}'.format(dim_incl))
-        info(3, 'Batch matrix incl diff dimension: {0}'.format(dim_incl_diff))
-        info(3, 'Batch matrix photon dimension: {0}'.format(dim_ph))
-
-        # Convolution matrix for response function
-        self._batch_matrix = np.zeros((dim_nonel + dim_incl + dim_incl_diff,
-                                       dim_ph))
-        info(2, 'Size of complete batch matrix: {0}x{1}'.format(
-            *self._batch_matrix.shape))
-
-        # Result vector, which stores computed rates
-        self._batch_vec = np.zeros(self._batch_matrix.shape[0])
-
-        # Vector which stores constant prefactors for batch vector
-        self._batch_vec_prefac = np.ones(self._batch_matrix.shape[0])
-
-        self._batch_rows = np.zeros(self._batch_matrix.shape[0], dtype=np.int)
-        self._batch_cols = np.zeros(self._batch_matrix.shape[0], dtype=np.int)
-
-        # pointer to lower-upper index
-        self._batch_vec_pointer = {}
-
-    def _fill_batch_matrix(self):
-        """ Fill the batch matrix with physics """
-        info(2, 'Starting to fill batch matrix')
-        # Delta eps (photon energy) bin widths
-        delta_eps = np.diag(self.e_photon.widths)
-
-        species = self.spec_man.ncoid2sref
+        # Define some short-cuts
+        known_species = self.spec_man.known_species[::-1]
+        sp_id_ref = self.spec_man.ncoid2sref
         resp = self.cross_sections.resp
+        m_pr = PRINCE_UNITS.m_proton
 
-        # We need x and y on the 3D array E_da x E_mo x eph
-        # therefore repeat xmat and ymat accordingly
-        x_repeat = np.repeat(
-            self.xmat[:, :, np.newaxis], self.ymat.shape[1], axis=2)
-        y_repeat = np.repeat(
-            self.ymat[:, np.newaxis, :], self.xmat.shape[1], axis=1)
-        #print 'integration correction matrix'
-        #print 'shape:', self.integ_corr_mat.shape
-        #print self.integ_corr_mat
-        #plt.spy(self.integ_corr_mat,precision=0.01)
-        integ_corr_repeat = np.repeat(
-            self.integ_corr_mat[:, :, np.newaxis], self.ymat.shape[1], axis=2)        
-        #print 'in repeated form:'
-        #print 'shape:', integ_corr_repeat.shape
-        #print integ_corr_repeat
+        # Energy variables
+        dcr = self.dim_cr
+        dph = self.dim_ph
+        ecr = self.e_cosmicray.grid
+        bcr = self.e_cosmicray.bins
+        eph = self.e_photon.grid
+        bph = self.e_photon.bins
 
-        # reshape to 2D grid, to fit the batch matrix
-        x_repeat = x_repeat.reshape((-1, x_repeat.shape[2]))
-        y_repeat = y_repeat.reshape((-1, y_repeat.shape[2]))
-        integ_corr_repeat = integ_corr_repeat.reshape((-1, integ_corr_repeat.shape[2]))
+        # Edges of each CR energy bin
+        elims = np.vstack([bcr[:-1], bcr[1:]])
 
-        #print 'repeated correction matrix:'
-        #print 'shape:', integ_corr_repeat.shape
-        #print integ_corr_repeat
-        #plt.spy(integ_corr_repeat,precision=0.01)
-        fill_idx = 0
+        # Edges of each photon energy bin
+        plims = np.vstack([bph[:-1], bph[1:]])
 
-        for mother in self.spec_man.known_species:
-            if species[mother].has_redist:
-                lidx = fill_idx
-                uidx = fill_idx + self.dim_cr**2
+        # Widths
+        delta_ec = np.subtract(*-elims[:, :])
+        delta_ph = np.subtract(*-plims[:, :])
 
-                prindices_mo = species[mother].indices()
-                prindices_in = np.tile(prindices_mo, self.xmat.shape[0])
-                prindices_out = np.repeat(prindices_mo, self.xmat.shape[1])
-                #prindices_in = np.repeat(prindices_mo, self.xmat.shape[1])
-                #prindices_out = np.tile(prindices_mo, self.xmat.shape[0])
-                self._batch_rows[lidx:uidx] = prindices_out
-                self._batch_cols[lidx:uidx] = prindices_in
+        # CR and photon grid indices
+        emo_idcs = eda_idcs = np.arange(dcr)
+        p_idcs = np.arange(dph)
 
-                if mother < 100:
-                    # Note: in this case the batch vector will be zero anyway
-                    info(3, "Can not compute interaction rate for", mother)
-                    fill_idx += self.dim_cr**2
+        # calculate dimension of the batch matrix
+        batch_dim = 0
+        for specid in known_species:
+            if specid < 100:
+                continue
+            # Add the main diagonal self-couplings (absoption)
+            batch_dim += dcr
+            for rtup in self.cross_sections.reactions[specid]:
+                # Off main diagonal couplings (reinjection)
+                if rtup in self.cross_sections.known_bc_channels:
+                    batch_dim += dcr
+                elif rtup in self.cross_sections.known_diff_channels:
+                    # Only half of the elements can be non-zero (energy conservation)
+                    batch_dim += int(dcr**2)
+
+        info(2, 'Batch matrix dimensions are {0}x{1}'.format(batch_dim, dph))
+        info(3, 'Memory usage: {0} MB'.format(batch_dim * dph * 8 / 1024**2))
+
+        self._batch_matrix = np.zeros((batch_dim, dph))
+        ibatch = 0
+        self._batch_rows = []
+        self._batch_cols = []
+        # We are gonna fill the batch matrix with the cross section using iterators
+        # The op_axes arguments define how to compute the outer product.
+
+        # Iterate over all combinations of species
+        spec_iter = np.nditer(
+            [known_species, known_species], op_axes=[[0, -1], [-1, 0]])
+
+        it_bc = np.nditer(
+            [emo_idcs, eda_idcs, p_idcs],
+            op_axes=[[0, -1], [0, -1], [-1, 0]],
+            flags=['external_loop'])
+
+        it_diff = np.nditer(
+            [emo_idcs, eda_idcs, p_idcs],
+            op_axes=[[0, -1, -1], [-1, 0, -1], [-1, -1, 0]])
+
+        for moid, daid in spec_iter:
+            moid, daid = int(moid), int(daid)
+            if get_AZN(moid)[0] < get_AZN(daid)[0] or moid < 100:
+                continue
+            # TODO: workaround for missing injection into redist 
+            if get_AZN(moid)[0] > 1 and daid < 100:
+                print 'skip', moid, daid
+                continue
+
+            if moid == daid:
+                intp_nonel = resp.nonel_intp[moid].antiderivative()
+
+            if (moid, daid) in self.cross_sections.known_bc_channels:
+
+                it_bc.reset()
+                try:
+                    intp_bc = resp.incl_intp[(moid, daid)].antiderivative()
+                except KeyError:
+                    info(1,'Inclusive interpolator not found for', (moid, daid))
                     continue
+                for m_eidx, d_eidx, ph_idx in it_bc:
+                    m_eidx = m_eidx[0]
+                    d_eidx = d_eidx[0]
+                    emo = ecr[m_eidx]
 
-                self._batch_matrix[lidx:uidx] = resp.get_full(
-                    mother, mother, y_repeat, xgrid=x_repeat).dot(delta_eps)
-                self._batch_vec_pointer[mother] = (lidx, uidx)
+                    # Differential factors
+                    int_fac = delta_ec[m_eidx] * delta_ph[ph_idx] / emo 
+                    diff_fac = 1. / delta_ec[d_eidx] / delta_ph[ph_idx] * m_pr
 
-                fill_idx += self.dim_cr**2
+                    yl = plims[0, ph_idx] * emo / m_pr
+                    yu = plims[1, ph_idx] * emo / m_pr
+                    self._batch_matrix[ibatch, :] = (
+                        intp_bc(yu) - intp_bc(yl)) * int_fac * diff_fac
+                    if moid == daid:
+                        self._batch_matrix[ibatch, :] -= (
+                            intp_nonel(yu) - intp_nonel(yl)
+                        ) * int_fac * diff_fac
+                    # Try later to check for zero result to save more zeros.
+                    ibatch += 1
+                    self._batch_rows.append(sp_id_ref[daid].lidx() + d_eidx)
+                    self._batch_cols.append(sp_id_ref[moid].lidx() + m_eidx)
+
+            elif (moid, daid) in self.cross_sections.known_diff_channels:
+                it_diff.reset()
+                intp_diff = resp.incl_diff_intp[(moid, daid)]
+
+                for m_eidx, d_eidx, ph_idx in it_diff:
+                    if d_eidx > m_eidx:
+                        continue
+
+                    emo = ecr[m_eidx]
+
+                    xl = elims[0, d_eidx] / emo
+                    xu = elims[1, d_eidx] / emo
+                    yl = plims[0, ph_idx] * emo / m_pr
+                    yu = plims[1, ph_idx] * emo / m_pr
+
+                    if xl < 1e-3 or 0.5 * (
+                            yl + yu) < np.min(intp_diff.get_knots()[1]):
+                        continue
+                    # if daid == 2 and xl > 0.2:
+                    #     print 'skip', daid, xl
+                    #     continue
+                    # Differential factors
+                    int_fac = delta_ec[m_eidx] * delta_ph[ph_idx] / emo 
+                    diff_fac = 1. / delta_ec[d_eidx] / delta_ph[ph_idx] * m_pr
+
+                    self._batch_matrix[ibatch, ph_idx] = intp_diff.integral(
+                        xl, xu, yl, yu) * diff_fac * int_fac
+
+                    if moid == daid and m_eidx == d_eidx:
+                        self._batch_matrix[ibatch, ph_idx] -= (
+                            intp_nonel(yu) - intp_nonel(yl)
+                        ) * diff_fac * int_fac
+
+                    if ph_idx == p_idcs[-1]:
+                        ibatch += 1
+                        self._batch_rows.append(sp_id_ref[daid].lidx() +
+                                                d_eidx)
+                        self._batch_cols.append(sp_id_ref[moid].lidx() +
+                                                m_eidx)
+
             else:
-                lidx = fill_idx
-                uidx = fill_idx + self.dim_cr
+                info(2,'Species combination not supported',moid, daid)
 
-                prindices = species[mother].indices()
-                self._batch_rows[lidx:uidx] = prindices
-                self._batch_cols[lidx:uidx] = prindices
+        self._batch_matrix.resize((ibatch, dph))
+        self._batch_cols = np.hstack(self._batch_cols)
+        self._batch_rows = np.hstack(self._batch_rows)
 
-                if mother < 100:
-                    # Note: in this case the batch vector will be zero anyway
-                    info(3, "Can not compute interaction rate for", mother)
-                    fill_idx += self.dim_cr
-                    continue
+        self._batch_vec = np.zeros(ibatch)
 
-                self._batch_matrix[lidx:uidx] = resp.get_full(
-                    mother, mother, self.ymat).dot(delta_eps)
-                self._batch_vec_pointer[mother] = (lidx, uidx)
 
-                fill_idx += self.dim_cr
+# def _init_matrices(self):
+#     """Initializes convenicen matrices for batch computation"""
+#     from prince.util import get_y
 
-            for (mo, da) in self.cross_sections.reactions[mother]:
+#     # Iniialize cross section matrices, evaluated on a grid of y values
+#     eph_mat, ecr_mat = np.meshgrid(self.e_photon.grid,
+#                                    self.e_cosmicray.grid)
+#     # Compute y matrix only once and then rescale by A
+#     self.ymat = get_y(ecr_mat, eph_mat, 100)
 
-                if mo == da:
-                    # these were already covered before the loop
-                    continue
+#     ecr_mat_in, ecr_mat_out = np.meshgrid(self.e_cosmicray.grid,
+#                                           self.e_cosmicray.grid)
+#     decr_mat_in, decr_mat_out = np.meshgrid(self.e_cosmicray.widths,
+#                                           self.e_cosmicray.widths)
+#     self.xmat = ecr_mat_out / ecr_mat_in
+#     # matrix for numeric correction of differential redist:
+#     # factor D_Ein for integral, factor 1 / E_in for x substitution
+#     # and factor D_Ein / D_Eout for bin width correction
 
-                if (mo, da) in self.cross_sections.known_bc_channels:
-                    # Indices in batch matrix
-                    lidx = fill_idx
-                    uidx = fill_idx + self.dim_cr
+#     # TODO: Correction factor, that accounts for different bin widths in j -> i
 
-                    # Staple ("vstack"") all inclusive (channel) response functions
-                    self._batch_matrix[lidx:uidx] = resp.get_full(
-                        mo, da, self.ymat).dot(delta_eps)
+#     # 1st correction: Delta_E_j / E_j
+#     # 1/E_j for x substitution, Delta_E_j for integral over E_j
+#     self.integ_corr_mat = decr_mat_in / ecr_mat_in
 
-                    B = float(get_AZN(da)[0])
-                    A = float(get_AZN(mo)[0])
+#     # 2nd correction: Delta_E_j / E_j * Delta_E_j / Delta_E_i
+#     # 1/E_j for x substitution, Delta_E_j for integral over E_j
+#     # Delta_E_j / Delta_E_i for relative bin width correction
+#     #self.integ_corr_mat = decr_mat_in ** 2 / ecr_mat_in / decr_mat_out
 
-                    self._batch_vec_prefac[lidx:uidx].fill(A / B)
+#     # 3rd correction: no correction for cross check
+#     #self.integ_corr_mat = np.ones(self.integ_corr_mat.shape)
 
-                    prindices_mo = species[mo].indices()
-                    prindices_da = species[da].indices()
+#     n_nonel_diff = len([
+#         species for species in self.spec_man.species_refs
+#         if species.has_redist
+#     ])
+#     n_nonel = self.spec_man.nspec - n_nonel_diff
+#     n_incl = len([(mo, da)
+#                   for (mo, da) in self.cross_sections.known_bc_channels
+#                   if mo != da])
+#     n_incl_diff = len([(mo, da)
+#                        for (mo,
+#                             da) in self.cross_sections.known_diff_channels
+#                        if mo != da])
 
-                    self._batch_rows[lidx:uidx] = prindices_da
-                    self._batch_cols[lidx:uidx] = prindices_mo
-                    self._batch_vec_pointer[(mo, da)] = (lidx, uidx)
+#     # [mother_ncoid,daughter_ncoid] -> _batch_vec[lidx:uidx]
+#     self._nonel_batchvec_pointer = {}
+#     self._incl_batchvec_pointer = {}
+#     self._incl_diff_batchvec_pointer = {}
+#     # [mother_princeidx,daughter_princeidx] -> _batch_vec[lidx:uidx]
+#     self._incl_batchvec_pridx_pointer = {}
+#     self._incl_diff_batchvec_pridx_pointer = {}
 
-                    fill_idx += self.dim_cr
+#     dim_nonel = self.dim_cr * n_nonel + self.dim_cr**2 * n_nonel_diff
+#     dim_incl = self.dim_cr * n_incl
+#     dim_incl_diff = self.dim_cr**2 * n_incl_diff
+#     dim_ph = self.dim_ph
+#     info(3, 'Batch matrix nonel dimension: {0}'.format(dim_nonel))
+#     info(3, 'Batch matrix incl dimension: {0}'.format(dim_incl))
+#     info(3, 'Batch matrix incl diff dimension: {0}'.format(dim_incl_diff))
+#     info(3, 'Batch matrix photon dimension: {0}'.format(dim_ph))
 
-                elif (mo, da) in self.cross_sections.known_diff_channels:
-                    # Indices in batch matrix
-                    lidx = fill_idx
-                    uidx = fill_idx + self.dim_cr**2
+#     # Convolution matrix for response function
+#     self._batch_matrix = np.zeros((dim_nonel + dim_incl + dim_incl_diff,
+#                                    dim_ph))
+#     info(2, 'Size of complete batch matrix: {0}x{1}'.format(
+#         *self._batch_matrix.shape))
 
-                    self._batch_matrix[lidx:uidx] = resp.get_full(
-                        mo, da, y_repeat, xgrid=x_repeat).dot(delta_eps)
-                    #if mo == 101:
-                    #    print 'for daugter {:}:'.format(da)
-                    #    print self._batch_matrix[lidx:uidx]
-                    self._batch_matrix[lidx:uidx] = integ_corr_repeat * self._batch_matrix[lidx:uidx]
-                    #if mo == 101:
-                    #    print 'after multiplying correction'
-                    #    print self._batch_matrix[lidx:uidx]
-                    #    print 'correction matrix:'
-                    #    print integ_corr_repeat
-                    #    print '-'*25
-                    B = float(get_AZN(da)[0])
-                    A = float(get_AZN(mo)[0])
+#     # Result vector, which stores computed rates
+#     self._batch_vec = np.zeros(self._batch_matrix.shape[0])
 
-                    self._batch_vec_prefac[lidx:uidx].fill(A / B)
+#     # Vector which stores constant prefactors for batch vector
+#     self._batch_vec_prefac = np.ones(self._batch_matrix.shape[0])
 
-                    prindices_mo = species[mo].indices()
-                    prindices_da = species[da].indices()
+#     self._batch_rows = np.zeros(self._batch_matrix.shape[0], dtype=np.int)
+#     self._batch_cols = np.zeros(self._batch_matrix.shape[0], dtype=np.int)
 
-                    prindices_in = np.tile(prindices_mo, self.xmat.shape[0])
-                    prindices_out = np.repeat(prindices_da, self.xmat.shape[1])
-                    #prindices_in = np.repeat(prindices_mo, self.xmat.shape[1])
-                    #prindices_out = np.tile(prindices_da, self.xmat.shape[0])
-                    self._batch_rows[lidx:uidx] = prindices_out
-                    self._batch_cols[lidx:uidx] = prindices_in
-                    self._batch_vec_pointer[(mo, da)] = (lidx, uidx)
+#     # pointer to lower-upper index
+#     self._batch_vec_pointer = {}
 
-                    fill_idx += self.dim_cr**2
-        info(2, 'Finished filling of batch matrix!')
+# def _fill_batch_matrix(self):
+#     """ Fill the batch matrix with physics """
+#     info(2, 'Starting to fill batch matrix')
+#     # Delta eps (photon energy) bin widths
+#     delta_eps = np.diag(self.e_photon.widths)
+
+#     species = self.spec_man.ncoid2sref
+#     resp = self.cross_sections.resp
+
+#     # We need x and y on the 3D array E_da x E_mo x eph
+#     # therefore repeat xmat and ymat accordingly
+#     x_repeat = np.repeat(
+#         self.xmat[:, :, np.newaxis], self.ymat.shape[1], axis=2)
+#     y_repeat = np.repeat(
+#         self.ymat[:, np.newaxis, :], self.xmat.shape[1], axis=1)
+#     #print 'integration correction matrix'
+#     #print 'shape:', self.integ_corr_mat.shape
+#     #print self.integ_corr_mat
+#     #plt.spy(self.integ_corr_mat,precision=0.01)
+#     integ_corr_repeat = np.repeat(
+#         self.integ_corr_mat[:, :, np.newaxis], self.ymat.shape[1], axis=2)
+#     #print 'in repeated form:'
+#     #print 'shape:', integ_corr_repeat.shape
+#     #print integ_corr_repeat
+
+#     # reshape to 2D grid, to fit the batch matrix
+#     x_repeat = x_repeat.reshape((-1, x_repeat.shape[2]))
+#     y_repeat = y_repeat.reshape((-1, y_repeat.shape[2]))
+#     integ_corr_repeat = integ_corr_repeat.reshape((-1, integ_corr_repeat.shape[2]))
+
+#     #print 'repeated correction matrix:'
+#     #print 'shape:', integ_corr_repeat.shape
+#     #print integ_corr_repeat
+#     #plt.spy(integ_corr_repeat,precision=0.01)
+#     fill_idx = 0
+
+#     for mother in self.spec_man.known_species:
+#         if species[mother].has_redist:
+#             lidx = fill_idx
+#             uidx = fill_idx + self.dim_cr**2
+
+#             prindices_mo = species[mother].indices()
+#             prindices_in = np.tile(prindices_mo, self.xmat.shape[0])
+#             prindices_out = np.repeat(prindices_mo, self.xmat.shape[1])
+#             #prindices_in = np.repeat(prindices_mo, self.xmat.shape[1])
+#             #prindices_out = np.tile(prindices_mo, self.xmat.shape[0])
+#             self._batch_rows[lidx:uidx] = prindices_out
+#             self._batch_cols[lidx:uidx] = prindices_in
+
+#             if mother < 100:
+#                 # Note: in this case the batch vector will be zero anyway
+#                 info(3, "Can not compute interaction rate for", mother)
+#                 fill_idx += self.dim_cr**2
+#                 continue
+
+#             self._batch_matrix[lidx:uidx] = resp.get_full(
+#                 mother, mother, y_repeat, xgrid=x_repeat).dot(delta_eps)
+#             self._batch_vec_pointer[mother] = (lidx, uidx)
+
+#             fill_idx += self.dim_cr**2
+#         else:
+#             lidx = fill_idx
+#             uidx = fill_idx + self.dim_cr
+
+#             prindices = species[mother].indices()
+#             self._batch_rows[lidx:uidx] = prindices
+#             self._batch_cols[lidx:uidx] = prindices
+
+#             if mother < 100:
+#                 # Note: in this case the batch vector will be zero anyway
+#                 info(3, "Can not compute interaction rate for", mother)
+#                 fill_idx += self.dim_cr
+#                 continue
+
+#             self._batch_matrix[lidx:uidx] = resp.get_full(
+#                 mother, mother, self.ymat).dot(delta_eps)
+#             self._batch_vec_pointer[mother] = (lidx, uidx)
+
+#             fill_idx += self.dim_cr
+
+#         for (mo, da) in self.cross_sections.reactions[mother]:
+
+#             if mo == da:
+#                 # these were already covered before the loop
+#                 continue
+
+#             if (mo, da) in self.cross_sections.known_bc_channels:
+#                 # Indices in batch matrix
+#                 lidx = fill_idx
+#                 uidx = fill_idx + self.dim_cr
+
+#                 # Staple ("vstack"") all inclusive (channel) response functions
+#                 self._batch_matrix[lidx:uidx] = resp.get_full(
+#                     mo, da, self.ymat).dot(delta_eps)
+
+#                 B = float(get_AZN(da)[0])
+#                 A = float(get_AZN(mo)[0])
+
+#                 self._batch_vec_prefac[lidx:uidx].fill(A / B)
+
+#                 prindices_mo = species[mo].indices()
+#                 prindices_da = species[da].indices()
+
+#                 self._batch_rows[lidx:uidx] = prindices_da
+#                 self._batch_cols[lidx:uidx] = prindices_mo
+#                 self._batch_vec_pointer[(mo, da)] = (lidx, uidx)
+
+#                 fill_idx += self.dim_cr
+
+#             elif (mo, da) in self.cross_sections.known_diff_channels:
+#                 # Indices in batch matrix
+#                 lidx = fill_idx
+#                 uidx = fill_idx + self.dim_cr**2
+
+#                 self._batch_matrix[lidx:uidx] = resp.get_full(
+#                     mo, da, y_repeat, xgrid=x_repeat).dot(delta_eps)
+#                 #if mo == 101:
+#                 #    print 'for daugter {:}:'.format(da)
+#                 #    print self._batch_matrix[lidx:uidx]
+#                 self._batch_matrix[lidx:uidx] = integ_corr_repeat * self._batch_matrix[lidx:uidx]
+#                 #if mo == 101:
+#                 #    print 'after multiplying correction'
+#                 #    print self._batch_matrix[lidx:uidx]
+#                 #    print 'correction matrix:'
+#                 #    print integ_corr_repeat
+#                 #    print '-'*25
+#                 B = float(get_AZN(da)[0])
+#                 A = float(get_AZN(mo)[0])
+
+#                 self._batch_vec_prefac[lidx:uidx].fill(A / B)
+
+#                 prindices_mo = species[mo].indices()
+#                 prindices_da = species[da].indices()
+
+#                 prindices_in = np.tile(prindices_mo, self.xmat.shape[0])
+#                 prindices_out = np.repeat(prindices_da, self.xmat.shape[1])
+#                 #prindices_in = np.repeat(prindices_mo, self.xmat.shape[1])
+#                 #prindices_out = np.tile(prindices_da, self.xmat.shape[0])
+#                 self._batch_rows[lidx:uidx] = prindices_out
+#                 self._batch_cols[lidx:uidx] = prindices_in
+#                 self._batch_vec_pointer[(mo, da)] = (lidx, uidx)
+
+#                 fill_idx += self.dim_cr**2
+#     info(2, 'Finished filling of batch matrix!')
 
     def _init_coupling_mat(self, sp_format):
         """Initialises the coupling matrix directly in sparse (csc) format.
@@ -412,8 +581,10 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         # TODO: The reording here does currently take 0.3 ms (vs 4.5 ms for the complete call)
         # If this will get time critical with further optimization,
         # one can do the reordring in _init_coupling_mat(self) once for the batch matrix
+        # self.coupling_mat.data = (
+        #     self._batch_vec * self._batch_vec_prefac)[self.sortidx]
         self.coupling_mat.data = (
-            self._batch_vec * self._batch_vec_prefac)[self.sortidx]
+            self._batch_vec)[self.sortidx]
 
     def get_hadr_jacobian(self, z):
         """Returns the nonel rate vector and coupling matrix.
@@ -500,6 +671,7 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         self._update_rates(z)
         lidx, uidx = self._batch_vec_pointer[nco_ids]
         return self._batch_vec[lidx:uidx]
+
 
 class ContinuousLossRates(InteractionRateBase):
     """Implementation of continuous pair production loss rates."""

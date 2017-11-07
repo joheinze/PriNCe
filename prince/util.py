@@ -87,9 +87,13 @@ def get_interp_object(xgrid, ygrid, **kwargs):
         kwargs['ext'] = 'zeros'
 
     return InterpolatedUnivariateSpline(xgrid, ygrid, **kwargs)
+    # if xwidths is not None:
+    #     return np.tile(xwidths,len(ygrid)).reshape(len(xwidths),len(ygrid))*res
+    # else:
+    #     return res
 
 
-def get_2Dinterp_object(xgrid, ygrid, zgrid, **kwargs):
+def get_2Dinterp_object(xgrid, ygrid, zgrid, xbins=None, **kwargs):
     """Returns simple standard interpolation object for 2-dimentsional
     distribution.
 
@@ -110,30 +114,107 @@ def get_2Dinterp_object(xgrid, ygrid, zgrid, **kwargs):
         kwargs['ky'] = 1
     if 's' not in kwargs:
         kwargs['s'] = 0.
+    return RectBivariateSplineNoExtrap(xgrid, ygrid, zgrid, xbins, **kwargs)
 
-    return RectBivariateSplineNoExtrap(xgrid, ygrid, zgrid, **kwargs)
 
 class RectBivariateSplineNoExtrap(RectBivariateSpline):
     """Same as RectBivariateSpline but makes sure, that extrapolated data is alway 0"""
+
+    def __init__(self, xgrid, ygrid, zgrid, xbins=None, *args, **kwargs):
+        self.xbins = xbins
+        # print xgrid.shape, ygrid.shape, zgrid.shape
+        # if xbins is not None:
+        #     zgrid *= np.tile(bin_widths(xbins), len(ygrid)).reshape(
+        #         len(xbins) - 1, len(ygrid))
+
+        RectBivariateSpline.__init__(self, xgrid, ygrid, zgrid, *args,
+                                     **kwargs)
+
     def __call__(self, x, y, **kwargs):
         xknots, yknots = self.get_knots()
         xmin, xmax = np.min(xknots), np.max(xknots)
         ymin, ymax = np.min(yknots), np.max(yknots)
         #info(1, 'Inherited Spline called, xmin {}, xmax {}'.format(xmin, xmax))
+        xm, ym = x, y
+        print x.shape, y.shape
+        print 'mesh'
+        if 'grid' not in kwargs:
+            xm, ym = np.meshgrid(xm, ym)
+            kwargs['grid'] = False
 
-        result = RectBivariateSpline.__call__(self, x, y, **kwargs)
+            result = RectBivariateSpline.__call__(self, xm, ym, **kwargs)
+            result = np.where((xm < xmax) & (xm > xmin), result, 0.)
+            # print xm
+            # print bin_widths(bin_edges(xm.T)).T
+            return result.T
+            # return (result / bin_widths(bin_edges(xm.T)).T).T
+        else:
+            result = RectBivariateSpline.__call__(self, xm, ym, **kwargs)
+            result = np.where((xm <= xmax) & (xm >= xmin), result, 0.)
+            return result  #/ bin_widths(bin_edges(xm))
+            # return result
+        # result = np.where(x >= xmin, result, 0.)
+        # if self.xbins is not None:
+        #     xwidths = np.tile(bin_widths(bin_edges(x)), len(np.atleast_1d(y))).reshape(
+        #         len(x), len(np.atleast_1d(y)))
+        #     return xwidths*result.T
 
-        result = np.where((x <= xmax) & (x >= xmin), result, 0.)
-        #result = np.where(x >= xmin, result, 0.)
+
+class ConservativeRectBivariateSpline(RectBivariateSpline):
+    """Same as RectBivariateSpline but makes sure, that extrapolated data is alway 0"""
+
+    def __init__(self, xgrid, ygrid, zgrid, xbins=None, *args, **kwargs):
+        self.xbins = xbins
+        print xgrid.shape, ygrid.shape, zgrid.shape
+        if xbins is not None:
+            zgrid *= np.tile(bin_widths(xbins), len(ygrid)).reshape(
+                len(xbins) - 1, len(ygrid))
+
+        RectBivariateSpline.__init__(self, xgrid, ygrid, zgrid, *args,
+                                     **kwargs)
+
+        xknots, yknots = self.get_knots()
+        self.xmin, self.xmax = np.min(xknots), np.max(xknots)
+        self.ymin, self.ymax = np.min(yknots), np.max(yknots)
+
+    def inteval(self, xl, xu, yl, yu, out=None):
+        assert (xl.shape == xu.shape == yl.shape == yu.shape), \
+            'Shapes of input arrays do not match.'
+
+        it = np.nditer(
+            [xl, xu, yl, yu, out],
+            flags=['buffered'],
+            op_flags=[['readonly'], ['readonly'], ['readonly'], ['readonly'],
+                      ['writeonly', 'allocate', 'no_broadcast']])
+        for x0, x1, y0, y1, r in it:
+            r[...] = intp.integral(x0, x1, y0, y1) / ((x1 - x0) * (y1 - y0))
+        return it.operands[4]
+
+    def __call__(self, x, y, **kwargs):
+
+        #info(1, 'Inherited Spline called, xmin {}, xmax {}'.format(xmin, xmax))
+        xm, ym = x, y
+        if 'grid' not in kwargs:
+            xm, ym = np.meshgrid(xm, ym)
+            kwargs['grid'] = False
+            result = RectBivariateSpline.__call__(self, xm, ym, **kwargs)
+            result = np.where((xm < self.xmax) & (xm > self.xmin) &
+                              (ym < self.ymax) & (ym > self.ymin), result, 0.)
+            return result.T
+        
+        result = RectBivariateSpline.__call__(self, xm, ym, **kwargs)
+        result = np.where((xm <= xmax) & (xm >= xmin), result, 0.)
         return result
+    
 
 class RectBivariateSplineLogData(RectBivariateSplineNoExtrap):
     """Same as RectBivariateSpline but data is internally interpoled as log(data)"""
+
     def __init__(self, x, y, z, *args, **kwargs):
         x = np.log10(x)
         y = np.log10(y)
 
-        info(2,'Spline created')
+        info(2, 'Spline created')
         RectBivariateSplineNoExtrap.__init__(self, x, y, z, *args, **kwargs)
 
     def __call__(self, x, y, **kwargs):
@@ -142,6 +223,7 @@ class RectBivariateSplineLogData(RectBivariateSplineNoExtrap):
 
         result = RectBivariateSplineNoExtrap.__call__(self, x, y, **kwargs)
         return result
+
 
 def get_y(e, eps, nco_id):
     """Retrns center of mass energy of nucleus-photon system.
@@ -179,7 +261,7 @@ def caller_name(skip=2):
     parentframe = stack[start][0]
 
     name = []
-    
+
     if config["print_module"]:
         module = inspect.getmodule(parentframe)
         # `modname` can be None when frame is executed directly in console
@@ -326,4 +408,26 @@ def bin_widths(bin_edges):
     """Computes and returns bin widths from given edges."""
     edg = np.array(bin_edges)
 
-    return edg[1:] - edg[:-1]
+    return np.abs(edg[1:, ...] - edg[:-1, ...])
+
+
+def bin_edges2D(bin_centers):
+    lcen = np.log10(bin_centers)
+    steps = lcen[1, ...] - lcen[0, ...]
+    bins_log = np.zeros_like(lcen)  #(len(lcen) + 1)
+    # print bins_log.shape
+    bins_log = np.pad(
+        bins_log, ((0, 1), (0, 0)), 'constant', constant_values=0.)
+    # print bins_log.shape
+    bins_log[:lcen.shape[0], ...] = lcen - 0.5 * steps
+    bins_log[-1, ...] = lcen[-1, ...] + 0.5 * steps
+    return 10**bins_log
+
+
+def bin_edges1D(bin_centers):
+    lcen = np.log10(bin_centers)
+    steps = lcen[1] - lcen[0]
+    bins_log = np.zeros(len(lcen) + 1)
+    bins_log[:lcen.shape[0]] = lcen - 0.5 * steps
+    bins_log[-1] = lcen[-1] + 0.5 * steps
+    return 10**bins_log
