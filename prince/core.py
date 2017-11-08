@@ -36,7 +36,7 @@ class PriNCeRun(object):
         # Cross section handler
         self.cross_sections = cross_sections.CompositeCrossSection(
             [(0., cross_sections.TabulatedCrossSection, ()),
-             (0.13, cross_sections.SophiaSuperposition, ())])
+             (0.14, cross_sections.SophiaSuperposition, ())])
         
         # self.cross_sections = cross_sections.SophiaSuperposition()
 

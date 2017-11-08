@@ -96,6 +96,10 @@ config = {
     # For larger IDs (nuclei) the boost conservation is employed.
     "redist_threshold_ID": 101,
 
+    # Cut on redistribution functions
+    # Resitribution below this x value are set to 0.
+    "x_cut" : 1e-3,
+     
     # Build equation system up to a maximal nuclear mass of
     "max_mass": np.inf,
 

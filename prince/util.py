@@ -122,11 +122,6 @@ class RectBivariateSplineNoExtrap(RectBivariateSpline):
 
     def __init__(self, xgrid, ygrid, zgrid, xbins=None, *args, **kwargs):
         self.xbins = xbins
-        # print xgrid.shape, ygrid.shape, zgrid.shape
-        # if xbins is not None:
-        #     zgrid *= np.tile(bin_widths(xbins), len(ygrid)).reshape(
-        #         len(xbins) - 1, len(ygrid))
-
         RectBivariateSpline.__init__(self, xgrid, ygrid, zgrid, *args,
                                      **kwargs)
 
@@ -134,78 +129,19 @@ class RectBivariateSplineNoExtrap(RectBivariateSpline):
         xknots, yknots = self.get_knots()
         xmin, xmax = np.min(xknots), np.max(xknots)
         ymin, ymax = np.min(yknots), np.max(yknots)
-        #info(1, 'Inherited Spline called, xmin {}, xmax {}'.format(xmin, xmax))
-        xm, ym = x, y
-        print x.shape, y.shape
-        print 'mesh'
+        info(10, 'Derived Spline class called, xmin {}, xmax {}'.format(xmin, xmax))
         if 'grid' not in kwargs:
-            xm, ym = np.meshgrid(xm, ym)
+            x, y = np.meshgrid(x, y)
             kwargs['grid'] = False
 
-            result = RectBivariateSpline.__call__(self, xm, ym, **kwargs)
+            result = RectBivariateSpline.__call__(self, x, y, **kwargs)
             result = np.where((xm < xmax) & (xm > xmin), result, 0.)
-            # print xm
-            # print bin_widths(bin_edges(xm.T)).T
             return result.T
-            # return (result / bin_widths(bin_edges(xm.T)).T).T
         else:
-            result = RectBivariateSpline.__call__(self, xm, ym, **kwargs)
+            result = RectBivariateSpline.__call__(self, x, y, **kwargs)
             result = np.where((xm <= xmax) & (xm >= xmin), result, 0.)
-            return result  #/ bin_widths(bin_edges(xm))
-            # return result
-        # result = np.where(x >= xmin, result, 0.)
-        # if self.xbins is not None:
-        #     xwidths = np.tile(bin_widths(bin_edges(x)), len(np.atleast_1d(y))).reshape(
-        #         len(x), len(np.atleast_1d(y)))
-        #     return xwidths*result.T
+            return result
 
-
-class ConservativeRectBivariateSpline(RectBivariateSpline):
-    """Same as RectBivariateSpline but makes sure, that extrapolated data is alway 0"""
-
-    def __init__(self, xgrid, ygrid, zgrid, xbins=None, *args, **kwargs):
-        self.xbins = xbins
-        print xgrid.shape, ygrid.shape, zgrid.shape
-        if xbins is not None:
-            zgrid *= np.tile(bin_widths(xbins), len(ygrid)).reshape(
-                len(xbins) - 1, len(ygrid))
-
-        RectBivariateSpline.__init__(self, xgrid, ygrid, zgrid, *args,
-                                     **kwargs)
-
-        xknots, yknots = self.get_knots()
-        self.xmin, self.xmax = np.min(xknots), np.max(xknots)
-        self.ymin, self.ymax = np.min(yknots), np.max(yknots)
-
-    def inteval(self, xl, xu, yl, yu, out=None):
-        assert (xl.shape == xu.shape == yl.shape == yu.shape), \
-            'Shapes of input arrays do not match.'
-
-        it = np.nditer(
-            [xl, xu, yl, yu, out],
-            flags=['buffered'],
-            op_flags=[['readonly'], ['readonly'], ['readonly'], ['readonly'],
-                      ['writeonly', 'allocate', 'no_broadcast']])
-        for x0, x1, y0, y1, r in it:
-            r[...] = intp.integral(x0, x1, y0, y1) / ((x1 - x0) * (y1 - y0))
-        return it.operands[4]
-
-    def __call__(self, x, y, **kwargs):
-
-        #info(1, 'Inherited Spline called, xmin {}, xmax {}'.format(xmin, xmax))
-        xm, ym = x, y
-        if 'grid' not in kwargs:
-            xm, ym = np.meshgrid(xm, ym)
-            kwargs['grid'] = False
-            result = RectBivariateSpline.__call__(self, xm, ym, **kwargs)
-            result = np.where((xm < self.xmax) & (xm > self.xmin) &
-                              (ym < self.ymax) & (ym > self.ymin), result, 0.)
-            return result.T
-        
-        result = RectBivariateSpline.__call__(self, xm, ym, **kwargs)
-        result = np.where((xm <= xmax) & (xm >= xmin), result, 0.)
-        return result
-    
 
 class RectBivariateSplineLogData(RectBivariateSplineNoExtrap):
     """Same as RectBivariateSpline but data is internally interpoled as log(data)"""

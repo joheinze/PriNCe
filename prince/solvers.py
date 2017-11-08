@@ -18,7 +18,7 @@ class UHECRPropagationSolver(object):
 
         self.egrid = prince_run.egrid
         self.egr_state = np.tile(self.egrid, prince_run.spec_man.nspec)
-        self.ewi_state = np.tile(self.prince_run.cr_grid.widths, 
+        self.ewi_state = np.tile(self.prince_run.cr_grid.widths,
                                  prince_run.spec_man.nspec)
         self.dim_cr = prince_run.int_rates.dim_cr
         self.dim_ph = prince_run.int_rates.dim_ph
@@ -78,6 +78,7 @@ class UHECRPropagationSolver(object):
         self.r.set_initial_value(self.state, self.initial_z)
         self._update_jacobian(self.initial_z)
         self.last_z = self.initial_z
+        self.last_hadr_jac = None
 
     def injection(self, dz, z):
         """This needs to return the injection rate
@@ -89,14 +90,20 @@ class UHECRPropagationSolver(object):
     def _update_jacobian(self, z):
         info(5, 'Updating jacobian matrix at redshift', z)
         self.continuous_losses = self.continuous_loss_rates.loss_vector(z)
-        self.jacobian = self.int_rates.get_hadr_jacobian(z)
-        self.djacobian = None
+        self.jacobian = self.int_rates.get_hadr_jacobian(z, self.dldz(z))
+        self.last_hadr_jac = None
+
 
     def eqn_jac(self, z, state, *jac_args):
         self.ncallsj += 1
-        if self.djacobian is None:
-            self.djacobian = self.jacobian.todense()
-        return self.dldz(z) * self.djacobian
+        if self.last_hadr_jac is None:
+            self.last_hadr_jac = self.int_rates.get_dense_hadr_jacobian(
+                z, self.dldz(z))
+
+            # self.last_hadr_jac[np.diag_indices_from(
+            #     self.last_hadr_jac)] -= self.injection(1., z)
+
+        return self.last_hadr_jac
 
     def semi_lagrangian(self, delta_z, z, state):
         conloss = self.continuous_losses * delta_z * self.dldz(z)
@@ -120,8 +127,7 @@ class UHECRPropagationSolver(object):
 
     def eqn_deriv(self, z, state, *args):
         self.ncallsf += 1
-        # print self.dldz(z)
-        r = self.jacobian.dot(self.dldz(z)*state) + self.injection(1., z)
+        r = self.jacobian.dot(state) + self.injection(1., z)
         return r
 
     def _init_vode(self):
@@ -135,11 +141,11 @@ class UHECRPropagationSolver(object):
             'name': 'lsodes',
             'method': 'bdf',
             # 'nsteps': 10000,
-            'rtol': 1e-2,
+            'rtol': 2e-1,
             # 'atol': 1e5,
             'ndim': self.dim_states,
-            'nnz': self.jacobian.nnz,
-            # 'csc_jacobian': csc_matrix(self.jacobian.todense()),
+            'nnz': self.int_rates.get_hadr_jacobian(1., self.dldz(1.)).nnz,
+            # 'csc_jacobian': self.jacobian.tocsc(),
             # 'max_order_s': 5,
             # 'with_jacobian': True
         }
@@ -171,11 +177,11 @@ class UHECRPropagationSolver(object):
 
         self.r = ode(self.eqn_deriv, self.eqn_jac).set_integrator(**ode_params)
         # self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
-        
+
 
     def solve(self, dz=1e-2, verbose=True, extended_output = False):
         from time import time
-        
+
         dz = -1 * dz
         now = time()
         self.r.set_initial_value(np.zeros(self.dim_states), self.r.t)
@@ -188,8 +194,8 @@ class UHECRPropagationSolver(object):
 
             self._update_jacobian(self.r.t)
             stepin = time()
-            self.r.integrate(self.r.t + dz)#, 
-                # step=True if self.r.t < self.initial_z else False)
+            self.r.integrate(self.r.t + dz)#,
+            # step=True if self.r.t < self.initial_z else False)
             if verbose:
                 print 'step took',time() - stepin
                 print 'At t =',self.r.t
