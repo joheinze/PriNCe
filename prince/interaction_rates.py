@@ -146,7 +146,7 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         self.dense_coupling_mat = None
 
         self._init_matrices()
-        # self._init_coupling_mat(sp_format='csr')
+        self._init_coupling_mat(sp_format='csr')
 
     def _init_matrices(self):
         """ A new take on filling the matrices"""
@@ -588,7 +588,8 @@ class ContinuousLossRates(InteractionRateBase):
         """Prepare vector for scaling with units, charge and mass."""
 
         scale_vec = np.zeros(self.prince_run.dim_states)
-        units = PRINCE_UNITS.fine_structure * PRINCE_UNITS.r_electron**2 * PRINCE_UNITS.m_electron**2
+        units = (PRINCE_UNITS.fine_structure * PRINCE_UNITS.r_electron**2 *
+                 PRINCE_UNITS.m_electron**2)
 
         for spec in self.spec_man.species_refs:
             if not spec.is_nucleus:

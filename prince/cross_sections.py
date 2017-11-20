@@ -198,12 +198,6 @@ class CrossSectionBase(object):
                 self.reactions[mo] = []
                 self.known_species.append(mo)
 
-            # if mo == da:
-            #     info(1, "Workaround, excluding mother -> mother channels.")
-            #     # TODO: For now we do not include channels mo -> mo
-            #     # as it would break PhotoNuclearInteractionRateCSC._init_matrix_incl()
-            #     continue
-
             if (mo, da) not in self.reactions[mo]:
                 # Make sure it's a unique list to avoid unnecessary loops
                 self.reactions[mo].append((mo, da))
@@ -925,12 +919,12 @@ class TabulatedCrossSection(CrossSectionBase):
         info(2, "Load tabulated cross sections")
         # The energy grid is given in MeV, so we convert to GeV
         egrid = load_or_convert_array(
-            model_prefix + "_egrid", dtype='float') * 1e-3
+            model_prefix + "_egrid.dat", dtype='float') * 1e-3
         info(2, "Egrid loading finished")
 
         # Load tables from files
-        _nonel_tab = load_or_convert_array(model_prefix + "_IAS_nonel")
-        _incl_tab = load_or_convert_array(model_prefix + "_IAS_incl_i_j")
+        _nonel_tab = load_or_convert_array(model_prefix + "_nonel.dat")
+        _incl_tab = load_or_convert_array(model_prefix + "_incl_i_j.dat")
 
         # Integer idices of mothers and inclusive channels are stored
         # in first column(s)
@@ -951,6 +945,12 @@ class TabulatedCrossSection(CrossSectionBase):
             if get_AZN(pid)[0] > self.max_mass:
                 continue
             _nonel_tab[pid] = csgrid
+
+        # If proton and neutron cross sections are not in contained
+        # in the files, set them to 0. Needed for TALYS and CRPropa2
+        for pid in [101, 100]:
+            if pid not in _nonel_tab:
+                _nonel_tab[pid] = np.zeros_like(egrid)
 
         # mo = mother, da = daughter
         _incl_tab = {}

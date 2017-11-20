@@ -72,7 +72,7 @@ config = {
 
     # Format (log10(E_min), log10(E_max), nbins/decade of energy)
     # Main energy grid for solver
-    "cosmic_ray_grid": (5, 13, 4),
+    "cosmic_ray_grid": (5, 13, 8),
 
     # Photon grid of target field, only for calculation of rates
     "photon_grid": (-15, -6, 8),
