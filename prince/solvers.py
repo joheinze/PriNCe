@@ -2,8 +2,8 @@
 
 import numpy as np
 from prince.cosmology import H
-from prince.util import info, PRINCE_UNITS, get_AZN
-
+from prince.util import info, PRINCE_UNITS, get_AZN, EnergyGrid
+from prince_config import config
 
 class UHECRPropagationSolver(object):
     def __init__(self, initial_z, final_z, prince_run,
@@ -18,6 +18,8 @@ class UHECRPropagationSolver(object):
 
         self.egrid = prince_run.egrid
         self.egr_state = np.tile(self.egrid, prince_run.spec_man.nspec)
+        self.ewi_state = np.tile(self.prince_run.cr_grid.widths,
+                                 prince_run.spec_man.nspec)
         self.dim_cr = prince_run.int_rates.dim_cr
         self.dim_ph = prince_run.int_rates.dim_ph
         self.int_rates = self.prince_run.int_rates
@@ -51,22 +53,33 @@ class UHECRPropagationSolver(object):
         sp = self.prince_run.spec_man.ncoid2sref[nco_id]
         return self.egrid, self.r.y[sp.lidx():sp.uidx()]
 
-    def get_solution_scale(self, nco_id):
+    def get_solution_scale(self, nco_id, epow=0):
         """Returns the spectrum scaled back to total energy"""
-        A = get_AZN(nco_id)[0]
-        sp = self.prince_run.spec_man.ncoid2sref[nco_id]
-        return self.r.y[sp.lidx():sp.uidx()]
-        return A * self.egrid, self.r.y[sp.lidx():sp.uidx()] / A
+        spec = self.prince_run.spec_man.ncoid2sref[nco_id]
+        egrid = spec.A * self.egrid
+        return egrid, egrid**epow * self.r.y[
+            spec.lidx():spec.uidx()] / spec.A
 
-    def get_solution_group(self, nco_ids):
+    def get_solution_group(self, nco_ids, epow=3):
         """Return the summed spectrum (in total energy) for all elements in the range"""
-        # Take egrid from first id
-        com_egrid, spec = self.get_solution_scale(nco_ids[0])
-        for pid in nco_ids[1:]:
-            curr_egrid, curr_spec = self.get_solution_scale(pid)
-            spec += np.interp(com_egrid, curr_egrid, curr_spec, left=0., right=0.)
+        # Take egrid from first id ( doesn't cover the range for iron for example)
+        max_mass = max([s.A for s in self.spec_man.species_refs])
+        emin_log, emax_log, nbins = list(config["cosmic_ray_grid"])
+        emax_log = np.log10(max_mass * 10**emax_log)
+        nbins *= 2
+        com_egrid = EnergyGrid(emin_log, emax_log, nbins).grid
+        spec = np.zeros_like(com_egrid)
+        for pid in nco_ids:
+            curr_egrid, curr_spec = self.get_solution_scale(pid, epow=0)
+            spec += np.exp(
+                np.interp(
+                    np.log(com_egrid),
+                    np.log(curr_egrid),
+                    np.log(curr_spec),
+                    left=0.,
+                    right=0.))
 
-        return com_egrid, spec
+        return com_egrid, com_egrid**epow * spec
 
     def set_initial_condition(self, spectrum=None, nco_id=None):
         self.state *= 0.
@@ -77,6 +90,7 @@ class UHECRPropagationSolver(object):
         self.r.set_initial_value(self.state, self.initial_z)
         self._update_jacobian(self.initial_z)
         self.last_z = self.initial_z
+        self.last_hadr_jac = None
 
     def injection(self, dz, z):
         """This needs to return the injection rate
@@ -88,14 +102,16 @@ class UHECRPropagationSolver(object):
     def _update_jacobian(self, z):
         info(5, 'Updating jacobian matrix at redshift', z)
         self.continuous_losses = self.continuous_loss_rates.loss_vector(z)
-        self.jacobian = self.int_rates.get_hadr_jacobian(z)
-        self.djacobian = None
+        self.jacobian = self.int_rates.get_hadr_jacobian(z, self.dldz(z))
+        self.last_hadr_jac = None
 
     def eqn_jac(self, z, state, *jac_args):
         self.ncallsj += 1
-        if self.djacobian is None:
-            self.djacobian = self.jacobian.todense()
-        return self.dldz(z) * self.djacobian
+        if self.last_hadr_jac is None:
+            self.last_hadr_jac = self.int_rates.get_dense_hadr_jacobian(
+                z, self.dldz(z))
+
+        return self.last_hadr_jac
 
     def semi_lagrangian(self, delta_z, z, state):
         conloss = self.continuous_losses * delta_z * self.dldz(z)
@@ -119,9 +135,8 @@ class UHECRPropagationSolver(object):
 
     def eqn_deriv(self, z, state, *args):
         self.ncallsf += 1
-        # self._update_jacobian(self.r.t)
-        r = self.jacobian.dot(self.dldz(z) * state) + self.injection(1., z)
-        # r = self.injection(1., z)
+        # r = self.jacobian.dot(state) + self.injection(1., z)
+        r = self.jacobian.dot(state) + self.injection(1., z)
         return r
 
     def _init_vode(self):
@@ -135,11 +150,11 @@ class UHECRPropagationSolver(object):
             'name': 'lsodes',
             'method': 'bdf',
             # 'nsteps': 10000,
-            'rtol': 1e-4,
-            'atol': 1e5,
+            'rtol': 1e-2,
+            # 'atol': 1e5,
             'ndim': self.dim_states,
             'nnz': self.jacobian.nnz,
-            'csc_jacobian': csc_matrix(self.jacobian.todense()),
+            # 'csc_jacobian': self.jacobian.tocsc(),
             # 'max_order_s': 5,
             # 'with_jacobian': True
         }
@@ -171,11 +186,10 @@ class UHECRPropagationSolver(object):
 
         self.r = ode(self.eqn_deriv, self.eqn_jac).set_integrator(**ode_params)
         # self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
-        
 
-    def solve(self, dz=1e-2, verbose=True, extended_output = False):
+    def solve(self, dz=1e-2, verbose=True, extended_output=False):
         from time import time
-        
+
         dz = -1 * dz
         now = time()
         self.r.set_initial_value(np.zeros(self.dim_states), self.r.t)
@@ -183,15 +197,16 @@ class UHECRPropagationSolver(object):
         info(2, 'Starting integration.')
 
         while self.r.successful() and (self.r.t + dz) > self.final_z:
-            info(3, "Integrating at z={0}".format(self.r.t))
+            if verbose:
+                info(3, "Integrating at z={0}".format(self.r.t))
 
             self._update_jacobian(self.r.t)
             stepin = time()
-            self.r.integrate(self.r.t + dz)#, 
-                # step=True if self.r.t < self.initial_z else False)
+            self.r.integrate(self.r.t + dz)  #,
+            # step=True if self.r.t < self.initial_z else False)
             if verbose:
-                print 'step took',time() - stepin
-                print 'At t =',self.r.t
+                print 'step took', time() - stepin
+                print 'At t =', self.r.t
                 print 'jacobian calls', self.ncallsj
                 print 'function calls', self.ncallsf
                 if extended_output:
@@ -206,15 +221,14 @@ class UHECRPropagationSolver(object):
                     print 'NJE', NJE
                     print 'NLU', NLU
                     print 'NNZLU', NNZLU
-                    print 'LAST STEP {0:4.3e}'.format(self.r._integrator.rwork[10])
+                    print 'LAST STEP {0:4.3e}'.format(
+                        self.r._integrator.rwork[10])
             self.ncallsf = 0
             self.ncallsj = 0
 
             if self.enable_cont_losses:
                 self.r._integrator.call_args[3] = 20
                 self.r._y = self.semi_lagrangian(dz, self.r.t, self.r.y)
-                # self.r.set_initial_value(
-                #     self.semi_lagrangian(dz, self.r.t, self.r.y), self.r.t)
 
         self.r.integrate(self.final_z)
 

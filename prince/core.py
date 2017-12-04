@@ -35,13 +35,12 @@ class PriNCeRun(object):
 
         # Cross section handler
         self.cross_sections = cross_sections.CompositeCrossSection(
-            [(0., cross_sections.TabulatedCrossSection, ()),
-             (0.8, cross_sections.SophiaSuperposition, ())])
+            [(0., cross_sections.TabulatedCrossSection, ('CRP2_TALYS',)),
+             (0.14, cross_sections.SophiaSuperposition, ())])
+        
+        # self.cross_sections = cross_sections.SophiaSuperposition()
 
         # Photon field handler
-        #self.photon_field = photonfields.CMBPhotonSpectrum()
-        #self.photon_field = photonfields.CombinedPhotonField(
-        #    [photonfields.CMBPhotonSpectrum, photonfields.CIBInoue2D])
         if 'photon_field' in kwargs:
             self.photon_field = kwargs['photon_field']
         else:

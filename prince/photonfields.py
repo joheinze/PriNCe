@@ -90,7 +90,8 @@ class FlatPhotonSpectrum(PhotonField):
         """
         # density at z = 0
         nlocal = np.ones_like(E, dtype='double') * 1e12
-        return (1. + z)**2 * nlocal  # JH: Fixed, was (1. + z) ** 3 before
+        #nlocal = E**-1 * 1e12
+        return (1. + z)**2 * nlocal
     
 class CMBPhotonSpectrum(PhotonField):
     """Redshift-scaled number density of CMB photons

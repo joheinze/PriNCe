@@ -96,6 +96,16 @@ class CrossSectionBase(object):
         """
 
         return 0.5 * (self.xbins[1:] + self.xbins[:-1])
+    
+    @property
+    def xwidths(self):
+        """Returns bin widths of the grid in x.
+
+        Returns:
+            (numpy.array): x widths
+        """
+
+        return self.xbins[1:] - self.xbins[:-1]
 
     @property
     def resp(self):
@@ -188,12 +198,6 @@ class CrossSectionBase(object):
                 self.reactions[mo] = []
                 self.known_species.append(mo)
 
-            if mo == da:
-                info(1, "Workaround, excluding mother -> mother channels.")
-                # TODO: For now we do not include channels mo -> mo
-                # as it would break PhotoNuclearInteractionRateCSC._init_matrix_incl()
-                continue
-
             if (mo, da) not in self.reactions[mo]:
                 # Make sure it's a unique list to avoid unnecessary loops
                 self.reactions[mo].append((mo, da))
@@ -204,6 +208,12 @@ class CrossSectionBase(object):
         self.known_species = sorted(list(set(self.known_species)))
         self.known_bc_channels = sorted(list(set(self.known_bc_channels)))
         self.known_diff_channels = sorted(list(set(self.known_diff_channels)))
+
+        for sp in self.known_species:
+            if sp >= 100 and (sp, sp) not in self.known_diff_channels:
+                self.known_bc_channels.append((mo, mo))
+            if (mo, mo) not in self.reactions[mo]:
+                self.reactions[mo].append((mo, mo))
 
         # Make sure the indices are up to date
         self._update_indices()
@@ -909,12 +919,12 @@ class TabulatedCrossSection(CrossSectionBase):
         info(2, "Load tabulated cross sections")
         # The energy grid is given in MeV, so we convert to GeV
         egrid = load_or_convert_array(
-            model_prefix + "_egrid", dtype='float') * 1e-3
+            model_prefix + "_egrid.dat", dtype='float') * 1e-3
         info(2, "Egrid loading finished")
 
         # Load tables from files
-        _nonel_tab = load_or_convert_array(model_prefix + "_IAS_nonel")
-        _incl_tab = load_or_convert_array(model_prefix + "_IAS_incl_i_j")
+        _nonel_tab = load_or_convert_array(model_prefix + "_nonel.dat")
+        _incl_tab = load_or_convert_array(model_prefix + "_incl_i_j.dat")
 
         # Integer idices of mothers and inclusive channels are stored
         # in first column(s)
@@ -935,6 +945,12 @@ class TabulatedCrossSection(CrossSectionBase):
             if get_AZN(pid)[0] > self.max_mass:
                 continue
             _nonel_tab[pid] = csgrid
+
+        # If proton and neutron cross sections are not in contained
+        # in the files, set them to 0. Needed for TALYS and CRPropa2
+        for pid in [101, 100]:
+            if pid not in _nonel_tab:
+                _nonel_tab[pid] = np.zeros_like(egrid)
 
         # mo = mother, da = daughter
         _incl_tab = {}
@@ -1002,8 +1018,8 @@ class ResponseFunction(object):
             #    incl_diff_res = np.where(xgrid < 0.9, incl_diff_res, 0.)
             #res += incl_diff_res
             #if not(mother == daughter):
-            res += self.incl_diff_intp[(mother, daughter)](
-                xgrid, ygrid, grid=False)
+                res += self.incl_diff_intp[(mother, daughter)].inteval(
+                    xgrid, ygrid, grid=False)
 
         if mother == daughter and mother in self.nonel_intp:
             # nonel cross section leads to absorption, therefore the minus
@@ -1104,7 +1120,7 @@ class ResponseFunction(object):
         for mother, daughter in self.incl_diff_idcs:
             ygr, rfunc = self.get_channel(mother, daughter)
             self.incl_diff_intp[(mother, daughter)] = get_2Dinterp_object(
-                self.xcenters, ygr, rfunc)
+                self.xcenters, ygr, rfunc, self.cross_section.xbins)
 
 
 if __name__ == "__main__":
