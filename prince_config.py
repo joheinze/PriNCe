@@ -30,6 +30,9 @@ config = {
     # Debug flag for verbose printing, 0 = minimum
     "debug_level": 3,
 
+    # When printing output, prepend module name
+    "print_module" : False,
+
     #=========================================================================
     # Paths and library locations
     #=========================================================================
@@ -69,7 +72,7 @@ config = {
 
     # Format (log10(E_min), log10(E_max), nbins/decade of energy)
     # Main energy grid for solver
-    "cosmic_ray_grid": (5, 13, 4),
+    "cosmic_ray_grid": (5, 13, 8),
 
     # Photon grid of target field, only for calculation of rates
     "photon_grid": (-15, -6, 8),
@@ -84,14 +87,21 @@ config = {
     # means that if a particle is unstable with lifetime smaller than this threshold
     # will be decayed until all final state particles of this chain are stable.
     # In other words: short intermediate states will be integrated out
-    #"tau_dec_threshold": np.inf,
-    "tau_dec_threshold": 0.,
+    "tau_dec_threshold": np.inf,
+    # "tau_dec_threshold": 0.,
 
     # Particle ID for which redistribution functions are needed to be taken into
     # account. The default value is 101 (proton). All particles with smaller
     # IDs, i.e. neutrinos, pions, muons etc., will have energy redistributions.
     # For larger IDs (nuclei) the boost conservation is employed.
     "redist_threshold_ID": 101,
+
+    # Cut on redistribution functions
+    # Resitribution below this x value are set to 0.
+    "x_cut" : 1e-3,
+     
+    # Build equation system up to a maximal nuclear mass of
+    "max_mass": np.inf,
 
     #===========================================================================
     # Parameters of numerical integration

@@ -261,5 +261,7 @@ def nu_from_beta_decay(x_grid, mother, daughter):
     result = np.zeros(y_grid.shape)
     result[cond] = 1 / norm * yshort**2 * (
         1 - yshort) * np.sqrt((1 - yshort)**2 - ye**2)
+    
+    result[x_grid > 1] *= 0.
 
     return result
