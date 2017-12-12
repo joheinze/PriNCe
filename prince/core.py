@@ -34,12 +34,13 @@ class PriNCeRun(object):
         self.ed = self.cr_grid.d
 
         # Cross section handler
-        self.cross_sections = cross_sections.CompositeCrossSection(
-            [(0., cross_sections.TabulatedCrossSection, ('CRP2_TALYS',)),
-             (0.14, cross_sections.SophiaSuperposition, ())])
+        if 'cross_sections' in kwargs:
+            self.cross_sections = kwargs['cross_sections']
+        else:
+            self.cross_sections = cross_sections.CompositeCrossSection(
+                [(0., cross_sections.TabulatedCrossSection, ('CRP2_TALYS',)),
+                 (0.14, cross_sections.SophiaSuperposition, ())])
         
-        # self.cross_sections = cross_sections.SophiaSuperposition()
-
         # Photon field handler
         if 'photon_field' in kwargs:
             self.photon_field = kwargs['photon_field']

@@ -121,7 +121,7 @@ class UHECRPropagationSolver(object):
                 self.egrid, self.egrid - conloss[lidx:uidx], state[lidx:uidx])
         return state
 
-    def conloss_deriv(self, z, state, delta_z=1e-2):
+    def conloss_deriv(self, z, state, delta_z=1e-4):
         conloss = self.continuous_losses * delta_z * self.dldz(z)
         conloss_deriv = np.zeros_like(state)
         for spec in self.spec_man.species_refs:
@@ -133,10 +133,9 @@ class UHECRPropagationSolver(object):
             conloss_deriv[lidx:uidx] = (sup - sd) / (2. * delta_z)
         return -conloss_deriv
 
-    def eqn_deriv(self, z, state, *args):
+    def eqn_deriv(self, z, state, continuous_deriv=False, *args):
         self.ncallsf += 1
-        # r = self.jacobian.dot(state) + self.injection(1., z)
-        r = self.jacobian.dot(state) + self.injection(1., z)
+        r = self.jacobian.dot(state)
         return r
 
     def _init_vode(self):
@@ -227,8 +226,14 @@ class UHECRPropagationSolver(object):
             self.ncallsj = 0
 
             if self.enable_cont_losses:
+            #if self.enable_cont_losses:
+                if verbose:
+                    print 'applying cont. losses at t=', self.r.t
                 self.r._integrator.call_args[3] = 20
-                self.r._y = self.semi_lagrangian(dz, self.r.t, self.r.y)
+                self.r._y = self.semi_lagrangian(dz, self.r.t, self.r.y) + self.injection(dz, self.r.t)
+            else:
+                if verbose:
+                    print 'skipping cont. losses at t=', self.r.t
 
         self.r.integrate(self.final_z)
 

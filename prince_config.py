@@ -64,6 +64,8 @@ config = {
     # Omega_Lambda
     "Omega_Lambda": 0.73,
 
+    "E_CMB" : 2.34823e-13,  # = kB*T0 [GeV]
+
     #===========================================================================
     # Grids
     #===========================================================================
@@ -72,7 +74,7 @@ config = {
 
     # Format (log10(E_min), log10(E_max), nbins/decade of energy)
     # Main energy grid for solver
-    "cosmic_ray_grid": (5, 13, 8),
+    "cosmic_ray_grid": (5, 14, 12),
 
     # Photon grid of target field, only for calculation of rates
     "photon_grid": (-15, -6, 8),
@@ -88,7 +90,7 @@ config = {
     # will be decayed until all final state particles of this chain are stable.
     # In other words: short intermediate states will be integrated out
     "tau_dec_threshold": np.inf,
-    # "tau_dec_threshold": 0.,
+    #"tau_dec_threshold": 0.,
 
     # Particle ID for which redistribution functions are needed to be taken into
     # account. The default value is 101 (proton). All particles with smaller

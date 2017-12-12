@@ -72,7 +72,7 @@ class SimpleSource(CosmicRaySource):
 
         self.m = m
 
-        CosmicRaySource.__init__(self, prince_run, *args, **kwargs)
+        CosmicRaySource.__init__(self, prince_run, ncoid=ncoid, *args, **kwargs)
 
     def injection_spectrum(self, energy):
         """

@@ -193,7 +193,7 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                 elif rtup in self.cross_sections.known_diff_channels:
                     # Only half of the elements can be non-zero (energy conservation)
                     batch_dim += int(dcr**2 / 2) + 1
-
+                    
         info(2, 'Batch matrix dimensions are {0}x{1}'.format(batch_dim, dph))
         info(3, 'Memory usage: {0} MB'.format(batch_dim * dph * 8 / 1024**2))
 
@@ -308,7 +308,10 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                     yl = plims[0, ph_idx] * emo / m_pr
                     yu = plims[1, ph_idx] * emo / m_pr
 
-                    if xl < 1e-3 or yu < ymin:
+                    #TODO: Thresholds set for testing
+                    if daid == 101 and xl < 0.5:
+                        continue
+                    if xl < 1e-6 or yu < ymin:
                         continue
 
                     # Differential factors
