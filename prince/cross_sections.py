@@ -971,13 +971,13 @@ class TabulatedCrossSection(CrossSectionBase):
 class NEUCOSMAPhotohadronic(CrossSectionBase):
     """Class to import photohadronic models from the NeuCosmA file format"""
 
-    def __init__(self, NeuCosmA_filename =, max_mass=None,):
+    def __init__(self, NeuCosmA_filename = '', max_mass=None):
         if max_mass is None:
             self.max_mass = config["max_mass"]
         CrossSectionBase.__init__(self)
         
         import os.path as path
-        filepath = path.join(config['raw_data_dir'],'cross_sections_NeuCosmA',NEUCOSMA_filename)
+        filepath = path.join(config['raw_data_dir'],'cross_sections_NeuCosmA',NeuCosmA_filename)
         self._load_NEUCOSMA_file(filepath)
         self._optimize_and_generate_index()
 
@@ -996,69 +996,70 @@ class NEUCOSMAPhotohadronic(CrossSectionBase):
             and the total inelasticcross section are stored.
         """
 
+        # The file format is as following (by column):
+        # 1. parent id
+        # 2. daughter id
+        # 3. systematic flag (currently ignored)
+        # 4. x
+        # 5. Delta_x
+        # 6. log10(E [GeV]) (E or eps_r or y depending on corresp. column)
+        # 7. h_ij(x,y) [mubarn = 10^-30 cm^2]
+        # 8. d_sigma_ij(x,eps_r) / deps_r [mubarn = 10^-30 cm^2]
+        # 9. M_ij(eps_r)
+        # 10. f_i(y) [mubarn = 10^-30 cm^2]
+
         with open(filename) as f:
             text_data = f.readlines()
 
-        mo, da = (int(l) for l in text_data[0].split()[:2])
-        cs_nonel, cs_incl = {}, {}
-        e, g, mu, f, cs = (), (), (), (), ()
+        cs_incl_diff = {}
+        resp_nonel = {}
+        resp_incl = {}
 
-        neucosma_data = {}
-        neucosma_data['f'] = {}
-        neucosma_data['g'] = {}
-        neucosma_data['m'] = {}
+        # empty lists for reading lines
+        x_list  = []
+        dx_list = []
+        e_list  = []
+
+        h_list = []
+        dcs_list = []
+        f_list = []
+
+        mo_old, da_old =  text_data[0].split()[:2]
+        mo_old = int(mo_old)
+        da_old = int(da_old)
 
         for line in text_data:
-            m, d, _, e_k, g_ijk, m_ijk, f_ik, cs_ik = line.split()
+            mo, da, _, x, dx, e, h_ij, d_cs_ij, _, f_i = line.split()
+            mo = int(mo)
+            da = int(da)
+            x  = float(x)
+            dx = float(x)
+            e  = float(e)
+            h_ij   = float(h_ij)
+            dcs_ij = float(dcs_ij)
+            f_i    = float(f_i)
 
-            m, d = int(m), int(d)
-            if d == da:
-                e += (float(e_k), )
-                g += (float(g_ijk), )
-                mu += (float(m_ijk), )
-                f += (float(f_ik), )
-                cs += (float(cs_ik), )
-            else:
-                neucosma_data['g'][mo, da] = np.array(g)  # stored in mubarn
-                neucosma_data['m'][mo, da] = np.array(mu)
-                # Factor 1e30 below, for conversion to cm-2
-                cs_incl[mo, da] = np.array(mu) * np.array(cs) * 1e-30
-                # reset values of lists
-                da = d
-                if m != mo:
-                    neucosma_data['f'][mo] = np.array(f)
-                    cs_nonel[mo] = np.array(cs) * 1e-30   # conversion to cm-2
-                    mo = m
-                e, g, mu, f, cs = (float(e_k), ), (float(g_ijk), ), \
-                                  (float(m_ijk), ), (float(f_ik), ),\
-                                  (float(cs_ik), )
+            x_list.append(x)
+            dx_list.append(dx)
+
+            if not mo == mo_old:
+                # new mother, start new lists
+                x_list  = []
+                dx_list = []
+                e_list  = []
+
+                h_list = []
+                dcs_list = []
+                f_list = []
+
+                da_old = da
         
-        # Do not forget the last mother:
-        neucosma_data['f'][mo] = np.array(f)
-        cs_nonel[mo] = np.array(cs) * 1e-30   # conversion to cm-2
+        #TODO: Reader not yet working, main problem for use in PriNCe:
+        # File does not contain the nonelatics crosssection sigma_i
+        # instead only the response f_i, so this does not work with the reduce channels routine
 
-        neucosma_data['g'][mo, da] = np.array(g)  # stored in mubarn
-        neucosma_data['m'][mo, da] = np.array(mu)
-        # Factor 1e30 below, for conversion to cm-2
-        cs_incl[mo, da] = np.array(mu) * np.array(cs) * 1e-30
 
-        # If proton and neutron cross sections are not in contained
-        # in the files, set them to 0. Needed for TALYS and CRPropa2 and PSB
-        for pid in [101, 100]:
-            if pid not in cs_nonel:
-                cs_nonel[pid] = np.zeros_like(e)
 
-        print 'known species after loading NeuCosmA file:'
-        print np.sort(cs_nonel.keys())
-
-        # storing f,g,m data from NEUCOSMA file
-        self._NEUCOSMA_data = neucosma_data
-        self._egrid_tab = 10**np.array(e)
-        self._nonel_tab = cs_nonel
-        self._incl_tab = cs_incl
-        # Set initial range to whole egrid
-        self.set_range()
-        # info(2, "Finished initialization")
 
 class NEUCOSMACrossSection(CrossSectionBase):
     """Class to import cross sections from a NEUCOSMA file
@@ -1099,8 +1100,21 @@ class NEUCOSMACrossSection(CrossSectionBase):
             and the total inelasticcross section are stored.
         """
 
+        # The file format is as following (by column):
+        # 1. parent id
+        # 2. daughter id
+        # 3. systematic flag (currently ignored)
+        # 4. log10(E [GeV]) (E or eps_r or y depending on corresp. column)
+        # 5. g_ij(y) [mubarn = 10^-30 cm^2]
+        # 6. M_ij(eps_r)
+        # 7. f_i(y) [mubarn = 10^-30 cm^2]
+        # 8. sigma_i(eps_r) [mubarn = 10^-30 cm^2]
+    
+
         with open(filename) as f:
             text_data = f.readlines()
+
+        # We need the following: sigma_i, sigma_ij = M_ij * sigma_i
 
         mo, da = (int(l) for l in text_data[0].split()[:2])
         cs_nonel, cs_incl = {}, {}
