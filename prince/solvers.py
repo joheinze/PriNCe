@@ -7,14 +7,23 @@ from prince_config import config
 
 class UHECRPropagationSolver(object):
     def __init__(self, initial_z, final_z, prince_run,
-                 enable_cont_losses=True):
+                 enable_adiabatic_losses=True,
+                 enable_pairprod_losses=True,
+                 enable_photohad_losses=True,
+                 enable_injection_jacobian=True
+                 ):
         self.initial_z = initial_z
         self.final_z = final_z
 
         self.prince_run = prince_run
         self.spec_man = prince_run.spec_man
 
-        self.enable_cont_losses = enable_cont_losses
+        #Flags to enable/disable different loss types
+        self.enable_adiabatic_losses = enable_adiabatic_losses
+        self.enable_pairprod_losses  = enable_pairprod_losses
+        self.enable_photohad_losses  = enable_photohad_losses
+        #Flag for Jacobian injection: If True injection in jacobion, if False injection only per dz-step
+        self.enable_injection_jacobian = enable_injection_jacobian
 
         self.egrid = prince_run.egrid
         self.egr_state = np.tile(self.egrid, prince_run.spec_man.nspec)
@@ -23,7 +32,9 @@ class UHECRPropagationSolver(object):
         self.dim_cr = prince_run.int_rates.dim_cr
         self.dim_ph = prince_run.int_rates.dim_ph
         self.int_rates = self.prince_run.int_rates
-        self.continuous_loss_rates = self.prince_run.continuous_losses
+
+        self.adiabatic_loss_rates = self.prince_run.adiabatic_loss_rates
+        self.pairprod_loss_rates  = self.prince_run.pairprod_loss_rates
 
         self.targ_vec = prince_run.int_rates.photon_vector
 
@@ -101,24 +112,64 @@ class UHECRPropagationSolver(object):
 
     def _update_jacobian(self, z):
         info(5, 'Updating jacobian matrix at redshift', z)
-        self.continuous_losses = self.continuous_loss_rates.loss_vector(z)
-        self.jacobian = self.int_rates.get_hadr_jacobian(z, self.dldz(z))
+        
+        # add the different contributions to continuous losses
+        if self.enable_adiabatic_losses and self.enable_pairprod_losses:
+            self.continuous_losses = self.adiabatic_loss_rates.loss_vector(z) + self.pairprod_loss_rates.loss_vector(z)
+        elif self.enable_adiabatic_losses:
+            self.continuous_losses = self.adiabatic_loss_rates.loss_vector(z)
+        elif self.enable_pairprod_losses:
+            self.continuous_losses = self.pairprod_loss_rates.loss_vector(z)
+        else:
+            self.continuous_losses = np.zeros_like(self.pairprod_loss_rates.loss_vector(z))
+        
+        # enable photohadronic losses, or use a zero matrix 
+        if self.enable_photohad_losses:
+            self.jacobian = self.int_rates.get_hadr_jacobian(z, self.dldz(z))
+        else:
+            self.jacobian = self.int_rates.get_hadr_jacobian(z, self.dldz(z))
+            self.jacobian.data *= 0.
+
         self.last_hadr_jac = None
 
     def eqn_jac(self, z, state, *jac_args):
         self.ncallsj += 1
         if self.last_hadr_jac is None:
-            self.last_hadr_jac = self.int_rates.get_dense_hadr_jacobian(
-                z, self.dldz(z))
+            if self.enable_photohad_losses:
+                    self.last_hadr_jac = self.int_rates.get_dense_hadr_jacobian(
+                        z, self.dldz(z))
+            else:
+                    self.last_hadr_jac = self.int_rates.get_dense_hadr_jacobian(
+                        z, self.dldz(z))
+                    self.last_hadr_jac *= 0.
 
         return self.last_hadr_jac
 
     def semi_lagrangian(self, delta_z, z, state):
-        conloss = self.continuous_losses * delta_z * self.dldz(z)
+        conloss = self.continuous_losses * self.dldz(z) * delta_z 
+        
+        #dEprime_dE = (1 + z + delta_z) / (1 + z)
+        
+        from scipy.interpolate import interp1d
         for spec in self.spec_man.species_refs:
             lidx, uidx = spec.lidx(), spec.uidx()
-            state[lidx:uidx] = np.interp(
-                self.egrid, self.egrid - conloss[lidx:uidx], state[lidx:uidx])
+            dEprime_dE = 1 - np.gradient(conloss[lidx:uidx],self.egrid)
+
+            interpolator = interp1d(self.egrid - conloss[lidx:uidx], state[lidx:uidx] / dEprime_dE, 
+                            kind='linear', fill_value='extrapolate')
+            state[lidx:uidx] = interpolator(self.egrid)
+
+
+        # for spec in self.spec_man.species_refs:
+        #     lidx, uidx = spec.lidx(), spec.uidx()
+
+        #     print 'cont losses', conloss[lidx:uidx]
+        #     dEprime_dE = 1 + np.gradient(conloss[lidx:uidx],self.egrid)
+        #     dEprime_dE = 1 - np.gradient(conloss[lidx:uidx],self.egrid)
+        #     print 'dEprime / dE', dEprime_dE
+
+        #     state[lidx:uidx] = np.interp(
+        #         self.egrid, self.egrid - conloss[lidx:uidx], state[lidx:uidx] / dEprime_dE)
         return state
 
     def conloss_deriv(self, z, state, delta_z=1e-4):
@@ -135,7 +186,10 @@ class UHECRPropagationSolver(object):
 
     def eqn_deriv(self, z, state, continuous_deriv=False, *args):
         self.ncallsf += 1
-        r = self.jacobian.dot(state)
+        if self.enable_injection_jacobian:
+            r = self.jacobian.dot(state) + self.injection(1., self.r.t)
+        else:
+            r = self.jacobian.dot(state)
         return r
 
     def _init_vode(self):
@@ -149,7 +203,7 @@ class UHECRPropagationSolver(object):
             'name': 'lsodes',
             'method': 'bdf',
             # 'nsteps': 10000,
-            'rtol': 1e-2,
+            'rtol': 1e-4,
             # 'atol': 1e5,
             'ndim': self.dim_states,
             'nnz': self.jacobian.nnz,
@@ -225,15 +279,17 @@ class UHECRPropagationSolver(object):
             self.ncallsf = 0
             self.ncallsj = 0
 
-            if self.enable_cont_losses:
-            #if self.enable_cont_losses:
+            if verbose:
+                print 'applying cont. losses at t=', self.r.t
+            self.r._integrator.call_args[3] = 20
+            if not self.enable_injection_jacobian:
                 if verbose:
-                    print 'applying cont. losses at t=', self.r.t
-                self.r._integrator.call_args[3] = 20
+                    print 'injecting for redshift step'
                 self.r._y = self.semi_lagrangian(dz, self.r.t, self.r.y) + self.injection(dz, self.r.t)
             else:
                 if verbose:
-                    print 'skipping cont. losses at t=', self.r.t
+                    print 'not injection per step, injection in jacobian'
+                self.r._y = self.semi_lagrangian(dz, self.r.t, self.r.y)
 
         self.r.integrate(self.final_z)
 
@@ -241,4 +297,45 @@ class UHECRPropagationSolver(object):
             raise Exception(
                 'Integration failed. Change integrator setup and retry.')
 
+        info(2, 'Integration completed in {0} s'.format(time() - now))
+
+    def solve_euler(self, dz=1e-2, verbose=True, extended_output=False):
+        """solves the photohadronic part with a simple Euler method"""
+
+        from time import time
+
+        dz = -1 * dz
+        now = time()
+        state_euler = np.zeros(self.dim_states)
+
+        info(2, 'Starting Euler integration.')
+
+        curr_z = self.initial_z
+
+        while curr_z > self.final_z:
+            if verbose:
+                print 'Euler step at z =', curr_z
+            self._update_jacobian(curr_z)
+            deriv = self.eqn_deriv(curr_z, state_euler)
+
+            state_euler += dz * deriv
+
+            if verbose:
+                print 'applying cont. losses at z =', curr_z
+            if not self.enable_injection_jacobian:
+                if verbose:
+                    print 'injecting for redshift step'
+                state_euler = self.semi_lagrangian(dz, curr_z, state_euler) + self.injection(dz, curr_z)
+            else:
+                if verbose:
+                    print 'not injection per step, injection in jacobian'
+                state_euler = self.semi_lagrangian(dz, curr_z, state_euler)
+
+            if verbose:
+                print 'adjusting z', curr_z, dz
+            curr_z += dz
+            if verbose:
+                print 'new z', curr_z
+
+        self.r._y = state_euler
         info(2, 'Integration completed in {0} s'.format(time() - now))

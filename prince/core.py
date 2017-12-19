@@ -68,7 +68,9 @@ class PriNCeRun(object):
             prince_run=self)
 
         # Initialize continuous energy losses
-        self.continuous_losses = interaction_rates.ContinuousLossRates(
+        self.adiabatic_loss_rates = interaction_rates.ContinuousAdiabaticLossRate(
+            prince_run=self)
+        self.pairprod_loss_rates = interaction_rates.ContinuousPairProductionLossRate(
             prince_run=self)
 
         self.cross_sections

@@ -496,8 +496,40 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         lidx, uidx = self._batch_vec_pointer[nco_ids]
         return self._batch_vec[lidx:uidx]
 
+class ContinuousAdiabaticLossRate(InteractionRateBase):
+    """Implementation of continuous pair production loss rates."""
+    def __init__(self, prince_run, *args, **kwargs):
+        InteractionRateBase.__init__(self, prince_run, *args, **kwargs)
 
-class ContinuousLossRates(InteractionRateBase):
+    def adiabatic_losses(self, z):
+        """Returns adiabatic loss vector at redshift z"""
+        from prince.cosmology import H
+        return H(z) * PRINCE_UNITS.cm2sec * self.adiabatic_loss_vector
+
+    def loss_vector(self, z):
+        """Returns all continuous losses on dim_states grid"""
+        return self.adiabatic_losses(z)
+
+    def _setup(self):
+        # Init adiabatic loss vector
+        self.adiabatic_loss_vector = self._init_adiabatic_vec()
+
+    def _update_rates(self, z):
+        """Nothing to be done in adiabatic case."""
+        pass
+
+    def _init_adiabatic_vec(self):
+        """Prepare vector for scaling with units, charge and mass."""
+
+        adiabatic_loss_vector = np.zeros(self.prince_run.dim_states)
+
+        for spec in self.spec_man.species_refs:
+            adiabatic_loss_vector[spec.lidx():
+                                  spec.uidx()] = self.e_cosmicray.grid
+
+        return adiabatic_loss_vector
+
+class ContinuousPairProductionLossRate(InteractionRateBase):
     """Implementation of continuous pair production loss rates."""
 
     def __init__(self, prince_run, *args, **kwargs):
@@ -514,11 +546,6 @@ class ContinuousLossRates(InteractionRateBase):
 
         return self.pprod_loss_vector[s.lidx():s.uidx()]
 
-    def adiabatic_losses(self, z):
-        """Returns adiabatic loss vector at redshift z"""
-        from prince.cosmology import H
-        return H(z) * PRINCE_UNITS.cm2sec * self.adiabatic_loss_vector
-
     def pprod_losses(self, z):
         """Returns pair production losses at redshift z"""
         self._update_rates(z)
@@ -527,7 +554,7 @@ class ContinuousLossRates(InteractionRateBase):
     def loss_vector(self, z):
         """Returns all continuous losses on dim_states grid"""
 
-        return self.pprod_losses(z) + self.adiabatic_losses(z)
+        return self.pprod_losses(z)
 
     def _setup(self):
 
@@ -545,9 +572,6 @@ class ContinuousLossRates(InteractionRateBase):
 
         # Scale vector containing the units and factors of Z**2 for nuclei
         self.scale_vec = self._init_scale_vec()
-
-        # Init adiabatic loss vector
-        self.adiabatic_loss_vector = self._init_adiabatic_vec()
 
         # Grid of photon energies for interpolation
         self.photon_grid = np.outer(1 / gamma,
@@ -602,17 +626,6 @@ class ContinuousLossRates(InteractionRateBase):
                     self.dim_cr, dtype='double')
 
         return scale_vec
-
-    def _init_adiabatic_vec(self):
-        """Prepare vector for scaling with units, charge and mass."""
-
-        adiabatic_loss_vector = np.zeros(self.prince_run.dim_states)
-
-        for spec in self.spec_man.species_refs:
-            adiabatic_loss_vector[spec.lidx():
-                                  spec.uidx()] = self.e_cosmicray.grid
-
-        return adiabatic_loss_vector
 
     def _phi(self):
         """Phi function as in Blumental 1970"""
