@@ -62,6 +62,7 @@ class PriNCeRun(object):
 
         # Total dimension of system
         self.dim_states = self.ed * self.spec_man.nspec
+        self.dim_bins = (self.ed + 1) * self.spec_man.nspec
 
         # Initialize the interaction rates
         self.int_rates = interaction_rates.PhotoNuclearInteractionRate(
@@ -82,3 +83,8 @@ class PriNCeRun(object):
     def egrid(self):
         """Energy grid used for species."""
         return self.cr_grid.grid
+
+    @property
+    def ebins(self):
+        """Energy grid used for species."""
+        return self.cr_grid.bins
