@@ -4,6 +4,7 @@ from abc import ABCMeta, abstractmethod
 
 import numpy as np
 from scipy.sparse import bmat, coo_matrix
+from scipy.integrate import tplquad, dblquad, trapz, quad
 
 from prince.util import (get_AZN, get_interp_object, info,
                          load_or_convert_array, PRINCE_UNITS)
@@ -222,6 +223,11 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
 
         x_cut = config['x_cut']
 
+        if config["bin_average"] == 'method1':
+            info(1, 'Using bin central value for diff channel')
+        if config["bin_average"] == 'method2':
+            info(1, 'Using bin average value for diff channel')
+
         for moid, daid in spec_iter:
             # Cast from np.array to Python int
             moid, daid = int(moid), int(daid)
@@ -265,21 +271,38 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                     d_eidx = d_eidx[0]
                     emo = ecr[m_eidx]
 
-                    # Differential factors
-                    int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
-                               mass_mo / mass_da)
-                    diff_fac = 1. / delta_ec[d_eidx] / delta_ph[ph_idx] * m_pr
+                    # ------------------------------
+                    # method 1 simple central value
+                    # ------------------------------
+                    if config["bin_average"] == 'method1':
+                        center_y = eph[ph_idx] * emo / m_pr
+                        int_fac = (delta_ph[ph_idx] * mass_mo / mass_da)
+                        if has_incl:
+                            self._batch_matrix[ibatch, :] = resp.incl_intp[(moid, daid)](center_y) * int_fac
+                        if has_nonel:
+                            self._batch_matrix[ibatch, :] -= resp.nonel_intp[moid](center_y) * int_fac
+                    # -----------------------------------
+                    # method 2 average over e_ph only
+                    # -----------------------------------
+                    if config["bin_average"] == 'method2':
+                        xl = elims[0, d_eidx] / emo
+                        xu = elims[1, d_eidx] / emo
+                        delta_x = delta_ec[d_eidx] / emo
 
-                    yl = plims[0, ph_idx] * emo / m_pr
-                    yu = plims[1, ph_idx] * emo / m_pr
+                        yl = plims[0, ph_idx] * emo / m_pr
+                        yu = plims[1, ph_idx] * emo / m_pr
+                        delta_y = delta_ph[ph_idx] * emo / m_pr
 
-                    if has_incl:
-                        self._batch_matrix[ibatch, :] = (
-                            intp_bc(yu) - intp_bc(yl)) * int_fac * diff_fac
-                    if has_nonel:
-                        self._batch_matrix[ibatch, :] -= (
+                        int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
+                                mass_mo / mass_da)
+                        diff_fac = 1. / delta_x / delta_y
+                        if has_incl:
+                            self._batch_matrix[ibatch, :] = (
+                                intp_bc(yu) - intp_bc(yl)) * int_fac * diff_fac
+                        if has_nonel:
+                            self._batch_matrix[ibatch, :] -= (
                             intp_nonel(yu) - intp_nonel(yl)
-                        ) * int_fac * diff_fac
+                            ) * int_fac * diff_fac
 
                     # Try later to check for zero result to save more zeros.
                     ibatch += 1
@@ -290,45 +313,276 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                 it_diff.reset()
                 if (moid, daid) in resp.incl_diff_intp:
                     intp_diff = resp.incl_diff_intp[(moid, daid)]
+                    intp_nonel = resp.nonel_intp[moid]
+                    intp_nonel_antid = resp.nonel_intp[moid].antiderivative()
+
                     ymin = np.min(intp_diff.get_knots()[1])
                     has_redist = True
                 else:
                     has_redist = False
                     raise Exception('This should not occur.')
 
+                weight_mesh = None
                 for m_eidx, d_eidx, ph_idx in it_diff:
 
                     if d_eidx > m_eidx:
                         continue
 
                     emo = ecr[m_eidx]
+                    eda = ecr[d_eidx]
+                    epho = eph[ph_idx]
 
+                    # Check for Tresholds
                     xl = elims[0, d_eidx] / emo
                     xu = elims[1, d_eidx] / emo
                     yl = plims[0, ph_idx] * emo / m_pr
                     yu = plims[1, ph_idx] * emo / m_pr
-
                     #TODO: Thresholds set for testing
-                    if daid == 101 and xl < 0.5:
+                    if daid == 101 and xl < 0.1:
                         continue
                     if xl < 1e-6 or yu < ymin:
                         continue
 
-                    # Differential factors
-                    int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
-                               mass_mo / mass_da)
-                    diff_fac = 1. / delta_ec[d_eidx] / delta_ph[ph_idx] * m_pr
+                    # ------------------------------
+                    # method 1 simple central value
+                    # ------------------------------
+                    if config["bin_average"] == 'method1':
+                        center_x = eda / emo
+                        center_y = epho * emo / m_pr
 
-                    self._batch_matrix[ibatch, ph_idx] = intp_diff.integral(
-                        xl, xu, yl, yu) * diff_fac * int_fac
+                        int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
+                                mass_mo / mass_da)
+                        self._batch_matrix[ibatch, ph_idx] += intp_diff(center_x, center_y) * int_fac
 
-                    if has_nonel and m_eidx == d_eidx:
-                        self._batch_matrix[ibatch, ph_idx] -= (
-                            intp_nonel(yu) - intp_nonel(yl)
-                        ) * diff_fac * int_fac
+                        if has_nonel and m_eidx == d_eidx:
+                            int_fac = delta_ph[ph_idx]
+                            self._batch_matrix[ibatch, ph_idx] -= intp_nonel(center_y) * int_fac
+                    # -----------------------------------------
+                    # method 2 average over e_ph and E_da only
+                    # -----------------------------------------
+                    if config["bin_average"] == 'method2':
+                        xl = elims[0, d_eidx] / emo
+                        xu = elims[1, d_eidx] / emo
+                        delta_x = delta_ec[d_eidx] / emo
+
+                        yl = plims[0, ph_idx] * emo / m_pr
+                        yu = plims[1, ph_idx] * emo / m_pr
+                        delta_y = delta_ph[ph_idx] * emo / m_pr
+
+                        int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
+                                mass_mo / mass_da)
+                        diff_fac = 1. / delta_x / delta_y
+
+                        self._batch_matrix[ibatch, ph_idx] = intp_diff.integral(
+                            xl, xu, yl, yu) * diff_fac * int_fac
+
+                        if has_nonel and m_eidx == d_eidx:
+                            self._batch_matrix[ibatch, ph_idx] -= (
+                                intp_nonel_antid(yu) - intp_nonel_antid(yl)
+                            ) * diff_fac * int_fac
+
+                    # ----------------------------------------------
+                    # method 3 averaging by weights from trapz rule
+                    # ----------------------------------------------
+                    if config["bin_average"] == 'method3':
+                        emol = elims[0, m_eidx]
+                        emou = elims[1, m_eidx]
+                        delta_emo = delta_ec[m_eidx]
+
+                        edal = elims[0, d_eidx]
+                        edau = elims[1, d_eidx]
+                        delta_eda = delta_ec[d_eidx]
+
+                        ephl = plims[0, ph_idx]
+                        ephu = plims[1, ph_idx]
+                        delta_eph = delta_ph[ph_idx]
+
+                        int_fac = (delta_emo * delta_eph / emo *
+                                    mass_mo / mass_da)
+
+                        x_min = 0.
+                        y_min = 0.
+
+                        xl = edal / emol
+                        yl = emol * ephl
+
+                        print xl/x_min
+                        print yl/y_min
+
+
+                        weight_mesh = None
+                        if weight_mesh is None:
+                            gridpoints = 10
+
+                            emo_min = emol
+                            eda_min = edal
+                            epho_min = ephl
+
+                            emo_mesh = np.linspace(emol,emou,gridpoints)
+                            eda_mesh = np.linspace(edal,edau,gridpoints)
+                            epho_mesh = np.linspace(ephl,ephu,gridpoints)
+                            emo_mesh,eda_mesh,epho_mesh = np.meshgrid(emo_mesh,eda_mesh,epho_mesh)
+
+                            x_mesh = eda_mesh / emo_mesh
+                            y_mesh = emo_mesh * epho_mesh / m_pr
+                            x_min = eda_min / emo_min
+                            y_min = emo_min * epho_min
+
+                            weight = 2. * np.ones(gridpoints)
+                            weight[0] = 1. 
+                            weight[-1] = 1.
+
+                            w1,w2,w3 = np.meshgrid(weight,weight,weight)
+                            weight_mesh = w1 * w2 * w3
+                            weight_sum = np.sum(weight_mesh)
+
+
+                        weight_mesh / weigh_mesh_old
+                                                
+                        weight_mesh_old = weight_mesh
+                        # center_x = eda / emo
+                        # center_y = epho * emo / m_pr
+                        # self._batch_matrix[ibatch, ph_idx] += intp_diff(center_x, center_y) * int_fac
+
+                        # gridpoints = 50
+                        # emo = np.linspace(emol,emou,gridpoints)
+                        # eda = np.linspace(edal,edau,gridpoints)
+                        # epho = np.linspace(ephl,ephu,gridpoints)
+                        # emo,eda,epho = np.meshgrid(emo,eda,epho)
+
+                        # weight = 2. * np.ones(gridpoints)
+                        # weight[0] = 1.
+                        # weight[-1] = 1.
+
+                        # w1,w2,w3 = np.meshgrid(weight,weight,weight)
+                        # weight = w1 * w2 * w3
+                        xl = edal / emol
+                        yl = emol * ephl
+
+
+
+                        # print xl / x_min
+                        # print yl / y_min
+
+                        # average = np.sum(intp_diff(x_mesh * xl / x_min, y_mesh * yl / ymin, grid=False) * weight_mesh) / weight_sum
+                        # self._batch_matrix[ibatch, ph_idx] = average * int_fac
+                        # print 'approximate trapz'
+                        # print '--------------------------------------'
+                        # print average
+                        # print self._batch_matrix[ibatch, ph_idx]
+                        if has_nonel and m_eidx == d_eidx:
+                            average = np.sum(intp_nonel(y_mesh * yl / ymin) * weight_mesh) / weight_sum
+                            self._batch_matrix[ibatch, ph_idx] -= average * int_fac
+                            (emo_mesh / emo_min * emol) * (epho_mesh / epho_min * ephl) / m_pr
+
+
+                    # ----------------------------------------------
+                    # method 4 averaging by weights from trapz rule
+                    # ----------------------------------------------
+                    if config["bin_average"] == 'method4':
+                        emol = elims[0, m_eidx]
+                        emou = elims[1, m_eidx]
+                        delta_emo = delta_ec[m_eidx]
+
+                        edal = elims[0, d_eidx]
+                        edau = elims[1, d_eidx]
+                        delta_eda = delta_ec[d_eidx]
+
+                        ephl = plims[0, ph_idx]
+                        ephu = plims[1, ph_idx]
+                        delta_eph = delta_ph[ph_idx]
+
+                        int_fac = (delta_emo * delta_eph / emo *
+                                    mass_mo / mass_da)
+                        diff_fac = 1. / delta_emo / delta_eda / delta_eph
+
+                        weight_mesh = None
+                        if weight_mesh is None:
+                            gridpoints = 4
+
+                            emo_min = emol
+                            eda_min = edal
+                            epho_min = ephl
+
+                            # emo_mesh = np.logspace(np.log(emol),np.log(emou),gridpoints)
+                            # eda_mesh = np.logspace(np.log(edal),np.log(edau),gridpoints)
+                            # epho_mesh = np.logspace(np.log(ephl),np.log(ephu),gridpoints)
+                            emo_mesh = np.linspace(emol,emou,gridpoints)
+                            eda_mesh = np.linspace(edal,edau,gridpoints)
+                            epho_mesh = np.linspace(ephl,ephu,gridpoints)
+                            emo_mesh,eda_mesh,epho_mesh = np.meshgrid(emo_mesh,eda_mesh,epho_mesh,indexing = 'ij')
+
+                            x_mesh = eda_mesh / emo_mesh
+                            y_mesh = emo_mesh * epho_mesh / m_pr
+                            x_min = eda_min / emo_min
+                            y_min = emo_min * epho_min
+
+                            weight = 2. * np.ones(gridpoints)
+                            weight[0] = 1. 
+                            weight[-1] = 1.
+
+                            w1,w2,w3 = np.meshgrid(weight,weight,weight)
+                            weight_mesh = w1 * w2 * w3
+                            # print '--------------------------------------------'
+                            # print weight_mesh.shape
+                            # print '--------------------------------------------'
+                            weight_sum = np.sum(weight_mesh)
+
+                        xl = edal / emol
+                        yl = emol * ephl
+
+                        # values = intp_diff(x_mesh * xl / x_min, y_mesh * yl / ymin, grid=False)
+                        # values = np.trapz(values, x=epho_mesh[0,0,:])
+                        # values = np.trapz(values, x=eda_mesh[0,:,0])
+                        # average = np.trapz(values, x=emo_mesh[:,0,0])
+                        # self._batch_matrix[ibatch, ph_idx] = average * diff_fac * int_fac
+                        # print 'accurate trapz'
+                        # print '--------------------------------------'
+                        # print average * diff_fac
+                        # print self._batch_matrix[ibatch, ph_idx]
+                        # print ''
+                        # if average != 0:
+                        #     print 'diff average', average
+
+
+                        if has_nonel and m_eidx == d_eidx:
+                            # average = np.sum(intp_nonel(y_mesh * yl / ymin) * weight_mesh) / weight_sum
+                            values = intp_nonel(y_mesh * yl / ymin)
+                            values = np.trapz(values, x=epho_mesh[0,0,:])
+                            values = np.trapz(values, x=eda_mesh[0,:,0])
+                            average = np.trapz(values, x=emo_mesh[:,0,0])
+                            self._batch_matrix[ibatch, ph_idx] -= average * diff_fac * int_fac
+                            # if average != 0:
+                            #     print 'nonel average', average
+
+                    # ------------------------------------------------------------
+                    # method 5 average over e_ph and E_da only, using bin dagonal
+                    # ------------------------------------------------------------
+                    if config["bin_average"] == 'method5':
+                        xl = elims[0, d_eidx] / elims[1, m_eidx]
+                        xu = elims[1, d_eidx] / elims[0, m_eidx]
+                        delta_x = xu - xl
+
+                        yl = plims[0, ph_idx] * elims[0, m_eidx] / m_pr
+                        yu = plims[1, ph_idx] * elims[1, m_eidx] / m_pr
+                        delta_y = yu - yl
+
+                        int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
+                                mass_mo / mass_da)
+                        diff_fac = 1. / delta_x / delta_y
+
+                        self._batch_matrix[ibatch, ph_idx] = intp_diff.integral(
+                            xl, xu, yl, yu) * diff_fac * int_fac
+
+                        if has_nonel and m_eidx == d_eidx:
+                            self._batch_matrix[ibatch, ph_idx] -= (
+                                intp_nonel_antid(yu) - intp_nonel_antid(yl)
+                            ) * diff_fac * int_fac
 
                     if ph_idx == p_idcs[-1]:
                         ibatch += 1
+                        # print 'at ibatch', ibatch
+
                         self._batch_rows.append(sp_id_ref[daid].lidx() +
                                                 d_eidx)
                         self._batch_cols.append(sp_id_ref[moid].lidx() +

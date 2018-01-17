@@ -276,8 +276,10 @@ class UHECRPropagationSolver(object):
 
         # Setup solver
 
-        self.r = ode(self.eqn_deriv, self.eqn_jac).set_integrator(**ode_params)
-        # self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
+        # info(1,'Setting solver with jacobian')
+        # self.r = ode(self.eqn_deriv, self.eqn_jac).set_integrator(**ode_params)
+        info(1,'Setting solver without jacobian')
+        self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
 
     def solve(self, dz=1e-2, verbose=True, extended_output=False):
         from time import time
@@ -294,7 +296,10 @@ class UHECRPropagationSolver(object):
 
             self._update_jacobian(self.r.t)
             stepin = time()
+            t0 = self.r.t
             self.r.integrate(self.r.t + dz)  #,
+            t1 = self.r.t
+
             # step=True if self.r.t < self.initial_z else False)
             if verbose:
                 print 'step took', time() - stepin
@@ -324,10 +329,15 @@ class UHECRPropagationSolver(object):
 
             if verbose: print 'applying cont. losses at t=', self.r.t
             self.r._integrator.call_args[3] = 20
+
             if not self.enable_injection_jacobian:
                 if verbose: print 'injecting for redshift step'
-                self.r._y = self.semi_lagrangian(dz, self.r.t, self.r.y) + self.injection(dz, self.r.t)
-                #self.r.set_initial_value(self.semi_lagrangian(dz, self.r.t, self.r.y) + self.injection(dz, self.r.t), self.r.t)
+                if self.r.t < 0.0:
+                    print 'skipping cont loss at', self.r.t
+                    self.r._y += self.injection(dz, self.r.t)
+                else:
+                    # self.r._y = self.semi_lagrangian(dz, self.r.t, self.r.y) + self.injection(dz, self.r.t)
+                    self.r.set_initial_value(self.semi_lagrangian(dz, self.r.t, self.r.y) + self.injection(dz, self.r.t), self.r.t)
             else:
                 if verbose: print 'not injection per step, injection in jacobian'
                 self.r._y = self.semi_lagrangian(dz, self.r.t, self.r.y)

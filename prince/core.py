@@ -25,12 +25,18 @@ class PriNCeRun(object):
             config["max_mass"] = kwargs["max_mass"]
 
         # Initialize energy grid
-        self.cr_grid = util.EnergyGrid(*config["cosmic_ray_grid"])
-
-        # Photon grid for rate computations
-        self.ph_grid = util.EnergyGrid(*config["photon_grid"])
-
+        if config["grid_scale"] == 'E':
+            info(1,'initialising Energy grid')
+            self.cr_grid = util.EnergyGrid(*config["cosmic_ray_grid"])
+            self.ph_grid = util.EnergyGrid(*config["photon_grid"])
+        elif config["grid_scale"] == 'logE':
+            info(1,'initialising logEnergy grid')
+            self.cr_grid = util.LogEnergyGrid(*config["cosmic_ray_grid"])
+            self.ph_grid = util.LogEnergyGrid(*config["photon_grid"])
+        else:
+            raise Exception("Unknown energy grid scale {:}, adjust config['grid_scale']".format(config['grid_scale']))
         #: Dimension of energy grid
+
         self.ed = self.cr_grid.d
 
         # Cross section handler

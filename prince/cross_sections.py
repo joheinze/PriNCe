@@ -257,9 +257,7 @@ class CrossSectionBase(object):
                 4,
                 'Model does not provide a native xbins. Assuming JH special sophia',
                 'binning.')
-            self.xbins = np.hstack(
-                [np.logspace(-8, -2, 40),
-                 np.logspace(-2, 0, 120)[1:]])
+            self.xbins = SophiaSuperposition().xbins
 
         bc = self.xcenters
         bw = bin_widths(self.xbins)
@@ -763,6 +761,10 @@ class SophiaSuperposition(CrossSectionBase):
         self._egrid_tab, self.cs_proton_grid, self.cs_neutron_grid = \
         load_or_convert_array(
             'sophia_crosssec', delimiter=',', unpack=True)
+
+        print config["data_dir"]
+        print config["redist_fname"]
+        print join(config["data_dir"], config["redist_fname"])
 
         epsr_grid, self.xbins, self.redist_proton, self.redist_neutron = np.load(
             join(config["data_dir"], config["redist_fname"]))
