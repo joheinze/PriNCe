@@ -36,8 +36,6 @@ class UHECRPropagationSolver(object):
         self.adiabatic_loss_rates = self.prince_run.adiabatic_loss_rates
         self.pairprod_loss_rates  = self.prince_run.pairprod_loss_rates
 
-        self.targ_vec = prince_run.int_rates.photon_vector
-
         self.state = np.zeros(prince_run.dim_states)
         self.dim_states = prince_run.dim_states
         self.last_z = self.initial_z
@@ -112,90 +110,59 @@ class UHECRPropagationSolver(object):
 
     def _update_jacobian(self, z):
         info(5, 'Updating jacobian matrix at redshift', z)
-        
-        # add the different contributions to continuous losses
-        if self.enable_adiabatic_losses and self.enable_pairprod_losses:
-            self.continuous_losses = self.adiabatic_loss_rates.loss_vector(z) + self.pairprod_loss_rates.loss_vector(z)
-        elif self.enable_adiabatic_losses:
-            self.continuous_losses = self.adiabatic_loss_rates.loss_vector(z)
-        elif self.enable_pairprod_losses:
-            self.continuous_losses = self.pairprod_loss_rates.loss_vector(z)
-        else:
-            self.continuous_losses = np.zeros_like(self.pairprod_loss_rates.loss_vector(z))
-        
+
         # enable photohadronic losses, or use a zero matrix 
         if self.enable_photohad_losses:
-            self.jacobian = self.int_rates.get_hadr_jacobian(z, self.dldz(z))
+            self.jacobian = self.int_rates.get_hadr_jacobian(z, self.dldz(z),force_update=True)
         else:
-            self.jacobian = self.int_rates.get_hadr_jacobian(z, self.dldz(z))
+            self.jacobian = self.int_rates.get_hadr_jacobian(z, self.dldz(z),force_update=True)
             self.jacobian.data *= 0.
 
         self.last_hadr_jac = None
 
     def semi_lagrangian(self, delta_z, z, state):
-        conloss = self.continuous_losses * self.dldz(z) * delta_z 
-        
-        if not self.enable_adiabatic_losses:
-            if not self.enable_pairprod_losses:
+        # if no continuous losses are enables, just return the state.
+        if not self.enable_adiabatic_losses and not self.enable_pairprod_losses:
                 return state
-        #dEprime_dE = (1 + z + delta_z) / (1 + z)
-        
-        # from scipy.interpolate import interp1d
-        # for spec in self.spec_man.species_refs:
-        #     lidx, uidx = spec.lidx(), spec.uidx()
-        #     dEprime_dE = 1 - np.gradient(conloss[lidx:uidx],self.egrid)
 
-        #     interpolator = interp1d(self.egrid - conloss[lidx:uidx], state[lidx:uidx] / dEprime_dE, 
-        #                     kind='quadratic', fill_value='extrapolate')
-        #     state[lidx:uidx] = interpolator(self.egrid)
+        # add the different contributions to continuous losses
+        self.continuous_losses = np.zeros_like(self.adiabatic_loss_rates.energy_vector)
+        if self.enable_adiabatic_losses:
+            self.continuous_losses += self.adiabatic_loss_rates.loss_vector(z)
+        if self.enable_pairprod_losses:
+            self.continuous_losses += self.pairprod_loss_rates.loss_vector(z)
 
-        for spec in self.spec_man.species_refs:
-            lidx, uidx = spec.lidx(), spec.uidx()
-            #dEprime_dE = 1 - np.gradient(conloss[lidx:uidx],self.egrid)
+        # -------------------------------------------------------------------
+        # method 1:
+        # - shift the bin centers and use gradient for derivative
+        # - use linear interpolation on x = log(E)
+        # -------------------------------------------------------------------
+        if config["semi_lagr_method"] == 'method1':
+            conloss = self.continuous_losses * self.dldz(z) * delta_z 
 
-            newgrid = self.egrid - conloss[lidx:uidx]
-            oldgrid = self.egrid
-            #dEprime_dE = np.gradient(newgrid,oldgrid)
+            for spec in self.spec_man.species_refs:
+                lidx, uidx = spec.lidx(), spec.uidx()
+                newgrid = self.egrid - conloss[lidx:uidx]
+                oldgrid = self.egrid
+                #gradient = np.gradient(newgrid,oldgrid)
 
-            newgrid_log = np.log(newgrid)
-            oldgrid_log = np.log(oldgrid)
-            dEprime_dE = np.gradient(newgrid_log,oldgrid_log) * newgrid / oldgrid
+                newgrid_log = np.log(newgrid)
+                oldgrid_log = np.log(oldgrid)
+                gradient = np.gradient(newgrid_log,oldgrid_log) * newgrid / oldgrid
 
-            newstate = state[lidx:uidx] / dEprime_dE
-            #print newstate
-            #print 'after np.where'
-            newstate = np.where(newstate > 1e-200, newstate, 1e-200)
-            #print newstate
-            #print 'after log'
-            newstate = np.log(newstate)
-            #print newstate
+                newstate = state[lidx:uidx] / gradient
+                newstate = np.where(newstate > 1e-200, newstate, 1e-200)
+                newstate_log = np.log(newstate)
 
-            #state[lidx:uidx] = np.interp(oldgrid, newgrid, newstate)
-            state[lidx:uidx] = np.exp(np.interp(oldgrid_log, newgrid_log, newstate))
+                state[lidx:uidx] = np.exp(np.interp(oldgrid_log, newgrid_log, newstate_log))
 
-            # state[lidx:uidx] = np.interp(
-            #     self.egrid, self.egrid - conloss[lidx:uidx], state[lidx:uidx] / dEprime_dE)
-        
-        # from scipy.interpolate import interp1d
-        # for spec in self.spec_man.species_refs:
-        #     lidx, uidx = spec.lidx(), spec.uidx()
-        #     dEprime_dE = 1 - np.gradient(conloss[lidx:uidx],self.egrid)
+        # -------------------------------------------------------------------
+        # method 2:
+        # - shift the bin edges and bin widths for derivative
+        # - use linear interpolation on x = log(E)
+        # -------------------------------------------------------------------
+        # if config["semi_lagr_method"] == 'method2':
 
-        #     newgrid = self.egrid - conloss[lidx:uidx]
-        #     oldgrid = self.egrid
-        #     newstate = state[lidx:uidx] / dEprime_dE
-            
-        #     state[lidx:uidx] = np.interp(oldgrid, newgrid, newstate)
-
-        #     # newgrid = np.log10(self.egrid - conloss[lidx:uidx])
-        #     # oldgrid = np.log10(self.egrid)
-        #     # newstate = np.where(state[lidx:uidx] > 1e-200, state[lidx:uidx], 1e-200)
-        #     # newstate = np.log10(newstate / dEprime_dE)
-            
-        #     state[lidx:uidx] = 10**np.interp(newgrid, oldgrid, newstate)
-        #     # interpolator = interp1d(newgrid, newstate, 
-        #     #                 kind='cubic', fill_value='extrapolate')
-            # state[lidx:uidx] = interpolator(oldgrid)
         return state
 
     def conloss_deriv(self, z, state, delta_z=1e-4):
@@ -284,6 +251,7 @@ class UHECRPropagationSolver(object):
     def solve(self, dz=1e-2, verbose=True, extended_output=False):
         from time import time
 
+        stepcount = 0
         dz = -1 * dz
         now = time()
         self.r.set_initial_value(np.zeros(self.dim_states), self.r.t)
@@ -299,7 +267,6 @@ class UHECRPropagationSolver(object):
             t0 = self.r.t
             self.r.integrate(self.r.t + dz)  #,
             t1 = self.r.t
-
             # step=True if self.r.t < self.initial_z else False)
             if verbose:
                 print 'step took', time() - stepin
@@ -336,12 +303,17 @@ class UHECRPropagationSolver(object):
                     print 'skipping cont loss at', self.r.t
                     self.r._y += self.injection(dz, self.r.t)
                 else:
-                    # self.r._y = self.semi_lagrangian(dz, self.r.t, self.r.y) + self.injection(dz, self.r.t)
-                    self.r.set_initial_value(self.semi_lagrangian(dz, self.r.t, self.r.y) + self.injection(dz, self.r.t), self.r.t)
+                    if stepcount == 1:
+                        print 'setting initial value', self.r.t
+                        self.r.set_initial_value(self.semi_lagrangian(dz, self.r.t, self.r.y) + self.injection(dz, self.r.t), self.r.t)
+                        stepcount = 0
+                    else:
+                        self.r._y = self.semi_lagrangian(dz, self.r.t, self.r.y) + self.injection(dz, self.r.t)
+                        # stepcount += 1
             else:
                 if verbose: print 'not injection per step, injection in jacobian'
                 self.r._y = self.semi_lagrangian(dz, self.r.t, self.r.y)
-                #self.r.set_initial_value(self.semi_lagrangian(dz, self.r.t, self.r.y), self.r.t)
+                # self.r.set_initial_value(self.semi_lagrangian(dz, self.r.t, self.r.y), self.r.t)
 
         self.r.integrate(self.final_z)
 
@@ -349,45 +321,4 @@ class UHECRPropagationSolver(object):
             raise Exception(
                 'Integration failed. Change integrator setup and retry.')
 
-        info(2, 'Integration completed in {0} s'.format(time() - now))
-
-    def solve_euler(self, dz=1e-2, verbose=True, extended_output=False):
-        """solves the photohadronic part with a simple Euler method"""
-
-        from time import time
-
-        dz = -1 * dz
-        now = time()
-        state_euler = np.zeros(self.dim_states)
-
-        info(2, 'Starting Euler integration.')
-
-        curr_z = self.initial_z
-
-        while curr_z > self.final_z:
-            if verbose:
-                print 'Euler step at z =', curr_z
-            self._update_jacobian(curr_z)
-            deriv = self.eqn_deriv(curr_z, state_euler)
-
-            state_euler += dz * deriv
-
-            if verbose:
-                print 'applying cont. losses at z =', curr_z
-            if not self.enable_injection_jacobian:
-                if verbose:
-                    print 'injecting for redshift step'
-                state_euler = self.semi_lagrangian(dz, curr_z, state_euler) + self.injection(dz, curr_z)
-            else:
-                if verbose:
-                    print 'not injection per step, injection in jacobian'
-                state_euler = self.semi_lagrangian(dz, curr_z, state_euler)
-
-            if verbose:
-                print 'adjusting z', curr_z, dz
-            curr_z += dz
-            if verbose:
-                print 'new z', curr_z
-
-        self.r._y = state_euler
         info(2, 'Integration completed in {0} s'.format(time() - now))
