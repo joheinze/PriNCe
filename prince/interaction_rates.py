@@ -439,11 +439,14 @@ class ContinuousAdiabaticLossRate(object):
         # Init adiabatic loss vector
         self.energy_vector = self._init_energy_vec()
 
-    def loss_vector(self, z):
+    def loss_vector(self, z, energy=None):
         """Returns all continuous losses on dim_states grid"""
         # return self.adiabatic_losses(z)
         from prince.cosmology import H
-        return H(z) * PRINCE_UNITS.cm2sec * self.energy_vector
+        if energy is None:
+            return H(z) * PRINCE_UNITS.cm2sec * self.energy_vector
+        else:
+            return H(z) * PRINCE_UNITS.cm2sec * energy
 
     def _init_energy_vec(self):
         """Prepare vector for scaling with units, charge and mass."""

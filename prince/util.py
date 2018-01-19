@@ -36,7 +36,8 @@ UNITS_AND_CONVERSIONS_DEF = dict(
     km2cm=1e5,
     yr2sec=spc.year,
     Gyr2sec=spc.giga * spc.year,
-    cm2sec=1e-2 / spc.c)
+    cm2sec=1e-2 / spc.c,
+    sec2cm=spc.c * 1e2)
 
 # This is the immutable unit object to be imported throughout the code
 PRINCE_UNITS = convert_to_namedtuple(UNITS_AND_CONVERSIONS_DEF, "PriNCeUnits")

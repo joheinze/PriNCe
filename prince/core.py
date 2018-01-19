@@ -59,10 +59,13 @@ class PriNCeRun(object):
         self.adv_set = config["adv_settings"]
 
         # Limit max nuclear mass of eqn system
-        system_species = [
-            s for s in self.cross_sections.known_species
-            if get_AZN(s)[0] <= config["max_mass"]
-        ]
+        if "species_list" in kwargs:
+            system_species = list(set(kwargs["species_list"]) & set(self.cross_sections.known_species))
+        else:
+            system_species = [
+                s for s in self.cross_sections.known_species
+                if get_AZN(s)[0] <= config["max_mass"]
+            ]
         # Initialize species manager for all species for which cross sections are known
         self.spec_man = data.SpeciesManager(system_species, self.ed)
 
