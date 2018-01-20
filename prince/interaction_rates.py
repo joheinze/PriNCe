@@ -1,22 +1,19 @@
 """The module contains classes for computations of interaction rates"""
 
-from abc import ABCMeta, abstractmethod
-
 import numpy as np
-from scipy.sparse import bmat, coo_matrix
+from scipy.integrate import trapz
 
-from prince.util import (get_AZN, get_interp_object, info,
-                         load_or_convert_array, PRINCE_UNITS)
+from prince.util import get_AZN, info, PRINCE_UNITS
 from prince_config import config
 
-#import matplotlib.pyplot as plt
+class PhotoNuclearInteractionRate(object):
+    """Implementation of photo-hadronic/nuclear interaction rates.
+    This Version directly writes the data into a CSC-matrix and only updates the data each time.
+    """
 
-
-class InteractionRateBase(object):
-    __metaclass__ = ABCMeta
-
-    def __init__(self, prince_run, *args, **kwargs):
-        from prince.util import EnergyGrid, get_y
+    def __init__(self, prince_run=None, with_dense_jac=True, *args, **kwargs):
+        print 'direct init in PhotoNuclearInteractionRate'
+        self.with_dense_jac = with_dense_jac
 
         #: Reference to prince run
         self.prince_run = prince_run
@@ -31,21 +28,8 @@ class InteractionRateBase(object):
         self.spec_man = prince_run.spec_man
 
         # Initialize grids
-        if "photon_bins_per_dec" not in kwargs:
-            self.e_photon = prince_run.ph_grid
-        else:
-            info(2, 'Overriding number of photon bins from config.')
-            self.e_photon = EnergyGrid(config["photon_grid"][0],
-                                       config["photon_grid"][1],
-                                       kwargs["photon_bins_per_dec"])
-
-        if "cr_bins_per_dec" not in kwargs:
-            self.e_cosmicray = prince_run.cr_grid
-        else:
-            info(2, 'Overriding number of cosmic ray bins from config.')
-            self.e_cosmicray = EnergyGrid(config["cosmic_ray_grid"][0],
-                                          config["cosmic_ray_grid"][1],
-                                          kwargs["cr_bins_per_dec"])
+        self.e_photon = prince_run.ph_grid
+        self.e_cosmicray = prince_run.cr_grid
 
         # Create shortcuts for grid dimensions
         self.dim_cr = self.e_cosmicray.d
@@ -55,91 +39,9 @@ class InteractionRateBase(object):
         self._ph_vec_zcache = None
         self._ratemat_zcache = None
 
-        # Variable to cache the photon spectrum at current redshif
-        self._photon_vector = None
-
-        # The call to setup initializes all variables
-        self._setup()
-
-    @abstractmethod
-    def _setup(self):
-        """Implement all initialization in the derived class"""
-        raise Exception("Base class function called.")
-
-    @abstractmethod
-    def _update_rates(self, z):
-        """Updates all rates if photon field/redshift changes"""
-        raise Exception("Base class function called.")
-
-    def photon_vector(self, z):
-        """Returns photon vector at redshift `z` on photon grid.
-
-        Return value from cache if redshift value didn't change since last call.
-        """
-
-        self._set_photon_vector(z)
-
-        return self._photon_vector
-
-    def _set_photon_vector(self, z):
-        """Cache photon vector for the previous value of z.
-
-        Args:
-            z (float): redshift
-        """
-
-        if self._ph_vec_zcache != z:
-            self._photon_vector = self.photon_field.get_photon_density(
-                self.e_photon.grid, z)
-            self._ph_vec_zcache = z
-
-
-class PhotoNuclearInteractionRate(InteractionRateBase):
-    """Implementation of photo-hadronic/nuclear interaction rates.
-    This Version directly writes the data into a CSC-matrix and only updates the data each time.
-    """
-
-    def __init__(self, prince_run=None, with_dense_jac=True, *args, **kwargs):
-
-        if prince_run is None:
-            # For debugging and independent calculations define
-            # a strawman class and supply the required paramters as
-            # attributes
-
-            class PrinceRunMock(object):
-                pass
-
-            from prince.data import SpeciesManager
-            from prince.util import EnergyGrid
-
-            prince_run = PrinceRunMock()
-            if "photon_bins_per_dec" not in kwargs:
-                kwargs["photon_bins_per_dec"] = config["photon_grid"][2]
-            if "cr_bins_per_dec" not in kwargs:
-                kwargs["cr_bins_per_dec"] = config["cosmic_ray_grid"][2]
-
-            prince_run.e_photon = EnergyGrid(config["photon_grid"][0],
-                                             config["photon_grid"][1],
-                                             kwargs["photon_bins_per_dec"])
-            prince_run.e_cosmicray = EnergyGrid(config["cosmic_ray_grid"][0],
-                                                config["cosmic_ray_grid"][1],
-                                                kwargs["cr_bins_per_dec"])
-            prince_run.cross_sections = kwargs['cs']
-            prince_run.photon_field = kwargs['pf']
-
-            prince_run.spec_man = SpeciesManager(
-                prince_run.cross_sections.known_species,
-                prince_run.e_cosmicray.d)
-
-        self.with_dense_jac = with_dense_jac
-
-        InteractionRateBase.__init__(self, prince_run, *args, **kwargs)
-
-    def _setup(self):
-        """Initialization of all members."""
-
-        self._batch_rows = []
-        self._batch_cols = []
+        # Initialize the matrices for batch computation
+        self._batch_rows = None
+        self._batch_cols = None
         self._batch_matrix = None
         self._batch_vec = None
         self.coupling_mat = None
@@ -147,6 +49,22 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
 
         self._init_matrices()
         self._init_coupling_mat(sp_format='csr')
+
+    def photon_vector(self, z):
+        """Returns photon vector at redshift `z` on photon grid.
+
+        This vector is in fact a matrix of vectors of the interpolated
+        photon field with dimensions (dim_cr, xi_steps).
+
+        Args:
+            z (float): redshift
+
+        Return value from cache if redshift value didn't change since last call.
+        """
+        photon_vector = np.zeros_like(self.e_photon.grid)
+        photon_vector = self.photon_field.get_photon_density(self.e_photon.grid, z)
+
+        return photon_vector
 
     def _init_matrices(self):
         """ A new take on filling the matrices"""
@@ -164,22 +82,19 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         bcr = self.e_cosmicray.bins
         eph = self.e_photon.grid
         bph = self.e_photon.bins
+        delta_ec = self.e_cosmicray.widths
+        delta_ph = self.e_photon.widths
 
-        # Edges of each CR energy bin
+        # Edges of each CR energy bin and photon energy bin
         elims = np.vstack([bcr[:-1], bcr[1:]])
-
-        # Edges of each photon energy bin
         plims = np.vstack([bph[:-1], bph[1:]])
 
-        # Widths
-        delta_ec = np.subtract(*-elims[:, :])
-        delta_ph = np.subtract(*-plims[:, :])
-
         # CR and photon grid indices
-        emo_idcs = eda_idcs = np.arange(dcr)
+        emo_idcs = np.arange(dcr)
+        eda_idcs = np.arange(dcr)
         p_idcs = np.arange(dph)
 
-        # calculate dimension of the batch matrix
+        # estimate dimension of the batch matrix
         batch_dim = 0
         for specid in known_species:
             if specid < 100:
@@ -193,11 +108,10 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                 elif rtup in self.cross_sections.known_diff_channels:
                     # Only half of the elements can be non-zero (energy conservation)
                     batch_dim += int(dcr**2 / 2) + 1
-
+                    
         info(2, 'Batch matrix dimensions are {0}x{1}'.format(batch_dim, dph))
-        info(3, 'Memory usage: {0} MB'.format(batch_dim * dph * 8 / 1024**2))
-
         self._batch_matrix = np.zeros((batch_dim, dph))
+        info(3, 'Memory usage: {0} MB'.format(self._batch_matrix.nbytes / 1024**2))
         ibatch = 0
         self._batch_rows = []
         self._batch_cols = []
@@ -221,6 +135,11 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
             op_axes=[[0, -1, -1], [-1, 0, -1], [-1, -1, 0]])
 
         x_cut = config['x_cut']
+
+        if config["bin_average"] == 'method1':
+            info(1, 'Using bin central value for diff channel')
+        if config["bin_average"] == 'method2':
+            info(1, 'Using bin average value for diff channel')
 
         for moid, daid in spec_iter:
             # Cast from np.array to Python int
@@ -265,21 +184,38 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                     d_eidx = d_eidx[0]
                     emo = ecr[m_eidx]
 
-                    # Differential factors
-                    int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
-                               mass_mo / mass_da)
-                    diff_fac = 1. / delta_ec[d_eidx] / delta_ph[ph_idx] * m_pr
+                    # ------------------------------
+                    # method 1 simple central value
+                    # ------------------------------
+                    if config["bin_average"] == 'method1':
+                        center_y = eph[ph_idx] * emo / m_pr
+                        int_fac = (delta_ph[ph_idx] * mass_mo / mass_da)
+                        if has_incl:
+                            self._batch_matrix[ibatch, :] = resp.incl_intp[(moid, daid)](center_y) * int_fac
+                        if has_nonel:
+                            self._batch_matrix[ibatch, :] -= resp.nonel_intp[moid](center_y) * int_fac
+                    # -----------------------------------
+                    # method 2 average over e_ph only
+                    # -----------------------------------
+                    if config["bin_average"] == 'method2':
+                        xl = elims[0, d_eidx] / emo
+                        xu = elims[1, d_eidx] / emo
+                        delta_x = delta_ec[d_eidx] / emo
 
-                    yl = plims[0, ph_idx] * emo / m_pr
-                    yu = plims[1, ph_idx] * emo / m_pr
+                        yl = plims[0, ph_idx] * emo / m_pr
+                        yu = plims[1, ph_idx] * emo / m_pr
+                        delta_y = delta_ph[ph_idx] * emo / m_pr
 
-                    if has_incl:
-                        self._batch_matrix[ibatch, :] = (
-                            intp_bc(yu) - intp_bc(yl)) * int_fac * diff_fac
-                    if has_nonel:
-                        self._batch_matrix[ibatch, :] -= (
+                        int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
+                                mass_mo / mass_da)
+                        diff_fac = 1. / delta_x / delta_y
+                        if has_incl:
+                            self._batch_matrix[ibatch, :] = (
+                                intp_bc(yu) - intp_bc(yl)) * int_fac * diff_fac
+                        if has_nonel:
+                            self._batch_matrix[ibatch, :] -= (
                             intp_nonel(yu) - intp_nonel(yl)
-                        ) * int_fac * diff_fac
+                            ) * int_fac * diff_fac
 
                     # Try later to check for zero result to save more zeros.
                     ibatch += 1
@@ -290,6 +226,9 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                 it_diff.reset()
                 if (moid, daid) in resp.incl_diff_intp:
                     intp_diff = resp.incl_diff_intp[(moid, daid)]
+                    intp_nonel = resp.nonel_intp[moid]
+                    intp_nonel_antid = resp.nonel_intp[moid].antiderivative()
+
                     ymin = np.min(intp_diff.get_knots()[1])
                     has_redist = True
                 else:
@@ -302,27 +241,57 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
                         continue
 
                     emo = ecr[m_eidx]
+                    eda = ecr[d_eidx]
+                    epho = eph[ph_idx]
 
+                    # Check for Tresholds
                     xl = elims[0, d_eidx] / emo
                     xu = elims[1, d_eidx] / emo
                     yl = plims[0, ph_idx] * emo / m_pr
                     yu = plims[1, ph_idx] * emo / m_pr
-
-                    if xl < 1e-3 or yu < ymin:
+                    #TODO: Thresholds set for testing
+                    if daid == 101 and xl < 0.1:
+                        continue
+                    if xl < 1e-6 or yu < ymin:
                         continue
 
-                    # Differential factors
-                    int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
-                               mass_mo / mass_da)
-                    diff_fac = 1. / delta_ec[d_eidx] / delta_ph[ph_idx] * m_pr
+                    # ------------------------------
+                    # method 1 simple central value
+                    # ------------------------------
+                    if config["bin_average"] == 'method1':
+                        center_x = eda / emo
+                        center_y = epho * emo / m_pr
 
-                    self._batch_matrix[ibatch, ph_idx] = intp_diff.integral(
-                        xl, xu, yl, yu) * diff_fac * int_fac
+                        int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
+                                mass_mo / mass_da)
+                        self._batch_matrix[ibatch, ph_idx] += intp_diff(center_x, center_y) * int_fac
 
-                    if has_nonel and m_eidx == d_eidx:
-                        self._batch_matrix[ibatch, ph_idx] -= (
-                            intp_nonel(yu) - intp_nonel(yl)
-                        ) * diff_fac * int_fac
+                        if has_nonel and m_eidx == d_eidx:
+                            int_fac = delta_ph[ph_idx]
+                            self._batch_matrix[ibatch, ph_idx] -= intp_nonel(center_y) * int_fac
+                    # -----------------------------------------
+                    # method 2 average over e_ph and E_da only
+                    # -----------------------------------------
+                    if config["bin_average"] == 'method2':
+                        xl = elims[0, d_eidx] / emo
+                        xu = elims[1, d_eidx] / emo
+                        delta_x = delta_ec[d_eidx] / emo
+
+                        yl = plims[0, ph_idx] * emo / m_pr
+                        yu = plims[1, ph_idx] * emo / m_pr
+                        delta_y = delta_ph[ph_idx] * emo / m_pr
+
+                        int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
+                                mass_mo / mass_da)
+                        diff_fac = 1. / delta_x / delta_y
+
+                        self._batch_matrix[ibatch, ph_idx] = intp_diff.integral(
+                            xl, xu, yl, yu) * diff_fac * int_fac
+
+                        if has_nonel and m_eidx == d_eidx:
+                            self._batch_matrix[ibatch, ph_idx] -= (
+                                intp_nonel_antid(yu) - intp_nonel_antid(yl)
+                            ) * diff_fac * int_fac
 
                     if ph_idx == p_idcs[-1]:
                         ibatch += 1
@@ -337,6 +306,10 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         self._batch_rows = np.array(self._batch_rows)
         self._batch_cols = np.array(self._batch_cols)
         self._batch_vec = np.zeros(ibatch)
+
+        memory = (self._batch_matrix.nbytes + self._batch_rows.nbytes
+                  + self._batch_cols.nbytes  + self._batch_vec.nbytes)/1024**2
+        info(3, "Memory usage after initialization: {:} MB".format(memory))
 
     def _init_coupling_mat(self, sp_format):
         """Initialises the coupling matrix directly in sparse (csc) format.
@@ -425,164 +398,127 @@ class PhotoNuclearInteractionRate(InteractionRateBase):
         else:
             return False
 
-    def interaction_rate_single(self, nco_ids, z):
-        """Compute a single interaction rate using matrix convolution.
+    # def interaction_rate(self, nco_ids, z):
+    #     """Compute interaction rates using batch matrix convolution.
 
-        This method is a high performance integration of equation (10)
-        from internal note, using a simple box method.
+    #     This method is a high performance integration of equation (10)
+    #     from internal note, using a simple box method.
 
-        Don't use this method if you intend to compute rates for different
-        species at the same redshift value. Use :func:`interaction_rate`
-        instead.
+    #     All rates for a certain redshift value are computed at once, thus
+    #     this function is not very efficient if you need a rate for a single
+    #     species at different redshifts values.
 
-        The last redshift value is cached to avoid interpolation of the
-        photon spectrum at each step.
+    #     The last redshift value is cached to avoid interpolation of the
+    #     photon spectrum at each step.
 
-        Args:
-            nco_id (int or tuple): single particle id (neucosma codes) or tuple
-                                   with (mother, daughter) for inclusive
-                                   reactions
-            z (float): redshift
+    #     Args:
+    #         nco_id (int or tuple): single particle id (neucosma codes) or tuple
+    #                                with (mother, daughter) for inclusive
+    #                                reactions
+    #         z (float): redshift
 
-        Returns:
-            (numpy.array): interaction length :math:`\\Gamma` in cm^-1
-        """
-        response = self.cross_sections.resp
-        # Convolve using matrix multiplication
-        if isinstance(nco_ids, tuple):
-            # assume nco_id is tuple of (mo, da)
-            mo, da = nco_ids
-            if (mo, da) in self.cross_sections.known_bc_channels:
-                res = response.get_full(mo, da, self.ymat)
-            elif (mo, da) in self.cross_sections.known_diff_channels:
-                res = response.get_full(mo, da, self.ymat, xgrid=self.xmat)
-            else:
-                raise Exception(
-                    'Unknown inclusive channel {:} -> {:}'.format(mo, da))
+    #     Returns:
+    #         (numpy.array): interaction length :math:`\\Gamma` in cm^-1
+    #     """
+
+    #     self._update_rates(z)
+    #     lidx, uidx = self._batch_vec_pointer[nco_ids]
+    #     return self._batch_vec[lidx:uidx]
+
+class ContinuousAdiabaticLossRate(object):
+    """Implementation of continuous pair production loss rates."""
+    def __init__(self, prince_run, *args, **kwargs):
+        print 'New cont loss class init called'
+        #: Reference to prince run
+        self.prince_run = prince_run
+        #: Reference to species manager
+        self.spec_man = prince_run.spec_man
+
+        # Initialize grids
+        self.e_cosmicray = prince_run.cr_grid        
+        # Init adiabatic loss vector
+        self.energy_vector = self._init_energy_vec()
+
+    def loss_vector(self, z, energy=None):
+        """Returns all continuous losses on dim_states grid"""
+        # return self.adiabatic_losses(z)
+        from prince.cosmology import H
+        if energy is None:
+            return H(z) * PRINCE_UNITS.cm2sec * self.energy_vector
         else:
-            # assume nco_ids is just one integer, mo = da
-            mo = da = nco_ids
-            res = response.nonel_intp[mo](self.ymat)
-        return res.dot(np.diag(self.e_photon.widths)).dot(
-            self.photon_vector(z))
+            return H(z) * PRINCE_UNITS.cm2sec * energy
 
-    def interaction_rate(self, nco_ids, z):
-        """Compute interaction rates using batch matrix convolution.
+    def _init_energy_vec(self):
+        """Prepare vector for scaling with units, charge and mass."""
 
-        This method is a high performance integration of equation (10)
-        from internal note, using a simple box method.
+        energy_vector = np.zeros(self.prince_run.dim_states)
 
-        All rates for a certain redshift value are computed at once, thus
-        this function is not very efficient if you need a rate for a single
-        species at different redshifts values.
+        for spec in self.spec_man.species_refs:
+            energy_vector[spec.lidx():
+                                  spec.uidx()] = self.e_cosmicray.grid
 
-        The last redshift value is cached to avoid interpolation of the
-        photon spectrum at each step.
+        return energy_vector
 
-        Args:
-            nco_id (int or tuple): single particle id (neucosma codes) or tuple
-                                   with (mother, daughter) for inclusive
-                                   reactions
-            z (float): redshift
-
-        Returns:
-            (numpy.array): interaction length :math:`\\Gamma` in cm^-1
-        """
-
-        self._update_rates(z)
-        lidx, uidx = self._batch_vec_pointer[nco_ids]
-        return self._batch_vec[lidx:uidx]
-
-
-class ContinuousLossRates(InteractionRateBase):
+class ContinuousPairProductionLossRate(object):
     """Implementation of continuous pair production loss rates."""
 
     def __init__(self, prince_run, *args, **kwargs):
-        # Number of integration steps in phi
-        self.xi_steps = 100 if 'xi_steps' not in kwargs else kwargs['xi_steps']
+        print 'New pair prod loss class init called'
+        #: Reference to prince run
+        self.prince_run = prince_run
+        #: Reference to species manager
+        self.spec_man = prince_run.spec_man
 
-        InteractionRateBase.__init__(self, prince_run, *args, **kwargs)
+        #: Reference to PhotonField object
+        self.photon_field = prince_run.photon_field
 
-    def pprod_loss_rate(self, nco_id, z):
-        """Returns energy loss rate in GeV/cm."""
-
-        self._update_rates(z)
-        s = self.spec_man.ncoid2sref[nco_id]
-
-        return self.pprod_loss_vector[s.lidx():s.uidx()]
-
-    def adiabatic_losses(self, z):
-        """Returns adiabatic loss vector at redshift z"""
-        from prince.cosmology import H
-        return H(z) * PRINCE_UNITS.cm2sec * self.adiabatic_loss_vector
-
-    def pprod_losses(self, z):
-        """Returns pair production losses at redshift z"""
-        self._update_rates(z)
-        return self.pprod_loss_vector
-
-    def loss_vector(self, z):
-        """Returns all continuous losses on dim_states grid"""
-
-        return self.pprod_losses(z) + self.adiabatic_losses(z)
-
-    def _setup(self):
-
-        # Photon grid for parallel integration of the "Blumental integral"
-        # for each point of the cosmic ray grid
+        # Initialize grids
+        self.e_cosmicray = prince_run.cr_grid       
+        self.e_photon = prince_run.ph_grid
 
         # xi is dimensionless (natural units) variable
-        self.xi = np.logspace(np.log10(2 + 1e-8), 8., self.xi_steps)
+        xi_steps = 100 if 'xi_steps' not in kwargs else kwargs['xi_steps']
+        self.xi = np.logspace(np.log10(2 + 1e-8), 8., xi_steps)
 
         # weights for integration
-        self.phi_xi2 = self._phi() / (self.xi**2)
-
-        # Gamma factor of the cosmic ray
-        gamma = self.e_cosmicray.grid / PRINCE_UNITS.m_proton
+        self.phi_xi2 = self._phi(self.xi) / (self.xi**2)
 
         # Scale vector containing the units and factors of Z**2 for nuclei
         self.scale_vec = self._init_scale_vec()
 
-        # Init adiabatic loss vector
-        self.adiabatic_loss_vector = self._init_adiabatic_vec()
-
+        # Gamma factor of the cosmic ray
+        gamma = self.e_cosmicray.grid / PRINCE_UNITS.m_proton
         # Grid of photon energies for interpolation
         self.photon_grid = np.outer(1 / gamma,
                                     self.xi) * PRINCE_UNITS.m_electron / 2.
         self.pg_desort = self.photon_grid.reshape(-1).argsort()
         self.pg_sorted = self.photon_grid.reshape(-1)[self.pg_desort]
 
-        # Rate vector (dim_states x 1) containing all rates
-        self.pprod_loss_vector = np.zeros(self.prince_run.dim_states)
+    def loss_vector(self, z):
+        """Returns all continuous losses on dim_states grid"""
 
-    def _update_rates(self, z):
-        """Updates photon fields and computes rates for all species."""
-        from scipy.integrate import trapz
+        rate_single = trapz(self.photon_vector(z) * self.phi_xi2, self.xi, axis=1)
+        pprod_loss_vector = self.scale_vec * np.tile(rate_single,self.spec_man.nspec)
 
-        np.multiply(
-            self.scale_vec,
-            np.tile(
-                trapz(self.photon_vector(z) * self.phi_xi2, self.xi, axis=1),
-                self.spec_man.nspec),
-            out=self.pprod_loss_vector)
+        return pprod_loss_vector
 
-    def _set_photon_vector(self, z):
-        """Get and cache photon vector for the previous value of z.
+    def photon_vector(self, z):
+        """Returns photon vector at redshift `z` on photon grid.
 
         This vector is in fact a matrix of vectors of the interpolated
         photon field with dimensions (dim_cr, xi_steps).
 
         Args:
             z (float): redshift
-        """
-        if self._photon_vector is None:
-            self._photon_vector = np.zeros_like(self.photon_grid)
 
-        if self._ph_vec_zcache != z:
-            self._photon_vector.reshape(-1)[
-                self.pg_desort] = self.photon_field.get_photon_density(
-                    self.pg_sorted, z)
-            self._ph_vec_zcache = z
+        Return value from cache if redshift value didn't change since last call.
+        """
+        photon_vector = np.zeros_like(self.photon_grid)
+        photon_vector.reshape(-1)[
+            self.pg_desort] = self.photon_field.get_photon_density(
+                self.pg_sorted, z)
+
+        return photon_vector
 
     def _init_scale_vec(self):
         """Prepare vector for scaling with units, charge and mass."""
@@ -595,23 +531,12 @@ class ContinuousLossRates(InteractionRateBase):
             if not spec.is_nucleus:
                 continue
             scale_vec[spec.lidx():spec.uidx()] = units * abs(
-                spec.charge) * spec.Z**2 / float(spec.A) * np.ones(
-                    self.dim_cr, dtype='double')
+                spec.charge)**2 / float(spec.A) * np.ones(
+                    self.e_cosmicray.d, dtype='double')
 
         return scale_vec
 
-    def _init_adiabatic_vec(self):
-        """Prepare vector for scaling with units, charge and mass."""
-
-        adiabatic_loss_vector = np.zeros(self.prince_run.dim_states)
-
-        for spec in self.spec_man.species_refs:
-            adiabatic_loss_vector[spec.lidx():
-                                  spec.uidx()] = self.e_cosmicray.grid
-
-        return adiabatic_loss_vector
-
-    def _phi(self):
+    def _phi(self, xi):
         """Phi function as in Blumental 1970"""
 
         # Simple ultrarelativistic approximation by Blumental 1970
@@ -628,7 +553,6 @@ class ContinuousLossRates(InteractionRateBase):
         f2 = 78.35
         f3 = 1837
 
-        xi = self.xi
         res = np.zeros(xi.shape)
 
         le = np.where(xi < 25.)

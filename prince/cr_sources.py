@@ -54,6 +54,11 @@ class CosmicRaySource(object):
         """
         return self.evolution(z) * self.injection_grid
 
+    def injection_rate_single(self,energy,z):
+        """
+        return the injection rate for a single energy and redshift
+        """
+        return self.evolution(z) * self.injection_spectrum(energy)
 
 class SimpleSource(CosmicRaySource):
     def __init__(self,
@@ -72,7 +77,7 @@ class SimpleSource(CosmicRaySource):
 
         self.m = m
 
-        CosmicRaySource.__init__(self, prince_run, *args, **kwargs)
+        CosmicRaySource.__init__(self, prince_run, ncoid=ncoid, *args, **kwargs)
 
     def injection_spectrum(self, energy):
         """

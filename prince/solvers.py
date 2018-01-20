@@ -7,46 +7,40 @@ from prince_config import config
 
 class UHECRPropagationSolver(object):
     def __init__(self, initial_z, final_z, prince_run,
-                 enable_cont_losses=True):
+                 enable_adiabatic_losses=True,
+                 enable_pairprod_losses=True,
+                 enable_photohad_losses=True,
+                 enable_injection_jacobian=True
+                ):
         self.initial_z = initial_z
         self.final_z = final_z
 
         self.prince_run = prince_run
         self.spec_man = prince_run.spec_man
-
-        self.enable_cont_losses = enable_cont_losses
-
         self.egrid = prince_run.egrid
-        self.egr_state = np.tile(self.egrid, prince_run.spec_man.nspec)
-        self.ewi_state = np.tile(self.prince_run.cr_grid.widths,
-                                 prince_run.spec_man.nspec)
-        self.dim_cr = prince_run.int_rates.dim_cr
-        self.dim_ph = prince_run.int_rates.dim_ph
-        self.int_rates = self.prince_run.int_rates
-        self.continuous_loss_rates = self.prince_run.continuous_losses
 
-        self.targ_vec = prince_run.int_rates.photon_vector
+        #Flags to enable/disable different loss types
+        self.enable_adiabatic_losses = enable_adiabatic_losses
+        self.enable_pairprod_losses = enable_pairprod_losses
+        self.enable_photohad_losses = enable_photohad_losses
+        #Flag for Jacobian injection: 
+        # if True injection in jacobion
+        # if False injection only per dz-step
+        self.enable_injection_jacobian = enable_injection_jacobian
+
+        self.had_int_rates = self.prince_run.int_rates
+        self.adiabatic_loss_rates = self.prince_run.adiabatic_loss_rates
+        self.pairprod_loss_rates  = self.prince_run.pairprod_loss_rates
 
         self.state = np.zeros(prince_run.dim_states)
         self.dim_states = prince_run.dim_states
-        self.last_z = self.initial_z
 
         self.solution_vector = []
         self.list_of_sources = []
-        self._init_vode()
-
-    def dldz(self, z):
-        return -1. / ((1. + z) * H(z) * PRINCE_UNITS.cm2sec)
+        self._init_solver()
 
     def add_source_class(self, source_instance):
         self.list_of_sources.append(source_instance)
-
-    def get_energy_density(self, nco_id):
-        from scipy.integrate import trapz
-
-        A, _, _ = get_AZN(nco_id)
-        return trapz(A * self.egrid * self.get_solution(nco_id),
-                     A * self.egrid)
 
     def get_solution(self, nco_id):
         """Returns the spectrum in energy per nucleon"""
@@ -59,6 +53,12 @@ class UHECRPropagationSolver(object):
         egrid = spec.A * self.egrid
         return egrid, egrid**epow * self.r.y[
             spec.lidx():spec.uidx()] / spec.A
+
+    def get_energy_density(self, nco_id):
+        from scipy.integrate import trapz
+
+        A, _, _ = get_AZN(nco_id)
+        return trapz(A * self.egrid * self.get_solution(nco_id), self.egrid)
 
     def get_solution_group(self, nco_ids, epow=3):
         """Return the summed spectrum (in total energy) for all elements in the range"""
@@ -89,57 +89,109 @@ class UHECRPropagationSolver(object):
         # Initial value
         self.r.set_initial_value(self.state, self.initial_z)
         self._update_jacobian(self.initial_z)
-        self.last_z = self.initial_z
         self.last_hadr_jac = None
+
+    def dldz(self, z):
+        return -1. / ((1. + z) * H(z) * PRINCE_UNITS.cm2sec)
 
     def injection(self, dz, z):
         """This needs to return the injection rate
         at each redshift value z"""
-        f = self.dldz(z) * dz / PRINCE_UNITS.cm2sec
+        f = self.dldz(z) * dz * PRINCE_UNITS.cm2sec
         return f * np.sum(
             [s.injection_rate(z) for s in self.list_of_sources], axis=0)
 
     def _update_jacobian(self, z):
         info(5, 'Updating jacobian matrix at redshift', z)
-        self.continuous_losses = self.continuous_loss_rates.loss_vector(z)
-        self.jacobian = self.int_rates.get_hadr_jacobian(z, self.dldz(z))
+
+        # enable photohadronic losses, or use a zero matrix 
+        if self.enable_photohad_losses:
+            self.jacobian = self.had_int_rates.get_hadr_jacobian(z, self.dldz(z),force_update=True)
+        else:
+            self.jacobian = self.had_int_rates.get_hadr_jacobian(z, self.dldz(z),force_update=True)
+            self.jacobian.data *= 0.
+
         self.last_hadr_jac = None
+
+    def semi_lagrangian(self, delta_z, z, state):
+        # if no continuous losses are enables, just return the state.
+        if not self.enable_adiabatic_losses and not self.enable_pairprod_losses:
+                return state
+
+        # add the different contributions to continuous losses
+        self.continuous_losses = np.zeros_like(self.adiabatic_loss_rates.energy_vector)
+        if self.enable_adiabatic_losses:
+            self.continuous_losses += self.adiabatic_loss_rates.loss_vector(z)
+        if self.enable_pairprod_losses:
+            self.continuous_losses += self.pairprod_loss_rates.loss_vector(z)
+
+        # -------------------------------------------------------------------
+        # method 1:
+        # - shift the bin centers and use gradient for derivative
+        # - use linear interpolation on x = log(E)
+        # -------------------------------------------------------------------
+        if config["semi_lagr_method"] == 'method1':
+            conloss = self.continuous_losses * self.dldz(z) * delta_z 
+
+            for spec in self.spec_man.species_refs:
+                lidx, uidx = spec.lidx(), spec.uidx()
+                newgrid = self.egrid - conloss[lidx:uidx]
+                oldgrid = self.egrid
+                #gradient = np.gradient(newgrid,oldgrid)
+
+                newgrid_log = np.log(newgrid)
+                oldgrid_log = np.log(oldgrid)
+                gradient = np.gradient(newgrid_log,oldgrid_log) * newgrid / oldgrid
+
+                newstate = state[lidx:uidx] / gradient
+                newstate = np.where(newstate > 1e-200, newstate, 1e-200)
+                newstate_log = np.log(newstate)
+
+                state[lidx:uidx] = np.exp(np.interp(oldgrid_log, newgrid_log, newstate_log))
+
+        # -------------------------------------------------------------------
+        # method 2:
+        # - shift the bin edges and bin widths for derivative
+        # - use linear interpolation on x = log(E)
+        # -------------------------------------------------------------------
+        # if config["semi_lagr_method"] == 'method2':
+
+        return state
+
+    # def conloss_deriv(self, z, state, delta_z=1e-4):
+    #     conloss = self.continuous_losses * delta_z * self.dldz(z)
+    #     conloss_deriv = np.zeros_like(state)
+    #     for spec in self.spec_man.species_refs:
+    #         lidx, uidx = spec.lidx(), spec.uidx()
+    #         sup = np.interp(self.egrid, self.egrid + conloss[lidx:uidx],
+    #                         state[lidx:uidx])
+    #         sd = np.interp(self.egrid, self.egrid - conloss[lidx:uidx],
+    #                        state[lidx:uidx])
+    #         conloss_deriv[lidx:uidx] = (sup - sd) / (2. * delta_z)
+    #     return -conloss_deriv
+
+    def eqn_deriv(self, z, state, *args):
+        self.ncallsf += 1
+        if self.enable_injection_jacobian:
+            r = self.jacobian.dot(state) + self.injection(1., self.r.t)
+        else:
+            r = self.jacobian.dot(state)
+        return r
 
     def eqn_jac(self, z, state, *jac_args):
         self.ncallsj += 1
         if self.last_hadr_jac is None:
-            self.last_hadr_jac = self.int_rates.get_dense_hadr_jacobian(
-                z, self.dldz(z))
+            if self.enable_photohad_losses:
+                    self.last_hadr_jac = self.had_int_rates.get_dense_hadr_jacobian(
+                        z, self.dldz(z))
+            else:
+                    self.last_hadr_jac = self.had_int_rates.get_dense_hadr_jacobian(
+                        z, self.dldz(z))
+                    self.last_hadr_jac *= 0.
 
         return self.last_hadr_jac
 
-    def semi_lagrangian(self, delta_z, z, state):
-        conloss = self.continuous_losses * delta_z * self.dldz(z)
-        for spec in self.spec_man.species_refs:
-            lidx, uidx = spec.lidx(), spec.uidx()
-            state[lidx:uidx] = np.interp(
-                self.egrid, self.egrid - conloss[lidx:uidx], state[lidx:uidx])
-        return state
-
-    def conloss_deriv(self, z, state, delta_z=1e-2):
-        conloss = self.continuous_losses * delta_z * self.dldz(z)
-        conloss_deriv = np.zeros_like(state)
-        for spec in self.spec_man.species_refs:
-            lidx, uidx = spec.lidx(), spec.uidx()
-            sup = np.interp(self.egrid, self.egrid + conloss[lidx:uidx],
-                            state[lidx:uidx])
-            sd = np.interp(self.egrid, self.egrid - conloss[lidx:uidx],
-                           state[lidx:uidx])
-            conloss_deriv[lidx:uidx] = (sup - sd) / (2. * delta_z)
-        return -conloss_deriv
-
-    def eqn_deriv(self, z, state, *args):
-        self.ncallsf += 1
-        # r = self.jacobian.dot(state) + self.injection(1., z)
-        r = self.jacobian.dot(state) + self.injection(1., z)
-        return r
-
-    def _init_vode(self):
+    def _init_solver(self):
         from scipy.integrate import ode
         from scipy.sparse import csc_matrix
         self._update_jacobian(self.initial_z)
@@ -150,7 +202,7 @@ class UHECRPropagationSolver(object):
             'name': 'lsodes',
             'method': 'bdf',
             # 'nsteps': 10000,
-            'rtol': 1e-2,
+            'rtol': 1e-4,
             # 'atol': 1e5,
             'ndim': self.dim_states,
             'nnz': self.jacobian.nnz,
@@ -159,39 +211,42 @@ class UHECRPropagationSolver(object):
             # 'with_jacobian': True
         }
 
-        ode_params_vode = {
-            'name': 'vode',
-            'method': 'bdf',
-            'nsteps': 10000,
-            'rtol': 1e-1,
-            'atol': 1e10,
-            # 'order': 5,
-            'max_step': 0.2,
-            'with_jacobian': False
-        }
+        # ode_params_vode = {
+        #     'name': 'vode',
+        #     'method': 'bdf',
+        #     'nsteps': 10000,
+        #     'rtol': 1e-1,
+        #     'atol': 1e10,
+        #     # 'order': 5,
+        #     'max_step': 0.2,
+        #     'with_jacobian': False
+        # }
 
-        ode_params_lsoda = {
-            'name': 'lsoda',
-            'nsteps': 10000,
-            'rtol': 0.2,
-            'max_order_ns': 5,
-            'max_order_s': 2,
-            'max_step': 0.2,
-            # 'first_step': 1e-4,
-        }
+        # ode_params_lsoda = {
+        #     'name': 'lsoda',
+        #     'nsteps': 10000,
+        #     'rtol': 0.2,
+        #     'max_order_ns': 5,
+        #     'max_order_s': 2,
+        #     'max_step': 0.2,
+        #     # 'first_step': 1e-4,
+        # }
 
         ode_params = ode_params_lsodes
 
         # Setup solver
 
-        self.r = ode(self.eqn_deriv, self.eqn_jac).set_integrator(**ode_params)
-        # self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
+        # info(1,'Setting solver with jacobian')
+        # self.r = ode(self.eqn_deriv, self.eqn_jac).set_integrator(**ode_params)
+        info(1,'Setting solver without jacobian')
+        self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
 
-    def solve(self, dz=1e-2, verbose=True, extended_output=False):
+    def solve(self, dz=1e-2, verbose=True, extended_output=False, full_reset=False):
         from time import time
 
+        # stepcount = 0
         dz = -1 * dz
-        now = time()
+        start_time = time()
         self.r.set_initial_value(np.zeros(self.dim_states), self.r.t)
 
         info(2, 'Starting integration.')
@@ -199,13 +254,16 @@ class UHECRPropagationSolver(object):
         while self.r.successful() and (self.r.t + dz) > self.final_z:
             if verbose:
                 info(3, "Integrating at z={0}".format(self.r.t))
-
-            self._update_jacobian(self.r.t)
-            stepin = time()
-            self.r.integrate(self.r.t + dz)  #,
-            # step=True if self.r.t < self.initial_z else False)
+            step_start = time()
+            # --------------------------------------------
+            # Solve for hadronic interactions
+            # --------------------------------------------
             if verbose:
-                print 'step took', time() - stepin
+                print 'Solving hadr losses at t=', self.r.t
+            self._update_jacobian(self.r.t)
+            self.r.integrate(self.r.t + dz)  #,
+            if verbose:
+                print 'step took', time() - step_start
                 print 'At t =', self.r.t
                 print 'jacobian calls', self.ncallsj
                 print 'function calls', self.ncallsf
@@ -226,9 +284,42 @@ class UHECRPropagationSolver(object):
             self.ncallsf = 0
             self.ncallsj = 0
 
-            if self.enable_cont_losses:
-                self.r._integrator.call_args[3] = 20
-                self.r._y = self.semi_lagrangian(dz, self.r.t, self.r.y)
+            # --------------------------------------------
+            # Apply the injection 
+            # --------------------------------------------
+            if not self.enable_injection_jacobian:
+                if verbose:
+                    print 'applying injection at t=', self.r.t
+                if full_reset:
+                    self.r.set_initial_value(self.r.y + self.injection(dz, self.r.t), self.r.t)
+                else:
+                    self.r._integrator.call_args[3] = 20
+                    self.r._y += self.injection(dz, self.r.t)
+
+            # --------------------------------------------
+            # Apply the semi lagrangian
+            # --------------------------------------------
+            if self.enable_adiabatic_losses or self.enable_pairprod_losses:
+                if verbose:
+                    print 'applying semi lagrangian at t=', self.r.t
+                if full_reset:
+                    self.r.set_initial_value(self.semi_lagrangian(dz, self.r.t, self.r.y), self.r.t)
+                else:
+                    self.r._integrator.call_args[3] = 20
+                    self.r._y = self.semi_lagrangian(dz, self.r.t, self.r.y)
+
+            # --------------------------------------------
+            # Some last checks and resets
+            # --------------------------------------------
+            if self.r.t < -1 * dz:
+                print 'break at z =', self.r.t
+                break
+            # if stepcount == -1:
+            #     full_reset = True
+            #     stepcount = 0
+            # else:
+            #     stepcount += 1
+            # print 'reset',full_reset
 
         self.r.integrate(self.final_z)
 
@@ -236,4 +327,82 @@ class UHECRPropagationSolver(object):
             raise Exception(
                 'Integration failed. Change integrator setup and retry.')
 
-        info(2, 'Integration completed in {0} s'.format(time() - now))
+        end_time = time()
+        info(2, 'Integration completed in {0} s'.format(end_time - start_time))
+
+
+
+    # def solve(self, dz=1e-2, verbose=True, extended_output=False):
+    #         from time import time
+
+    #         stepcount = 0
+    #         dz = -1 * dz
+    #         now = time()
+    #         self.r.set_initial_value(np.zeros(self.dim_states), self.r.t)
+
+    #         info(2, 'Starting integration.')
+
+    #         while self.r.successful() and (self.r.t + dz) > self.final_z:
+    #             if verbose:
+    #                 info(3, "Integrating at z={0}".format(self.r.t))
+
+    #             self._update_jacobian(self.r.t)
+    #             stepin = time()
+    #             t0 = self.r.t
+    #             self.r.integrate(self.r.t + dz)  #,
+    #             t1 = self.r.t
+    #             # step=True if self.r.t < self.initial_z else False)
+    #             if verbose:
+    #                 print 'step took', time() - stepin
+    #                 print 'At t =', self.r.t
+    #                 print 'jacobian calls', self.ncallsj
+    #                 print 'function calls', self.ncallsf
+    #                 if extended_output:
+    #                     NST = self.r._integrator.iwork[10]
+    #                     NFE = self.r._integrator.iwork[11]
+    #                     NJE = self.r._integrator.iwork[13]
+    #                     NLU = self.r._integrator.iwork[20]
+    #                     NNZ = self.r._integrator.iwork[19]
+    #                     NNZLU = self.r._integrator.iwork[24] + self.r._integrator.iwork[26] + 12
+    #                     print 'NST', NST
+    #                     print 'NFE', NFE
+    #                     print 'NJE', NJE
+    #                     print 'NLU', NLU
+    #                     print 'NNZLU', NNZLU
+    #                     print 'LAST STEP {0:4.3e}'.format(
+    #                         self.r._integrator.rwork[10])
+    #             self.ncallsf = 0
+    #             self.ncallsj = 0
+
+    #             if self.r.t < -1 * dz:
+    #                 print 'break at z =', self.r.t
+    #                 break
+
+    #             if verbose: print 'applying cont. losses at t=', self.r.t
+    #             self.r._integrator.call_args[3] = 20
+
+    #             if not self.enable_injection_jacobian:
+    #                 if verbose: print 'injecting for redshift step'
+    #                 if self.r.t < 0.0:
+    #                     print 'skipping cont loss at', self.r.t
+    #                     self.r._y += self.injection(dz, self.r.t)
+    #                 else:
+    #                     if stepcount == 1:
+    #                         print 'setting initial value', self.r.t
+    #                         self.r.set_initial_value(self.semi_lagrangian(dz, self.r.t, self.r.y) + self.injection(dz, self.r.t), self.r.t)
+    #                         stepcount = 0
+    #                     else:
+    #                         self.r._y = self.semi_lagrangian(dz, self.r.t, self.r.y) + self.injection(dz, self.r.t)
+    #                         # stepcount += 1
+    #             else:
+    #                 if verbose: print 'not injection per step, injection in jacobian'
+    #                 self.r._y = self.semi_lagrangian(dz, self.r.t, self.r.y)
+    #                 # self.r.set_initial_value(self.semi_lagrangian(dz, self.r.t, self.r.y), self.r.t)
+
+    #         self.r.integrate(self.final_z)
+
+    #         if not self.r.successful():
+    #             raise Exception(
+    #                 'Integration failed. Change integrator setup and retry.')
+
+    #         info(2, 'Integration completed in {0} s'.format(time() - now))

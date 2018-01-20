@@ -92,7 +92,7 @@ class FlatPhotonSpectrum(PhotonField):
         nlocal = np.ones_like(E, dtype='double') * 1e12
         #nlocal = E**-1 * 1e12
         return (1. + z)**2 * nlocal
-    
+
 class CMBPhotonSpectrum(PhotonField):
     """Redshift-scaled number density of CMB photons
 
@@ -117,9 +117,10 @@ class CMBPhotonSpectrum(PhotonField):
         pref = 1.31868e40  # 1/pi^2/(hbar*c)^3 [GeV^-3 cm^-3]
         Ered = E / (1. + z)
         # density at z = 0, for energy E / (1 + z); ECMB = kB * T0
-        nlocal = pref * Ered**2 / (np.exp(Ered / cosm.E_CMB) - 1.0)
-        return (1. + z)**2 * nlocal  # JH: Fixed, was (1. + z) ** 3 before
 
+        E_CMB = config['E_CMB']
+        nlocal = pref * Ered**2 / (np.exp(Ered / E_CMB) - 1.0)
+        return (1. + z)**2 * nlocal  # JH: Fixed, was (1. + z) ** 3 before
 
 class CIBFranceschini2D(PhotonField):
     """CIB model "1" by Fraceschini et al.
@@ -131,8 +132,9 @@ class CIBFranceschini2D(PhotonField):
         A. Franceschini et al., Astron. Astrphys. 487, 837 (2008) [arXiv:0805.1841]
     """
 
-    def __init__(self):
+    def __init__(self, simple_scaling=True):
         import cPickle as pickle
+        self.simple_scaling = simple_scaling
         self.int2d = pickle.load(
             open(join(config['data_dir'], 'CIB_franceschini_int2D.ppo'), 'rb'))
 
@@ -148,8 +150,12 @@ class CIBFranceschini2D(PhotonField):
         Returns:
           float: CMB photon spectrum in :math:`{\\rm GeV}}^{-1} {\\rm cm}}^{-3}`
         """
-
-        return self.int2d(E, z, assume_sorted=True)
+        if self.simple_scaling:
+            Ered = E / (1. + z)
+            nlocal = self.int2d(Ered, 0., assume_sorted=True)
+            return (1. + z)**2 * nlocal 
+        else:
+            return self.int2d(E, z, assume_sorted=True)
 
 
 class CIBInoue2D(PhotonField):

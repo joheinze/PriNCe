@@ -36,7 +36,8 @@ UNITS_AND_CONVERSIONS_DEF = dict(
     km2cm=1e5,
     yr2sec=spc.year,
     Gyr2sec=spc.giga * spc.year,
-    cm2sec=1e-2 / spc.c)
+    cm2sec=1e-2 / spc.c,
+    sec2cm=spc.c * 1e2)
 
 # This is the immutable unit object to be imported throughout the code
 PRINCE_UNITS = convert_to_namedtuple(UNITS_AND_CONVERSIONS_DEF, "PriNCeUnits")
@@ -124,24 +125,26 @@ class RectBivariateSplineNoExtrap(RectBivariateSpline):
         self.xbins = xbins
         RectBivariateSpline.__init__(self, xgrid, ygrid, zgrid, *args,
                                      **kwargs)
+        xknots, yknots = self.get_knots()
+        self.xmin, self.xmax = np.min(xknots), np.max(xknots)
+        self.ymin, self.ymax = np.min(yknots), np.max(yknots)
 
     def __call__(self, x, y, **kwargs):
-        xknots, yknots = self.get_knots()
-        xmin, xmax = np.min(xknots), np.max(xknots)
-        ymin, ymax = np.min(yknots), np.max(yknots)
-        info(10, 'Derived Spline class called, xmin {}, xmax {}'.format(xmin, xmax))
         if 'grid' not in kwargs:
             x, y = np.meshgrid(x, y)
             kwargs['grid'] = False
 
             result = RectBivariateSpline.__call__(self, x, y, **kwargs)
-            result = np.where((xm < xmax) & (xm > xmin), result, 0.)
-            return result.T
+            # result = np.where((x < self.xmax) & (x > self.xmin), result, 0.)
+            # result[np.isnan(result)] = 0.            
+            # return result.T
+            return np.where(np.isnan(result), 0., result).T
         else:
             result = RectBivariateSpline.__call__(self, x, y, **kwargs)
-            result = np.where((xm <= xmax) & (xm >= xmin), result, 0.)
-            return result
-
+            # result = np.where((x <= xmax) & (x >= xmin), result, 0.)
+            # result[np.isnan(result)] = 0.
+            # return result
+            return np.where(np.isnan(result), 0., result)
 
 class RectBivariateSplineLogData(RectBivariateSplineNoExtrap):
     """Same as RectBivariateSpline but data is internally interpoled as log(data)"""
@@ -290,15 +293,37 @@ class EnergyGrid(object):
     Args:
         lower (float): log10 of low edge of the lowest bin
         upper (float): log10 of upper edge of the highest bin
+        bins_dec (int): bins per decade of energy
     """
 
     def __init__(self, lower, upper, bins_dec):
-        import numpy as np
         self.bins = np.logspace(lower, upper, (upper - lower) * bins_dec + 1)
         self.grid = 0.5 * (self.bins[1:] + self.bins[:-1])
         self.widths = self.bins[1:] - self.bins[:-1]
         self.d = self.grid.size
         info(1, 'Energy grid initialized {0:3.1e} - {1:3.1e}, {2} bins'.format(
+            self.bins[0], self.bins[-1], self.grid.size))
+
+class LogEnergyGrid(object):
+    """Class for constructing a grid for discrete distributions.
+
+    Since we discretize everything in energy, the name seems appropriate.
+    All grids are log spaced.
+
+    Args:
+        lower (float): log10 of low edge of the lowest bin
+        upper (float): log10 of upper edge of the highest bin
+        bins_dec (int): bins per decade of energy
+    """
+
+    def __init__(self, lower, upper, bins_dec):
+        self.bins = np.linspace(lower, upper, (upper - lower) * bins_dec + 1)
+        self.grid = 0.5 * (self.bins[1:] + self.bins[:-1])
+        self.bins = 10**self.bins
+        self.grid = 10**self.grid
+        self.widths = self.bins[1:] - self.bins[:-1]
+        self.d = self.grid.size
+        info(1, 'LogEnergy grid initialized {0:3.1e} - {1:3.1e}, {2} bins'.format(
             self.bins[0], self.bins[-1], self.grid.size))
 
 
