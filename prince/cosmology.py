@@ -11,9 +11,6 @@ H0 = config['H_0s']
 Omega_m = config['Omega_m']
 Omega_Lambda = config['Omega_Lambda']
 
-E_CMB = 2.34823e-13  # = kB*T0 [GeV]
-
-
 def H(z, H0=H0):
     """Expansion rate of the universe.
 
@@ -50,7 +47,6 @@ def star_formation_rate(z, z_inhomogeneous=0.):
         return 10.**1.09 * (1. + z)**-0.26
     else:
         return 10.**6.66 * (1. + z)**-7.8
-
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt

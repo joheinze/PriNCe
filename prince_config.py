@@ -44,7 +44,7 @@ config = {
     # # nuclear cross sections
     # "data_dir": '/data',
     # Model file for redistribution functions (from SOPHIA or similar)
-    "redist_fname": "sophia_redistribution.npy",
+    "redist_fname": "sophia_redistribution_logbins.npy",
 
     # full path to libmkl_rt.[so/dylib] (only if kernel=='MKL')
     "MKL_path": mkl_default + lib_ext,
@@ -64,6 +64,8 @@ config = {
     # Omega_Lambda
     "Omega_Lambda": 0.73,
 
+    "E_CMB" : 2.34823e-13,  # = kB*T0 [GeV]
+
     #===========================================================================
     # Grids
     #===========================================================================
@@ -72,23 +74,30 @@ config = {
 
     # Format (log10(E_min), log10(E_max), nbins/decade of energy)
     # Main energy grid for solver
-    "cosmic_ray_grid": (5, 13, 8),
-
+    "cosmic_ray_grid": (5, 14, 8),
     # Photon grid of target field, only for calculation of rates
     "photon_grid": (-15, -6, 8),
+    # Scale of the energy grid
+    # 'E': logarithmic in energy E_i = E_min * (Delta)^i
+    # 'logE': linear grid in x = log_10(E): x_i = x_min + i * Delta
+    "grid_scale":'E',
+
+    "bin_average":'method1',
+    "semi_lagr_method":'method1',
 
     #===========================================================================
     # Model options
     #===========================================================================
     # The sophia tables are on a grid with 2000 points. The number will use every
     # N-th entry of the table to reduce memory usage of the interpolator
-    "sophia_grid_skip": 4,
+    # "sophia_grid_skip": 4,
+
     # Threshold lifetime value to consider a particle as worth propagating. It
     # means that if a particle is unstable with lifetime smaller than this threshold
     # will be decayed until all final state particles of this chain are stable.
     # In other words: short intermediate states will be integrated out
     "tau_dec_threshold": np.inf,
-    # "tau_dec_threshold": 0.,
+    #"tau_dec_threshold": 0.,
 
     # Particle ID for which redistribution functions are needed to be taken into
     # account. The default value is 101 (proton). All particles with smaller

@@ -25,21 +25,28 @@ class PriNCeRun(object):
             config["max_mass"] = kwargs["max_mass"]
 
         # Initialize energy grid
-        self.cr_grid = util.EnergyGrid(*config["cosmic_ray_grid"])
-
-        # Photon grid for rate computations
-        self.ph_grid = util.EnergyGrid(*config["photon_grid"])
-
+        if config["grid_scale"] == 'E':
+            info(1,'initialising Energy grid')
+            self.cr_grid = util.EnergyGrid(*config["cosmic_ray_grid"])
+            self.ph_grid = util.EnergyGrid(*config["photon_grid"])
+        elif config["grid_scale"] == 'logE':
+            info(1,'initialising logEnergy grid')
+            self.cr_grid = util.LogEnergyGrid(*config["cosmic_ray_grid"])
+            self.ph_grid = util.LogEnergyGrid(*config["photon_grid"])
+        else:
+            raise Exception("Unknown energy grid scale {:}, adjust config['grid_scale']".format(config['grid_scale']))
         #: Dimension of energy grid
+
         self.ed = self.cr_grid.d
 
         # Cross section handler
-        self.cross_sections = cross_sections.CompositeCrossSection(
-            [(0., cross_sections.TabulatedCrossSection, ('CRP2_TALYS',)),
-             (0.14, cross_sections.SophiaSuperposition, ())])
+        if 'cross_sections' in kwargs:
+            self.cross_sections = kwargs['cross_sections']
+        else:
+            self.cross_sections = cross_sections.CompositeCrossSection(
+                [(0., cross_sections.TabulatedCrossSection, ('CRP2_TALYS',)),
+                 (0.14, cross_sections.SophiaSuperposition, ())])
         
-        # self.cross_sections = cross_sections.SophiaSuperposition()
-
         # Photon field handler
         if 'photon_field' in kwargs:
             self.photon_field = kwargs['photon_field']
@@ -52,25 +59,30 @@ class PriNCeRun(object):
         self.adv_set = config["adv_settings"]
 
         # Limit max nuclear mass of eqn system
-        system_species = [
-            s for s in self.cross_sections.known_species
-            if get_AZN(s)[0] <= config["max_mass"]
-        ]
+        if "species_list" in kwargs:
+            system_species = list(set(kwargs["species_list"]) & set(self.cross_sections.known_species))
+        else:
+            system_species = [
+                s for s in self.cross_sections.known_species
+                if get_AZN(s)[0] <= config["max_mass"]
+            ]
         # Initialize species manager for all species for which cross sections are known
         self.spec_man = data.SpeciesManager(system_species, self.ed)
 
         # Total dimension of system
         self.dim_states = self.ed * self.spec_man.nspec
+        self.dim_bins = (self.ed + 1) * self.spec_man.nspec
+
+        # Initialize continuous energy losses
+        self.adiabatic_loss_rates = interaction_rates.ContinuousAdiabaticLossRate(
+            prince_run=self)
+        self.pairprod_loss_rates = interaction_rates.ContinuousPairProductionLossRate(
+            prince_run=self)
 
         # Initialize the interaction rates
         self.int_rates = interaction_rates.PhotoNuclearInteractionRate(
             prince_run=self)
 
-        # Initialize continuous energy losses
-        self.continuous_losses = interaction_rates.ContinuousLossRates(
-            prince_run=self)
-
-        self.cross_sections
         # Let species manager know about the photon grid dimensions (for idx calculations)
         # it is accesible under index "ph" for lidx(), uidx() calls
         self.spec_man.add_grid('ph', self.int_rates.dim_ph)
@@ -79,3 +91,8 @@ class PriNCeRun(object):
     def egrid(self):
         """Energy grid used for species."""
         return self.cr_grid.grid
+
+    @property
+    def ebins(self):
+        """Energy grid used for species."""
+        return self.cr_grid.bins
