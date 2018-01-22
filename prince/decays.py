@@ -122,7 +122,7 @@ def get_decay_matrix(mo, da, x_grid):
         # no known channel, return zeros
         return np.zeros(x_grid.shape)
 
-def get_decay_matrix_bin_average(mo, da, x_bins):
+def get_decay_matrix_bin_average(mo, da, x_bins, axis=0):
     """
     Generator function. Will select the correct redistribution for the given channel.
 
@@ -139,13 +139,28 @@ def get_decay_matrix_bin_average(mo, da, x_bins):
     # The error is small for smooth distributions though
     info(1, 'Generating decay redistribution for', mo, da)
 
-    xlower, xupper = x_bins[:-1], x_bins[1:]
-    x_grid = (x_bins[:-1] + x_bins[1:]) / 2
+    if axis == 0:
+        # average along other axis
+        x_bins = (x_bins[:-1,:] + x_bins[1:,:]) / 2
+        # get lower and upper edges
+        x_lower, x_upper = x_bins[:,:-1], x_bins[:,1:]
+        # grid is averaged over both axes
+        x_grid = (x_bins[:,:-1] + x_bins[:,1:]) / 2
+    elif axis ==1:
+        # average along other axis
+        x_bins = (x_bins[:,:-1] + x_bins[:,1:]) / 2
+        # get lower and upper edges
+        x_lower, x_upper = x_bins[:-1,:], x_bins[1:,:]
+        # grid is averaged over both axes
+        x_grid = (x_bins[:-1,:] + x_bins[1:,:]) / 2
+    else:
+        raise Exception("Can only handles arrays with dimension 2")
+    
     # --------------------------------
     # pi+ to numu or pi- to nummubar
     # --------------------------------
     if mo in [2, 3] and da in [13, 14]:
-        return pion_to_numu_avg(xlower,xupper)
+        return pion_to_numu_avg(x_lower,x_upper)
 
     # --------------------------------
     # pi+ to mu+ or pi- to mu-
@@ -154,13 +169,13 @@ def get_decay_matrix_bin_average(mo, da, x_bins):
     elif mo in [2, 3] and da in [5, 6, 7, 8, 9, 10]:
         # (any helicity)
         if da in [7, 10]:
-            return pion_to_muon_avg(xlower,xupper)
+            return pion_to_muon_avg(x_lower,x_upper)
         # left handed, hel = -1
         elif da in [5, 8]:
-            return pion_to_muon_avg(xlower,xupper) * prob_muon_hel(x_grid, -1.)
+            return pion_to_muon_avg(x_lower,x_upper) * prob_muon_hel(x_grid, -1.)
         # right handed, hel = 1
         elif da in [6, 9]:
-            return pion_to_muon_avg(xlower,xupper) * prob_muon_hel(x_grid, 1.)
+            return pion_to_muon_avg(x_lower,x_upper) * prob_muon_hel(x_grid, 1.)
         else:
             raise Exception(
                 'This should newer have happened, check if-statements above!')
@@ -208,7 +223,7 @@ def get_decay_matrix_bin_average(mo, da, x_bins):
     # neutron
     elif mo > 99 and 99 < da < 200:
         info(1, 'beta decay boost conservation', mo, da)
-        return boost_conservation_avg(xlower,xupper)
+        return boost_conservation_avg(x_lower,x_upper)
     else:
         info(
             5,
@@ -238,20 +253,20 @@ def pion_to_numu(x):
     res[cond] = 1 / (1 - r)
     return res
 
-def pion_to_numu_avg(xlower,xupper):
+def pion_to_numu_avg(x_lower,x_upper):
     """
     Energy distribution of a numu from the decay of pi
 
     Args:
-      xlower,xlower (float): energy fraction transferred to the secondary, lower/upper bin edge
+      x_lower,x_lower (float): energy fraction transferred to the secondary, lower/upper bin edge
     Returns:
       float: average probability density in bins (xmin,xmax)
     """
-    if xlower.shape != xupper.shape:
+    if x_lower.shape != x_upper.shape:
         raise Exception('different grids for xmin, xmax provided')
 
-    bins_width = xupper - xlower
-    res = np.zeros(xlower.shape)
+    bins_width = x_upper - x_lower
+    res = np.zeros(x_lower.shape)
 
     m_muon = spec_data[7]['mass']
     m_pion = spec_data[2]['mass']
@@ -261,15 +276,15 @@ def pion_to_numu_avg(xlower,xupper):
 
 
     # lower bin edged not contained
-    cond = np.where(np.logical_and(xmin > xlower, xmin < xupper))
-    res[cond] = 1 / (1 - r) * (xupper[cond] - xmin) / bins_width[cond]
+    cond = np.where(np.logical_and(xmin > x_lower, xmin < x_upper))
+    res[cond] = 1 / (1 - r) * (x_upper[cond] - xmin) / bins_width[cond]
 
     # upper bin edge not contained
-    cond = np.where(np.logical_and(xlower < xmax, xupper > xmax))
-    res[cond] = 1 / (1 - r) * (xmax - xlower[cond]) / bins_width[cond]
+    cond = np.where(np.logical_and(x_lower < xmax, x_upper > xmax))
+    res[cond] = 1 / (1 - r) * (xmax - x_lower[cond]) / bins_width[cond]
 
     # bins fully contained
-    cond = np.where(np.logical_and(xmin <= xlower, xupper <= xmax))
+    cond = np.where(np.logical_and(xmin <= x_lower, x_upper <= xmax))
     res[cond] = 1 / (1 - r)
 
     return res
@@ -295,20 +310,20 @@ def pion_to_muon(x):
     res[cond] = 1 / (1 - r)
     return res
 
-def pion_to_muon_avg(xlower, xupper):
+def pion_to_muon_avg(x_lower, x_upper):
     """
     Energy distribution of a numu from the decay of pi
 
     Args:
-      xlower,xlower (float): energy fraction transferred to the secondary, lower/upper bin edge
+      x_lower,x_lower (float): energy fraction transferred to the secondary, lower/upper bin edge
     Returns:
       float: average probability density in bins (xmin,xmax)
     """
-    if xlower.shape != xupper.shape:
+    if x_lower.shape != x_upper.shape:
         raise Exception('different grids for xmin, xmax provided')
 
-    bins_width = xupper - xlower
-    res = np.zeros(xlower.shape)
+    bins_width = x_upper - x_lower
+    res = np.zeros(x_lower.shape)
 
     m_muon = spec_data[7]['mass']
     m_pion = spec_data[2]['mass']
@@ -317,15 +332,15 @@ def pion_to_muon_avg(xlower, xupper):
     xmax = 1.
 
     # lower bin edged not contained
-    cond = np.where(np.logical_and(xmin > xlower, xmin < xupper))
-    res[cond] = 1 / (1 - r) * (xupper[cond] - xmin) / bins_width[cond]
+    cond = np.where(np.logical_and(xmin > x_lower, xmin < x_upper))
+    res[cond] = 1 / (1 - r) * (x_upper[cond] - xmin) / bins_width[cond]
 
     # upper bin edge not contained
-    cond = np.where(np.logical_and(xlower < xmax, xupper > xmax))
-    res[cond] = 1 / (1 - r) * (xmax - xlower[cond]) / bins_width[cond]
+    cond = np.where(np.logical_and(x_lower < xmax, x_upper > xmax))
+    res[cond] = 1 / (1 - r) * (xmax - x_lower[cond]) / bins_width[cond]
 
     # bins fully contained
-    cond = np.where(np.logical_and(xmin <= xlower, xupper <= xmax))
+    cond = np.where(np.logical_and(xmin <= x_lower, x_upper <= xmax))
     res[cond] = 1 / (1 - r)
 
     return res
@@ -402,15 +417,15 @@ def boost_conservation(x):
     dist[(x == np.max(x)) & (x > 0.9)] = 1.
     return dist
 
-def boost_conservation_avg(xlower, xupper):
+def boost_conservation_avg(x_lower, x_upper):
     """Returns an x=1 distribution for ejected nucleons"""
-    dist = np.zeros_like(xlower)
+    dist = np.zeros_like(x_lower)
     
     # boost conservation is a delta peak at x = 1
     # if is is contained in the bin, the the value 
     # to 1 / width, else set it to zero
-    cond = np.where(np.logical_and(xlower < 1., xupper > 1.))
-    bins_width = xupper[cond] - xlower[cond]
+    cond = np.where(np.logical_and(x_lower < 1., x_upper > 1.))
+    bins_width = x_upper[cond] - x_lower[cond]
     dist[cond] = 1. / bins_width
     return dist
 
