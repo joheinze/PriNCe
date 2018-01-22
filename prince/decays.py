@@ -122,7 +122,7 @@ def get_decay_matrix(mo, da, x_grid):
         # no known channel, return zeros
         return np.zeros(x_grid.shape)
 
-def get_decay_matrix_bin_average(mo, da, x_bins, axis=0):
+def get_decay_matrix_bin_average(mo, da, x_lower, x_upper):
     """
     Generator function. Will select the correct redistribution for the given channel.
 
@@ -138,23 +138,8 @@ def get_decay_matrix_bin_average(mo, da, x_bins, axis=0):
     # TODO: Some of the distribution are not averaged yet.
     # The error is small for smooth distributions though
     info(1, 'Generating decay redistribution for', mo, da)
-
-    if axis == 0:
-        # average along other axis
-        x_bins = (x_bins[:-1,:] + x_bins[1:,:]) / 2
-        # get lower and upper edges
-        x_lower, x_upper = x_bins[:,:-1], x_bins[:,1:]
-        # grid is averaged over both axes
-        x_grid = (x_bins[:,:-1] + x_bins[:,1:]) / 2
-    elif axis ==1:
-        # average along other axis
-        x_bins = (x_bins[:,:-1] + x_bins[:,1:]) / 2
-        # get lower and upper edges
-        x_lower, x_upper = x_bins[:-1,:], x_bins[1:,:]
-        # grid is averaged over both axes
-        x_grid = (x_bins[:-1,:] + x_bins[1:,:]) / 2
-    else:
-        raise Exception("Can only handles arrays with dimension 2")
+    
+    x_grid = (x_upper + x_lower) / 2
     
     # --------------------------------
     # pi+ to numu or pi- to nummubar

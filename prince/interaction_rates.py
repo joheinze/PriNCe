@@ -427,7 +427,7 @@ class PhotoNuclearInteractionRate(object):
 
 class ContinuousAdiabaticLossRate(object):
     """Implementation of continuous pair production loss rates."""
-    def __init__(self, prince_run, *args, **kwargs):
+    def __init__(self, prince_run, energy='grid', *args, **kwargs):
         print 'New cont loss class init called'
         #: Reference to prince run
         self.prince_run = prince_run
@@ -462,7 +462,7 @@ class ContinuousAdiabaticLossRate(object):
 class ContinuousPairProductionLossRate(object):
     """Implementation of continuous pair production loss rates."""
 
-    def __init__(self, prince_run, *args, **kwargs):
+    def __init__(self, prince_run, energy='grid', *args, **kwargs):
         print 'New pair prod loss class init called'
         #: Reference to prince run
         self.prince_run = prince_run
