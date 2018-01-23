@@ -132,7 +132,9 @@ class PhotoNuclearInteractionRate(object):
         # Iterate over outer product of m_energy x d_energy x ph_energy
         it_diff = np.nditer(
             [emo_idcs, eda_idcs, p_idcs],
-            op_axes=[[0, -1, -1], [-1, 0, -1], [-1, -1, 0]])
+            op_axes=[[0, -1, -1], [-1, 0, -1], [-1, -1, 0]],
+            # flags=['buffered','external_loop']
+            )
 
         x_cut = config['x_cut']
 
@@ -236,7 +238,7 @@ class PhotoNuclearInteractionRate(object):
                     raise Exception('This should not occur.')
 
                 for m_eidx, d_eidx, ph_idx in it_diff:
-
+                    # print m_eidx, d_eidx, ph_idx
                     if d_eidx > m_eidx:
                         continue
 
@@ -250,8 +252,8 @@ class PhotoNuclearInteractionRate(object):
                     yl = plims[0, ph_idx] * emo / m_pr
                     yu = plims[1, ph_idx] * emo / m_pr
                     #TODO: Thresholds set for testing
-                    if daid == 101 and xl < 0.1:
-                        continue
+                    # if daid == 101 and xl < 0.1:
+                    #     continue
                     if xl < 1e-6 or yu < ymin:
                         continue
 
@@ -264,7 +266,8 @@ class PhotoNuclearInteractionRate(object):
 
                         int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
                                 mass_mo / mass_da)
-                        self._batch_matrix[ibatch, ph_idx] += intp_diff(center_x, center_y) * int_fac
+                        self._batch_matrix[ibatch, ph_idx] += intp_diff(
+                            center_x, center_y, grid=True) * int_fac
 
                         if has_nonel and m_eidx == d_eidx:
                             int_fac = delta_ph[ph_idx]

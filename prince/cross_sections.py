@@ -134,9 +134,9 @@ class CrossSectionBase(object):
         #     return False
         if (daughter <= config["redist_threshold_ID"] or
             (mother, daughter) in self.incl_diff_idcs):
-            info(20, 'Daughter requires redistribution.', mother, daughter)
+            info(60, 'Daughter requires redistribution.', mother, daughter)
             return True
-        info(20, 'Daughter conserves boost.', mother, daughter)
+        info(60, 'Daughter conserves boost.', mother, daughter)
         return False
 
     def _update_indices(self):
@@ -272,6 +272,7 @@ class CrossSectionBase(object):
         dec_bins_lower = dec_bins[:-1]
         dec_bins_upper = dec_bins[1:]
 
+        # dec_grid[dec_grid > 1.] *= 0.
         # The differential element dx_mu/x_pi
         int_scale = np.tile(bw / bc, (len(bc), 1))
 
@@ -289,7 +290,8 @@ class CrossSectionBase(object):
             #     mother, daughter, dec_grid)
             dec_dist = int_scale * decs.get_decay_matrix_bin_average(
                 mother, daughter, dec_bins_lower, dec_bins_upper)
-            info(50, 'convolving with decay dist', mother, daughter)
+                
+            info(20, 'convolving with decay dist', mother, daughter)
             # Handle the case where table entry is (energy_grid, matrix)
             if not isinstance(diff_dist, tuple):
                 return branching_ratio * dec_dist.dot(diff_dist)
@@ -556,7 +558,8 @@ class CrossSectionBase(object):
             return cs
 
         csec = np.zeros((nxbins, cs.shape[0]))
-        csec[-1, :] = cs
+        csec[-1, :] = cs / self.xwidths[-1]
+        print 'Warning! Test division by bin width here!'
         if isinstance(incl_cs, tuple):
             return egr, csec
         return csec
@@ -764,15 +767,11 @@ class SophiaSuperposition(CrossSectionBase):
 
     def _load(self):
         info(2, "Loading SOPHIA cross sections from file.")
-
+        info(5, "File used:",join(config["data_dir"], config["redist_fname"]))
         # load the crossection from file
         self._egrid_tab, self.cs_proton_grid, self.cs_neutron_grid = \
         load_or_convert_array(
             'sophia_crosssec', delimiter=',', unpack=True)
-
-        print config["data_dir"]
-        print config["redist_fname"]
-        print join(config["data_dir"], config["redist_fname"])
 
         epsr_grid, self.xbins, self.redist_proton, self.redist_neutron = np.load(
             join(config["data_dir"], config["redist_fname"]))

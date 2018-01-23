@@ -42,16 +42,28 @@ class UHECRPropagationSolver(object):
     def add_source_class(self, source_instance):
         self.list_of_sources.append(source_instance)
 
+    # def get_solution(self, nco_id):
+    #     """Returns the spectrum in energy per nucleon"""
+    #     sp = self.prince_run.spec_man.ncoid2sref[nco_id]
+    #     return self.egrid, self.r.y[sp.lidx():sp.uidx()]
+
+    # def get_solution_scale(self, nco_id, epow=0):
+    #     """Returns the spectrum scaled back to total energy"""
+    #     spec = self.prince_run.spec_man.ncoid2sref[nco_id]
+    #     egrid = spec.A * self.egrid
+    #     return egrid, egrid**epow * self.r.y[
+    #         spec.lidx():spec.uidx()] / spec.A
+
     def get_solution(self, nco_id):
         """Returns the spectrum in energy per nucleon"""
         sp = self.prince_run.spec_man.ncoid2sref[nco_id]
-        return self.egrid, self.r.y[sp.lidx():sp.uidx()]
+        return self.egrid, self.state[sp.lidx():sp.uidx()]
 
     def get_solution_scale(self, nco_id, epow=0):
         """Returns the spectrum scaled back to total energy"""
         spec = self.prince_run.spec_man.ncoid2sref[nco_id]
         egrid = spec.A * self.egrid
-        return egrid, egrid**epow * self.r.y[
+        return egrid, egrid**epow * self.state[
             spec.lidx():spec.uidx()] / spec.A
 
     def get_energy_density(self, nco_id):
@@ -173,7 +185,7 @@ class UHECRPropagationSolver(object):
     def eqn_deriv(self, z, state, *args):
         self.ncallsf += 1
         if self.enable_injection_jacobian:
-            r = self.jacobian.dot(state) + self.injection(1., self.r.t)
+            r = self.jacobian.dot(state) + self.injection(1., z)
         else:
             r = self.jacobian.dot(state)
         return r
@@ -330,7 +342,63 @@ class UHECRPropagationSolver(object):
         end_time = time()
         info(2, 'Integration completed in {0} s'.format(end_time - start_time))
 
+    def solve_euler(self, dz=1e-3, verbose=True, extended_output=False, full_reset=False):
+        from time import time
 
+        # stepcount = 0
+        dz = -1 * dz
+        start_time = time()
+        curr_z = self.initial_z
+        state = np.zeros(self.dim_states)
+
+        info(2, 'Starting integration.')
+
+        while curr_z + dz >= self.final_z:
+            if verbose:
+                info(3, "Integrating at z={0}".format(curr_z))
+            step_start = time()
+            
+            # --------------------------------------------
+            # Apply the injection 
+            # --------------------------------------------
+            if not self.enable_injection_jacobian:
+                if verbose:
+                    print 'applying injection at t=', self.r.t
+                state += self.injection(dz, curr_z)
+            
+            # --------------------------------------------
+            # Apply the semi lagrangian
+            # --------------------------------------------
+            if self.enable_adiabatic_losses or self.enable_pairprod_losses:
+                if verbose:
+                    print 'applying semi lagrangian at t=', self.r.t
+                state= self.semi_lagrangian(dz, curr_z, state)
+            
+            # --------------------------------------------
+            # Solve for hadronic interactions
+            # --------------------------------------------
+            if verbose:
+                print 'Solving hadr losses at t=', self.r.t
+            self._update_jacobian(curr_z)
+
+            state += self.eqn_deriv(curr_z, state)*dz
+
+
+
+            # --------------------------------------------
+            # Some last checks and resets
+            # --------------------------------------------
+            if curr_z < -1 * dz:
+                print 'break at z =', self.r.t
+                break
+
+            curr_z += dz 
+
+        # self.r.integrate(self.final_z)
+
+        end_time = time()
+        info(2, 'Integration completed in {0} s'.format(end_time - start_time))
+        self.state = state
 
     # def solve(self, dz=1e-2, verbose=True, extended_output=False):
     #         from time import time
