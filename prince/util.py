@@ -259,9 +259,10 @@ def load_or_convert_array(fname, **kwargs):
     from os.path import join, splitext, isfile, isdir
     from os import listdir
     import numpy as np
-    print fname
+
+    info(10, 'Loading file', fname)
     fname = splitext(fname)[0]
-    info(3, 'Loading file', fname)
+    
     if not isfile(join(config["data_dir"], fname + '.npy')):
         info(2, 'Converting', fname, "to '.npy'")
         arr = None

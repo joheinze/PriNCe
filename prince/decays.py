@@ -225,7 +225,8 @@ def muonplus_to_nue(x, h):
 def boost_conservation(x):
     """Returns an x=1 distribution for ejected nucleons"""
     dist = np.zeros_like(x)
-    dist[(x == np.max(x)) & (x > 0.9)] = 1.
+    # dist[(x == np.max(x)) & (x > 0.9)] = 1.*20.
+    dist[x == 1.] = 1./0.115
     return dist
 
 
