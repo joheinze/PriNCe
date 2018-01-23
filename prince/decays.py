@@ -14,7 +14,7 @@ def get_particle_channels(mo, mo_energy, da_energy):
     """
     Will loop over all channels of a mother and generate a list of redistributions for all daughters
     """
-
+    info(1, 'Generating decay redistribution for', mo, da)
     dbentry = spec_data[mo]
     x_grid = np.outer(da_energy, (1 / mo_energy))
 
@@ -46,13 +46,17 @@ def get_decay_matrix(mo, da, x_grid):
       float: redistribution on the grid mo_energy / da_energy
     """
 
-    info(10, 'Generating decay redistribution for', mo, da)
+    info(1, 'Generating decay redistribution for', mo, da)
 
+    # --------------------------------
     # pi+ to numu or pi- to nummubar
+    # --------------------------------
     if mo in [2, 3] and da in [13, 14]:
         return pion_to_numu(x_grid)
 
+    # --------------------------------
     # pi+ to mu+ or pi- to mu-
+    # --------------------------------
     elif mo in [2, 3] and da in [5, 6, 7, 8, 9, 10]:
         # (any helicity)
         if da in [7, 10]:
@@ -67,7 +71,9 @@ def get_decay_matrix(mo, da, x_grid):
             raise Exception(
                 'This should newer have happened, check if-statements above!')
 
+    # --------------------------------
     # muon to neutrino
+    # --------------------------------
     elif mo in [5, 6, 7, 8, 9, 10] and da in [11, 12, 13, 14]:
         # translating muon ids to helicity
         muon_hel = {
@@ -92,17 +98,21 @@ def get_decay_matrix(mo, da, x_grid):
         elif mo in [8, 9, 10] and da in [13]:
             return muonplus_to_numubar(x_grid, -1 * hel)
 
+    # --------------------------------
     # neutrinos from beta decays
+    # --------------------------------
+    
     # beta-
     elif mo > 99 and da == 11:
-        info(10, 'nu_e from beta- decay', mo, mo - 1, da)
+        info(1, 'nu_e from beta- decay', mo, mo - 1, da)
         return nu_from_beta_decay(x_grid, mo, mo - 1)
     # beta+
     elif mo > 99 and da == 12:
-        info(10, 'anu_e beta+ decay', mo, mo + 1, da)
+        info(1, 'nubar_e from beta+ decay', mo, mo + 1, da)
         return nu_from_beta_decay(x_grid, mo, mo + 1)
+    # neutron
     elif mo > 99 and 99 < da < 200:
-        info(10, 'beta decay boost conservation', mo, da)
+        info(1, 'beta decay boost conservation', mo, da)
         return boost_conservation(x_grid)
     else:
         info(
@@ -112,6 +122,100 @@ def get_decay_matrix(mo, da, x_grid):
         # no known channel, return zeros
         return np.zeros(x_grid.shape)
 
+def get_decay_matrix_bin_average(mo, da, x_lower, x_upper):
+    """
+    Generator function. Will select the correct redistribution for the given channel.
+
+    Args:
+      mo (int): index of the mother
+      da (int): index of the daughter
+
+      x_grid (float):
+
+    Returns:
+      float: redistribution on the grid mo_energy / da_energy
+    """
+    # TODO: Some of the distribution are not averaged yet.
+    # The error is small for smooth distributions though
+    info(1, 'Generating decay redistribution for', mo, da)
+    
+    x_grid = (x_upper + x_lower) / 2
+    
+    # --------------------------------
+    # pi+ to numu or pi- to nummubar
+    # --------------------------------
+    if mo in [2, 3] and da in [13, 14]:
+        return pion_to_numu_avg(x_lower,x_upper)
+
+    # --------------------------------
+    # pi+ to mu+ or pi- to mu-
+    # --------------------------------
+    # TODO: The helicity distr need to be averaged analyticaly
+    elif mo in [2, 3] and da in [5, 6, 7, 8, 9, 10]:
+        # (any helicity)
+        if da in [7, 10]:
+            return pion_to_muon_avg(x_lower,x_upper)
+        # left handed, hel = -1
+        elif da in [5, 8]:
+            return pion_to_muon_avg(x_lower,x_upper) * prob_muon_hel(x_grid, -1.)
+        # right handed, hel = 1
+        elif da in [6, 9]:
+            return pion_to_muon_avg(x_lower,x_upper) * prob_muon_hel(x_grid, 1.)
+        else:
+            raise Exception(
+                'This should newer have happened, check if-statements above!')
+
+    # --------------------------------
+    # muon to neutrino
+    # --------------------------------
+    # TODO: The following distr need to be averaged analyticaly
+    elif mo in [5, 6, 7, 8, 9, 10] and da in [11, 12, 13, 14]:
+        # translating muon ids to helicity
+        muon_hel = {
+            5: 1.,
+            6: -1.,
+            7: 0.,
+            8: 1.,
+            9: -1.,
+            10: 0.,
+        }
+        hel = muon_hel[mo]
+        # muon+ to electron neutrino
+        if mo in [5, 6, 7] and da in [11]:
+            return muonplus_to_nue(x_grid, hel)
+        # muon+ to muon anti-neutrino
+        elif mo in [5, 6, 7] and da in [14]:
+            return muonplus_to_numubar(x_grid, hel)
+        # muon- to elec anti-neutrino
+        elif mo in [8, 9, 10] and da in [12]:
+            return muonplus_to_nue(x_grid, -1 * hel)
+        # muon- to muon neutrino
+        elif mo in [8, 9, 10] and da in [13]:
+            return muonplus_to_numubar(x_grid, -1 * hel)
+
+    # --------------------------------
+    # neutrinos from beta decays
+    # --------------------------------
+    # TODO: The following beta decay to neutrino distr need to be averaged analyticaly
+    # beta-
+    elif mo > 99 and da == 11:
+        info(1, 'nu_e from beta- decay', mo, mo - 1, da)
+        return nu_from_beta_decay(x_grid, mo, mo - 1)
+    # beta+
+    elif mo > 99 and da == 12:
+        info(1, 'nubar_e from beta+ decay', mo, mo + 1, da)
+        return nu_from_beta_decay(x_grid, mo, mo + 1)
+    # neutron
+    elif mo > 99 and 99 < da < 200:
+        info(1, 'beta decay boost conservation', mo, da)
+        return boost_conservation_avg(x_lower,x_upper)
+    else:
+        info(
+            5,
+            'Called with unknown channel {:} to {:}, returning an empty redistribution'.
+            format(mo, da))
+        # no known channel, return zeros
+        return np.zeros(x_grid.shape)
 
 def pion_to_numu(x):
     """
@@ -126,13 +230,49 @@ def pion_to_numu(x):
 
     m_muon = spec_data[7]['mass']
     m_pion = spec_data[2]['mass']
-
     r = m_muon**2 / m_pion**2
-    cond = np.where(np.logical_and(0 <= x, x < 1 - r))
+    xmin = 0.
+    xmax = 1 - r
 
+    cond = np.where(np.logical_and(xmin < x, x <= xmax))
     res[cond] = 1 / (1 - r)
     return res
 
+def pion_to_numu_avg(x_lower,x_upper):
+    """
+    Energy distribution of a numu from the decay of pi
+
+    Args:
+      x_lower,x_lower (float): energy fraction transferred to the secondary, lower/upper bin edge
+    Returns:
+      float: average probability density in bins (xmin,xmax)
+    """
+    if x_lower.shape != x_upper.shape:
+        raise Exception('different grids for xmin, xmax provided')
+
+    bins_width = x_upper - x_lower
+    res = np.zeros(x_lower.shape)
+
+    m_muon = spec_data[7]['mass']
+    m_pion = spec_data[2]['mass']
+    r = m_muon**2 / m_pion**2
+    xmin = 0.
+    xmax = 1 - r
+
+
+    # lower bin edged not contained
+    cond = np.where(np.logical_and(xmin > x_lower, xmin < x_upper))
+    res[cond] = 1 / (1 - r) * (x_upper[cond] - xmin) / bins_width[cond]
+
+    # upper bin edge not contained
+    cond = np.where(np.logical_and(x_lower < xmax, x_upper > xmax))
+    res[cond] = 1 / (1 - r) * (xmax - x_lower[cond]) / bins_width[cond]
+
+    # bins fully contained
+    cond = np.where(np.logical_and(xmin <= x_lower, x_upper <= xmax))
+    res[cond] = 1 / (1 - r)
+
+    return res
 
 def pion_to_muon(x):
     """
@@ -147,13 +287,48 @@ def pion_to_muon(x):
 
     m_muon = spec_data[7]['mass']
     m_pion = spec_data[2]['mass']
-
     r = m_muon**2 / m_pion**2
-    cond = np.where(np.logical_and(r < x, x <= 1))
+    xmin = r
+    xmax = 1.
 
+    cond = np.where(np.logical_and(xmin < x, x <= xmax))
     res[cond] = 1 / (1 - r)
     return res
 
+def pion_to_muon_avg(x_lower, x_upper):
+    """
+    Energy distribution of a numu from the decay of pi
+
+    Args:
+      x_lower,x_lower (float): energy fraction transferred to the secondary, lower/upper bin edge
+    Returns:
+      float: average probability density in bins (xmin,xmax)
+    """
+    if x_lower.shape != x_upper.shape:
+        raise Exception('different grids for xmin, xmax provided')
+
+    bins_width = x_upper - x_lower
+    res = np.zeros(x_lower.shape)
+
+    m_muon = spec_data[7]['mass']
+    m_pion = spec_data[2]['mass']
+    r = m_muon**2 / m_pion**2
+    xmin = r
+    xmax = 1.
+
+    # lower bin edged not contained
+    cond = np.where(np.logical_and(xmin > x_lower, xmin < x_upper))
+    res[cond] = 1 / (1 - r) * (x_upper[cond] - xmin) / bins_width[cond]
+
+    # upper bin edge not contained
+    cond = np.where(np.logical_and(x_lower < xmax, x_upper > xmax))
+    res[cond] = 1 / (1 - r) * (xmax - x_lower[cond]) / bins_width[cond]
+
+    # bins fully contained
+    cond = np.where(np.logical_and(xmin <= x_lower, x_upper <= xmax))
+    res[cond] = 1 / (1 - r)
+
+    return res
 
 def prob_muon_hel(x, h):
     """
@@ -178,7 +353,6 @@ def prob_muon_hel(x, h):
     cond = np.where(np.logical_and(x > r, x <= 1))
     res[cond] = (1 + hel * h) / 2  #this result is only correct for x > r
     return res
-
 
 def muonplus_to_numubar(x, h):
     """
@@ -229,6 +403,17 @@ def boost_conservation(x):
     dist[x == 1.] = 1./0.115
     return dist
 
+def boost_conservation_avg(x_lower, x_upper):
+    """Returns an x=1 distribution for ejected nucleons"""
+    dist = np.zeros_like(x_lower)
+    
+    # boost conservation is a delta peak at x = 1
+    # if is is contained in the bin, the the value 
+    # to 1 / width, else set it to zero
+    cond = np.where(np.logical_and(x_lower < 1., x_upper > 1.))
+    bins_width = x_upper[cond] - x_lower[cond]
+    dist[cond] = 1. / bins_width
+    return dist
 
 def nu_from_beta_decay(x_grid, mother, daughter):
     """

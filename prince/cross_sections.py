@@ -262,9 +262,16 @@ class CrossSectionBase(object):
         bc = self.xcenters
         bw = bin_widths(self.xbins)
         # The x_mu/x_pi grid
-        dec_grid = np.fromfunction(
-            lambda j, i: 10**(np.log10(bc[1] / bc[0]) * (j - i)), (len(bc),
-                                                                   len(bc)))
+        # dec_grid = np.fromfunction(
+        #     lambda j, i: 10**(np.log10(bc[1] / bc[0]) * (j - i)), (len(bc),
+        #                                                            len(bc)))
+        
+        dec_grid = np.outer(bc,1/bc)
+        
+        dec_bins = np.outer(self.xbins,1/bc)
+        dec_bins_lower = dec_bins[:-1]
+        dec_bins_upper = dec_bins[1:]
+
         # dec_grid[dec_grid > 1.] *= 0.
         # The differential element dx_mu/x_pi
         int_scale = np.tile(bw / bc, (len(bc), 1))
@@ -279,8 +286,11 @@ class CrossSectionBase(object):
             \frac{{\rm d}N^{A\gamma \to \pi}}{{\rm d} x_i}~
             \frac{{\rm d}N^{\pi \to \mu}}{{\rm d} x_j}`
             """
-            dec_dist = int_scale * decs.get_decay_matrix(
-                mother, daughter, dec_grid)
+            # dec_dist = int_scale * decs.get_decay_matrix(
+            #     mother, daughter, dec_grid)
+            dec_dist = int_scale * decs.get_decay_matrix_bin_average(
+                mother, daughter, dec_bins_lower, dec_bins_upper)
+                
             info(20, 'convolving with decay dist', mother, daughter)
             # Handle the case where table entry is (energy_grid, matrix)
             if not isinstance(diff_dist, tuple):
