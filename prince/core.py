@@ -74,10 +74,14 @@ class PriNCeRun(object):
         self.dim_bins = (self.ed + 1) * self.spec_man.nspec
 
         # Initialize continuous energy losses
-        self.adiabatic_loss_rates = interaction_rates.ContinuousAdiabaticLossRate(
-            prince_run=self)
-        self.pairprod_loss_rates = interaction_rates.ContinuousPairProductionLossRate(
-            prince_run=self)
+        self.adia_loss_rates_grid = interaction_rates.ContinuousAdiabaticLossRate(
+            prince_run=self, energy='grid')
+        self.pair_loss_rates_grid = interaction_rates.ContinuousPairProductionLossRate(
+            prince_run=self, energy='grid')
+        self.adia_loss_rates_bins = interaction_rates.ContinuousAdiabaticLossRate(
+            prince_run=self, energy='bins')
+        self.pair_loss_rates_bins = interaction_rates.ContinuousPairProductionLossRate(
+            prince_run=self, energy='bins')
 
         # Initialize the interaction rates
         self.int_rates = interaction_rates.PhotoNuclearInteractionRate(

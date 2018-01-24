@@ -17,7 +17,10 @@ class CosmicRaySource(object):
         self.prince_run = prince_run
         self.cr_grid = prince_run.cr_grid.grid
 
-        self.norm = norm
+        if norm == None:
+            self.norm = self._normalize_spectrum()
+        else:
+            self.norm = norm
 
         self.injection_grid = np.zeros(self.prince_run.dim_states)
         self.inj_spec = prince_run.spec_man.ncoid2sref[ncoid]
@@ -38,7 +41,7 @@ class CosmicRaySource(object):
 
         info(2, "Integrated energy is in total: " + str(intenergy))
         info(4, "Renormalizing the integrated energy to: " + str(newnorm))
-        self.norm *= newnorm / intenergy  # output is supposed to be in GeV * cm**-3 * s**-1
+        return newnorm / intenergy  # output is supposed to be in GeV * cm**-3 * s**-1
 
     @abstractmethod
     def injection_spectrum(self, energy):
@@ -52,13 +55,13 @@ class CosmicRaySource(object):
         """
         return the injection rate on the given energy grid
         """
-        return self.evolution(z) * self.injection_grid
+        return self.norm * self.evolution(z) * self.injection_grid
 
     def injection_rate_single(self,energy,z):
         """
         return the injection rate for a single energy and redshift
         """
-        return self.evolution(z) * self.injection_spectrum(energy)
+        return self.norm * self.evolution(z) * self.injection_spectrum(energy)
 
 class SimpleSource(CosmicRaySource):
     def __init__(self,

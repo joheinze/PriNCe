@@ -108,7 +108,8 @@ class PhotoNuclearInteractionRate(object):
                 elif rtup in self.cross_sections.known_diff_channels:
                     # Only half of the elements can be non-zero (energy conservation)
                     batch_dim += int(dcr**2 / 2) + 1
-                    
+
+        batch_dim *= 2                  
         info(2, 'Batch matrix dimensions are {0}x{1}'.format(batch_dim, dph))
         self._batch_matrix = np.zeros((batch_dim, dph))
         info(3, 'Memory usage: {0} MB'.format(self._batch_matrix.nbytes / 1024**2))
@@ -199,7 +200,7 @@ class PhotoNuclearInteractionRate(object):
                     # -----------------------------------
                     # method 2 average over e_ph only
                     # -----------------------------------
-                    if config["bin_average"] == 'method2':
+                    elif config["bin_average"] == 'method2':
                         xl = elims[0, d_eidx] / emo
                         xu = elims[1, d_eidx] / emo
                         delta_x = delta_ec[d_eidx] / emo
@@ -218,7 +219,12 @@ class PhotoNuclearInteractionRate(object):
                             self._batch_matrix[ibatch, :] -= (
                             intp_nonel(yu) - intp_nonel(yl)
                             ) * int_fac * diff_fac
-
+                    # -------------------------------------------------------------------
+                    # if method was not in list before, raise an Expection
+                    # -------------------------------------------------------------------
+                    else:
+                        raise Exception('Unknown bin-average method ({:})'.format(config["bin_average"]))
+                    
                     # Try later to check for zero result to save more zeros.
                     ibatch += 1
                     self._batch_rows.append(sp_id_ref[daid].lidx() + d_eidx)
@@ -275,7 +281,7 @@ class PhotoNuclearInteractionRate(object):
                     # -----------------------------------------
                     # method 2 average over e_ph and E_da only
                     # -----------------------------------------
-                    if config["bin_average"] == 'method2':
+                    elif config["bin_average"] == 'method2':
                         xl = elims[0, d_eidx] / emo
                         xu = elims[1, d_eidx] / emo
                         delta_x = delta_ec[d_eidx] / emo
@@ -295,6 +301,11 @@ class PhotoNuclearInteractionRate(object):
                             self._batch_matrix[ibatch, ph_idx] -= (
                                 intp_nonel_antid(yu) - intp_nonel_antid(yl)
                             ) * diff_fac * int_fac
+                    # -------------------------------------------------------------------
+                    # if method was not in list before, raise an Expection
+                    # -------------------------------------------------------------------
+                    else:
+                        raise Exception('Unknown bin-average method ({:})'.format(config["bin_average"]))
 
                     if ph_idx == p_idcs[-1]:
                         ibatch += 1
@@ -440,7 +451,7 @@ class ContinuousAdiabaticLossRate(object):
         # Initialize grids
         self.e_cosmicray = prince_run.cr_grid        
         # Init adiabatic loss vector
-        self.energy_vector = self._init_energy_vec()
+        self.energy_vector = self._init_energy_vec(energy)
 
     def loss_vector(self, z, energy=None):
         """Returns all continuous losses on dim_states grid"""
@@ -451,14 +462,20 @@ class ContinuousAdiabaticLossRate(object):
         else:
             return H(z) * PRINCE_UNITS.cm2sec * energy
 
-    def _init_energy_vec(self):
+    def _init_energy_vec(self, energy):
         """Prepare vector for scaling with units, charge and mass."""
-
-        energy_vector = np.zeros(self.prince_run.dim_states)
-
-        for spec in self.spec_man.species_refs:
-            energy_vector[spec.lidx():
-                                  spec.uidx()] = self.e_cosmicray.grid
+        if energy == 'grid':
+            energy_vector = np.zeros(self.prince_run.dim_states)
+            for spec in self.spec_man.species_refs:
+                energy_vector[spec.lidx():
+                                    spec.uidx()] = self.e_cosmicray.grid
+        elif energy == 'bins':
+            energy_vector = np.zeros(self.prince_run.dim_bins)
+            for spec in self.spec_man.species_refs:
+                energy_vector[spec.lbin():
+                                    spec.ubin()] = self.e_cosmicray.bins
+        else:
+            raise Exception('Unexpected energy keyword ({:}), use either (grid) or (bins)',format(energy))
 
         return energy_vector
 
@@ -487,10 +504,15 @@ class ContinuousPairProductionLossRate(object):
         self.phi_xi2 = self._phi(self.xi) / (self.xi**2)
 
         # Scale vector containing the units and factors of Z**2 for nuclei
-        self.scale_vec = self._init_scale_vec()
+        self.scale_vec = self._init_scale_vec(energy)
 
         # Gamma factor of the cosmic ray
-        gamma = self.e_cosmicray.grid / PRINCE_UNITS.m_proton
+        if energy == 'grid':
+            gamma = self.e_cosmicray.grid / PRINCE_UNITS.m_proton
+        elif energy == 'bins':
+            gamma = self.e_cosmicray.bins / PRINCE_UNITS.m_proton
+        else:
+            raise Exception('Unexpected energy keyword ({:}), use either (grid) or (bins)',format(energy))
         # Grid of photon energies for interpolation
         self.photon_grid = np.outer(1 / gamma,
                                     self.xi) * PRINCE_UNITS.m_electron / 2.
@@ -523,20 +545,30 @@ class ContinuousPairProductionLossRate(object):
 
         return photon_vector
 
-    def _init_scale_vec(self):
+    def _init_scale_vec(self,energy):
         """Prepare vector for scaling with units, charge and mass."""
-
-        scale_vec = np.zeros(self.prince_run.dim_states)
-        units = (PRINCE_UNITS.fine_structure * PRINCE_UNITS.r_electron**2 *
-                 PRINCE_UNITS.m_electron**2)
-
-        for spec in self.spec_man.species_refs:
-            if not spec.is_nucleus:
-                continue
-            scale_vec[spec.lidx():spec.uidx()] = units * abs(
-                spec.charge)**2 / float(spec.A) * np.ones(
-                    self.e_cosmicray.d, dtype='double')
-
+        if energy == 'grid':
+            scale_vec = np.zeros(self.prince_run.dim_states)
+            units = (PRINCE_UNITS.fine_structure * PRINCE_UNITS.r_electron**2 *
+                     PRINCE_UNITS.m_electron**2)
+            for spec in self.spec_man.species_refs:
+                if not spec.is_nucleus:
+                    continue
+                scale_vec[spec.lidx():spec.uidx()] = units * abs(
+                    spec.charge)**2 / float(spec.A) * np.ones_like(
+                        self.e_cosmicray.grid, dtype='double')
+        elif energy == 'bins':
+            scale_vec = np.zeros(self.prince_run.dim_bins)
+            units = (PRINCE_UNITS.fine_structure * PRINCE_UNITS.r_electron**2 *
+                     PRINCE_UNITS.m_electron**2)
+            for spec in self.spec_man.species_refs:
+                if not spec.is_nucleus:
+                    continue
+                scale_vec[spec.lbin():spec.ubin()] = units * abs(
+                    spec.charge)**2 / float(spec.A) * np.ones_like(
+                        self.e_cosmicray.bins, dtype='double')
+        else:
+            raise Exception('Unexpected energy keyword ({:}), use either (grid) or (bins)',format(energy))
         return scale_vec
 
     def _phi(self, xi):
