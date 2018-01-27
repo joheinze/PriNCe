@@ -190,13 +190,93 @@ class UHECRPropagationSolver(object):
                 newstate = np.where(newstate > 1e-200, newstate, 1e-200)
                 newstate_log = np.log(newstate)
 
+                # if spec.ncoid == 101:
+                #     print newstate_log
+                #     print newstate_log[1:] - newstate_log[:-1]
+                #     print '---'*30
+
                 state[lidx:uidx] = np.exp(np.interp(oldgrid_log, newgrid_log, newstate_log))
 
         # -------------------------------------------------------------------
         # method 3:
-        # - two bin interpolation
+        # - shift the bin edges and bin widths for derivative
+        # - second order derivative for interpolation
         # -------------------------------------------------------------------
         elif config["semi_lagr_method"] == 'method3':
+            conloss = np.zeros_like(self.adia_loss_rates_bins.energy_vector)
+            if self.enable_adiabatic_losses:
+                conloss += self.adia_loss_rates_bins.loss_vector(z)
+            if self.enable_pairprod_losses:
+                conloss += self.pair_loss_rates_bins.loss_vector(z)
+            conloss *= self.dldz(z) * delta_z 
+            # print 'using new semi lagrangian'
+            for spec in self.spec_man.species_refs:
+                lbin, ubin = spec.lbin(), spec.ubin()
+                lidx, uidx = spec.lidx(), spec.uidx()
+                newbins = self.ebins - conloss[lbin:ubin]
+                oldbins = self.ebins
+
+                newcenters = (newbins[1:] + newbins[:-1])/2
+                newwidths  = (newbins[1:] - newbins[:-1])
+                oldcenters = (oldbins[1:] + oldbins[:-1])/2
+                oldwidths  = (oldbins[1:] - oldbins[:-1])
+
+                newgrid_log = np.log(newcenters)
+                oldgrid_log = np.log(oldcenters)
+                gradient = newwidths / oldwidths
+
+                newstate = state[lidx:uidx] / gradient
+                newstate = np.where(newstate > 1e-200, newstate, 1e-200)
+                newstate_log = np.log(newstate)
+
+                # deriv = np.zeros_like(newstate_log)
+                # deriv[:-1] = (newstate_log[1:] - newstate_log[:-1]) / (newgrid_log[1:] - newgrid_log[:-1])
+                # deriv[-1]  = (newstate_log[-1] - newstate_log[-2]) / (newgrid_log[-1] - newgrid_log[-2])
+
+
+                deriv2 = np.gradient(newstate_log,newgrid_log,edge_order=2)
+                # if spec.ncoid == 101:
+                #     print deriv
+                #     print deriv
+                #     print deriv - deriv2
+                #     print '-------'
+                state[lidx:uidx] = np.exp(newstate_log + deriv2 * (oldgrid_log - newgrid_log))
+                # state[lidx:uidx] = np.exp(np.interp(oldgrid_log, newgrid_log, newstate_log))
+
+        # -------------------------------------------------------------------
+        # method x:
+        # - shift the bin edges and bin widths for derivative
+        # - use moment conserving special interpolator
+        # -------------------------------------------------------------------
+        elif config["semi_lagr_method"] == 'methodx':
+            if self.intp is None:
+                from prince.util import TheInterpolator
+                intp = TheInterpolator(self.ebins)
+                self.intp = intp
+
+            conloss = np.zeros_like(self.adia_loss_rates_bins.energy_vector)
+            if self.enable_adiabatic_losses:
+                conloss += self.adia_loss_rates_bins.loss_vector(z)
+            if self.enable_pairprod_losses:
+                conloss += self.pair_loss_rates_bins.loss_vector(z)
+            conloss *= self.dldz(z) * delta_z 
+
+            for spec in self.spec_man.species_refs:
+                lbin, ubin = spec.lbin(), spec.ubin()
+                lidx, uidx = spec.lidx(), spec.uidx()
+                newbins = self.ebins - conloss[lbin:ubin]
+                newcenters = (newbins[1:] + newbins[:-1])/2
+                newwidths  = (newbins[1:] - newbins[:-1])
+                self.intp.set_initial_spectrum(
+                newcenters,state[lidx:uidx]*newwidths)
+                
+                state[lidx:uidx] = self.intp.get_solution()
+
+        # -------------------------------------------------------------------
+        # method xx:
+        # - two bin interpolation
+        # -------------------------------------------------------------------
+        elif config["semi_lagr_method"] == 'methodxx':
             # print 'using new interpolator'
             conloss = np.zeros_like(self.adia_loss_rates_bins.energy_vector)
             if self.enable_adiabatic_losses:
@@ -240,35 +320,6 @@ class UHECRPropagationSolver(object):
                 # state[lidx:uidx-1] = finalstate
                 # state[uidx-1:uidx] = 0.
                 state[lidx:uidx] = np.exp(np.interp(oldgrid_log, newgrid_log, newstate_log))
-
-        # -------------------------------------------------------------------
-        # method x:
-        # - shift the bin edges and bin widths for derivative
-        # - use moment conserving special interpolator
-        # -------------------------------------------------------------------
-        elif config["semi_lagr_method"] == 'methodx':
-            if self.intp is None:
-                from prince.util import TheInterpolator
-                intp = TheInterpolator(self.ebins)
-                self.intp = intp
-
-            conloss = np.zeros_like(self.adia_loss_rates_bins.energy_vector)
-            if self.enable_adiabatic_losses:
-                conloss += self.adia_loss_rates_bins.loss_vector(z)
-            if self.enable_pairprod_losses:
-                conloss += self.pair_loss_rates_bins.loss_vector(z)
-            conloss *= self.dldz(z) * delta_z 
-
-            for spec in self.spec_man.species_refs:
-                lbin, ubin = spec.lbin(), spec.ubin()
-                lidx, uidx = spec.lidx(), spec.uidx()
-                newbins = self.ebins - conloss[lbin:ubin]
-                newcenters = (newbins[1:] + newbins[:-1])/2
-                newwidths  = (newbins[1:] - newbins[:-1])
-                self.intp.set_initial_spectrum(
-                newcenters,state[lidx:uidx]*newwidths)
-                
-                state[lidx:uidx] = self.intp.get_solution()
 
         # -------------------------------------------------------------------
         # if method was not in list before, raise an Expection
