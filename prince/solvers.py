@@ -5,6 +5,73 @@ from prince.cosmology import H
 from prince.util import info, PRINCE_UNITS, get_AZN, EnergyGrid
 from prince_config import config
 
+class ChangCooperSolver(object):
+    def __init__(self, ebins, nspecies):
+
+        self.ebins = ebins
+        self.ecenters = np.sqrt(ebins[1:] + ebins[:-1])
+        self.de = self.ecenters.size
+        self.dim_states = self.de*nspecies
+        self.nspecies = nspecies
+        self.dE = np.tile(ebins[1:] - ebins[:-1],self.nspecies)
+
+    def _compute_delta(self, A, B, dE):
+        bscale = 1
+        wpl = -A[:,1:] / (bscale * B[:,1:]) * dE
+        delta_pl = 1 / wpl - 1 / (np.exp(wpl) - 1)
+        wmi = -A[:,:-1] / (bscale * B[:,:-1]) * dE
+        delta_mi = 1 / wmi - 1 / (np.exp(wmi) - 1)
+        return delta_pl, delta_mi
+
+    def _setup_trigiag(self, dt, B_fake=1e-12):
+
+        self.B = B_fake * np.tile(self.ebins,self.nspecies)
+        
+        A, B = [v.reshape(self.nspecies, self.de + 1) for v in [self.A, self.B]]
+        dE = self.dE.reshape(self.nspecies, self.de)
+        dpl, dmi = self._compute_delta(A, B, dE)
+
+        # #Chang-Cooper
+        dl = -dmi * (A[:,:-1] + B[:,:-1] / dE)
+        du = (1 - dpl) * (A[:,1:] - B[:,1:] / dE)
+        dc_lhs = (2 * dE / dt + A[:,1:] * dpl + B[:,1:] / dE *
+                          (1 - dpl) - A[:,:-1] * (1 - dmi) - B[:,:-1] / dE * dmi)
+        dc_rhs = (2 * dE / dt - A[:,1:] * dpl - B[:,1:] / dE *
+                          (1 - dpl) + A[:,:-1] * (1 - dmi) - B[:,:-1] / dE * dmi)
+
+        # Crank-Nicholson
+        # du = A[:,1:]
+        # dl = -A[:,:-1]
+        # dc_lhs = 4*dE/dt + A[:,1:] - A[:,:-1]
+        # dc_rhs = 4*dE/dt - A[:,1:] + A[:,:-1]
+        return [v.reshape(self.dim_states) for v in [dl, du, dc_lhs, dc_rhs]]
+        # return dl, du, dc_lhs, dc_rhs
+
+    def setup_solver(self, dt, loss_vector, **kwargs):
+        from scipy.sparse import dia_matrix
+        # Energy loss term 1 order
+        self.A = loss_vector
+
+        dl, du, dc_lhs, dc_rhs = self._setup_trigiag(dt=dt, **kwargs)
+
+        data = np.vstack([dl, dc_lhs, du])
+        offsets = np.array([-1, 0, 1])
+        self.lhs_mat = dia_matrix(
+            (data, offsets),
+            shape=(self.dim_states, self.dim_states)).tocsc()
+        data = np.vstack([-dl, dc_rhs, -du])
+        self.rhs_mat = dia_matrix(
+            (data, offsets),
+            shape=(self.dim_states, self.dim_states)).tocsr()
+
+    def do_step(self, state):
+        from scipy.sparse.linalg import spsolve
+        return spsolve(self.lhs_mat, self.rhs_mat.dot(state))
+
+    def solve_ext(self, phc):
+        return self.solver(self.rhs_mat.dot(phc))
+
+
 class UHECRPropagationSolver(object):
     def __init__(self, initial_z, final_z, prince_run,
                  enable_adiabatic_losses=True,
@@ -40,6 +107,9 @@ class UHECRPropagationSolver(object):
 
         self.solution_vector = []
         self.list_of_sources = []
+
+        self.ccsolv = ChangCooperSolver(self.prince_run.cr_grid.bins,
+                                        self.spec_man.nspec)
         self._init_solver()
 
     def add_source_class(self, source_instance):
@@ -128,6 +198,21 @@ class UHECRPropagationSolver(object):
 
         self.last_hadr_jac = None
 
+    def chang_cooper(self, delta_z, z, state):
+        # if no continuous losses are enables, just return the state.
+        if not self.enable_adiabatic_losses and not self.enable_pairprod_losses:
+                return state
+
+        # add the different contributions to continuous losses
+        self.continuous_losses = np.zeros_like(self.adiabatic_loss_rates.energy_vector)
+        if self.enable_adiabatic_losses:
+            self.continuous_losses += self.adiabatic_loss_rates.loss_vector(z)
+        if self.enable_pairprod_losses:
+            self.continuous_losses += self.pairprod_loss_rates.loss_vector(z)
+
+        self.ccsolv.setup_solver(delta_z, -self.continuous_losses* self.dldz(z))
+        return self.ccsolv.do_step(state)
+
     def semi_lagrangian(self, delta_z, z, state):
         # if no continuous losses are enables, just return the state.
         if not self.enable_adiabatic_losses and not self.enable_pairprod_losses:
@@ -155,7 +240,7 @@ class UHECRPropagationSolver(object):
                 gradient = np.gradient(newgrid_log,oldgrid_log) * newgrid / oldgrid
 
                 newstate = state[lidx:uidx] / gradient
-                newstate = np.where(newstate > 1e-200, newstate, 1e-200)
+                newstate = np.where(newstate > 1e-250, newstate, 1e-250)
                 newstate_log = np.log(newstate)
 
                 state[lidx:uidx] = np.exp(np.interp(oldgrid_log, newgrid_log, newstate_log))
@@ -292,8 +377,31 @@ class UHECRPropagationSolver(object):
 
     def eqn_deriv(self, z, state, *args):
         self.ncallsf += 1
+        Q = self.injection(1., z)
+        # if False and np.sum(state) > 0:
+        #     delta_z_eff = state/(self.jacobian.dot(state) - Q)
+        #     delta_z_eff = delta_z_eff[-self.egrid.size:]
+
+        #     stiff = np.where(abs(delta_z_eff) < 1e-3)
+        #     nonstiff = np.where(abs(delta_z_eff) >= 1e-3)
+        #     stiff_energies =  self.egrid[-self.egrid.size:][stiff]
+        #     if stiff_energies.size <= 0 or self.egrid[-self.egrid.size:][stiff][0] < 1e11:
+        #         Q_eff = Q
+        #     else:
+        #         print 'stiff', self.egrid[-self.egrid.size:][stiff][0], delta_z_eff[stiff][0]
+        #         # print self.egrid[-self.egrid.size:][nonstiff]
+        #         N_fast = np.zeros_like(Q)
+        #         Q_slow = np.zeros_like(Q)
+        #         N_fast[-self.egrid.size:][stiff] = Q[-self.egrid.size:][stiff]*delta_z_eff[stiff]
+        #         Q_slow[-self.egrid.size:][nonstiff] = Q[-self.egrid.size:][nonstiff]
+        #         Q_eff = self.jacobian.dot(N_fast)/1e-3 + Q_slow
+        #         state[stiff] *= 0.
+        #         # print Q_eff[-self.egrid.size:][stiff]
+        #         # print Q_eff
+        # else:
+        #     Q_eff = Q
         if self.enable_injection_jacobian:
-            r = self.jacobian.dot(state) + self.injection(1., z)
+            r = self.jacobian.dot(state) + Q
         else:
             r = self.jacobian.dot(state)
         return r
@@ -322,7 +430,7 @@ class UHECRPropagationSolver(object):
             'name': 'lsodes',
             'method': 'bdf',
             # 'nsteps': 10000,
-            'rtol': 1e-4,
+            # 'rtol': 1e-4,
             # 'atol': 1e5,
             'ndim': self.dim_states,
             'nnz': self.jacobian.nnz,
@@ -356,10 +464,10 @@ class UHECRPropagationSolver(object):
 
         # Setup solver
 
-        # info(1,'Setting solver with jacobian')
-        # self.r = ode(self.eqn_deriv, self.eqn_jac).set_integrator(**ode_params)
-        info(1,'Setting solver without jacobian')
-        self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
+        info(1,'Setting solver with jacobian')
+        self.r = ode(self.eqn_deriv, self.eqn_jac).set_integrator(**ode_params)
+        # info(1,'Setting solver without jacobian')
+        # self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
 
     def solve(self, dz=1e-2, verbose=True, extended_output=False, full_reset=False):
         from time import time
@@ -484,12 +592,32 @@ class UHECRPropagationSolver(object):
                 state += self.injection(dz, curr_z)
             
             # --------------------------------------------
+            # Solve for hadronic interactions
+            # --------------------------------------------
+            if verbose:
+                print 'Solving hadr losses at t=', self.r.t
+            self._update_jacobian(curr_z)
             # Apply the semi lagrangian
             # --------------------------------------------
             if self.enable_adiabatic_losses or self.enable_pairprod_losses:
                 if verbose:
                     print 'applying semi lagrangian at t=', self.r.t
                 state= self.semi_lagrangian(dz, curr_z, state)
+
+            state += self.eqn_deriv(curr_z, state)*dz
+
+
+            # --------------------------------------------
+            # Apply the semi lagrangian
+            # --------------------------------------------
+            if self.enable_adiabatic_losses or self.enable_pairprod_losses:
+                if verbose:
+                    print 'applying semi lagrangian at t=', self.r.t
+                state = self.semi_lagrangian(dz, curr_z, state)
+            
+
+            # --------------------------------------------
+
 
             # --------------------------------------------
             # Some last checks and resets

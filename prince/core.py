@@ -53,7 +53,7 @@ class PriNCeRun(object):
         else:
             self.photon_field = photonfields.CombinedPhotonField(
                 [photonfields.CMBPhotonSpectrum, 
-                 photonfields.CIBFranceschini2D])
+                 photonfields.CIBInoue2D])
 
         # Store adv_set
         self.adv_set = config["adv_settings"]

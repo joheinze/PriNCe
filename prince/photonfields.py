@@ -132,7 +132,7 @@ class CIBFranceschini2D(PhotonField):
         A. Franceschini et al., Astron. Astrphys. 487, 837 (2008) [arXiv:0805.1841]
     """
 
-    def __init__(self, simple_scaling=True):
+    def __init__(self, simple_scaling=False):
         import cPickle as pickle
         self.simple_scaling = simple_scaling
         self.int2d = pickle.load(
