@@ -447,7 +447,6 @@ class UHECRPropagationSolver(object):
 
     def eqn_deriv(self, z, state, *args):
         self.ncallsf += 1
-<<<<<<< .working
         if self.enable_injection_jacobian and self.enable_partial_diff_jacobian:
             conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
             if self.enable_adiabatic_losses:
@@ -457,34 +456,6 @@ class UHECRPropagationSolver(object):
             partial_deriv = self.dldz(z) * self.diff_operator.operator.dot(conloss * state)
             r = self.jacobian.dot(state) + self.injection(1., z) + partial_deriv
         elif self.enable_injection_jacobian:
-||||||| .merge-left.r1213
-        if self.enable_injection_jacobian:
-=======
-        Q = self.injection(1., z)
-        # if False and np.sum(state) > 0:
-        #     delta_z_eff = state/(self.jacobian.dot(state) - Q)
-        #     delta_z_eff = delta_z_eff[-self.egrid.size:]
-
-        #     stiff = np.where(abs(delta_z_eff) < 1e-3)
-        #     nonstiff = np.where(abs(delta_z_eff) >= 1e-3)
-        #     stiff_energies =  self.egrid[-self.egrid.size:][stiff]
-        #     if stiff_energies.size <= 0 or self.egrid[-self.egrid.size:][stiff][0] < 1e11:
-        #         Q_eff = Q
-        #     else:
-        #         print 'stiff', self.egrid[-self.egrid.size:][stiff][0], delta_z_eff[stiff][0]
-        #         # print self.egrid[-self.egrid.size:][nonstiff]
-        #         N_fast = np.zeros_like(Q)
-        #         Q_slow = np.zeros_like(Q)
-        #         N_fast[-self.egrid.size:][stiff] = Q[-self.egrid.size:][stiff]*delta_z_eff[stiff]
-        #         Q_slow[-self.egrid.size:][nonstiff] = Q[-self.egrid.size:][nonstiff]
-        #         Q_eff = self.jacobian.dot(N_fast)/1e-3 + Q_slow
-        #         state[stiff] *= 0.
-        #         # print Q_eff[-self.egrid.size:][stiff]
-        #         # print Q_eff
-        # else:
-        #     Q_eff = Q
-        if self.enable_injection_jacobian:
->>>>>>> .merge-right.r1255
             r = self.jacobian.dot(state) + Q
         elif self.enable_partial_diff_jacobian:
             conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
