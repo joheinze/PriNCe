@@ -272,8 +272,8 @@ class PhotoNuclearInteractionRate(object):
 
                         int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
                                 mass_mo / mass_da)
-                        # self._batch_matrix[ibatch, ph_idx] += intp_diff(
-                        #     center_x, center_y, grid=True) * int_fac
+                        self._batch_matrix[ibatch, ph_idx] += intp_diff(
+                            center_x, center_y, grid=True) * int_fac
 
                         if has_nonel and m_eidx == d_eidx:
                             int_fac = delta_ph[ph_idx]
@@ -294,8 +294,8 @@ class PhotoNuclearInteractionRate(object):
                                 mass_mo / mass_da)
                         diff_fac = 1. / delta_x / delta_y
 
-                        # self._batch_matrix[ibatch, ph_idx] = intp_diff.integral(
-                        #     xl, xu, yl, yu) * diff_fac * int_fac
+                        self._batch_matrix[ibatch, ph_idx] = intp_diff.integral(
+                            xl, xu, yl, yu) * diff_fac * int_fac
 
                         if has_nonel and m_eidx == d_eidx:
                             self._batch_matrix[ibatch, ph_idx] -= (

@@ -10,7 +10,8 @@ class UHECRPropagationSolver(object):
                  enable_adiabatic_losses=True,
                  enable_pairprod_losses=True,
                  enable_photohad_losses=True,
-                 enable_injection_jacobian=True
+                 enable_injection_jacobian=True,
+                 enable_partial_diff_jacobian=False,
                 ):
         self.initial_z = initial_z
         self.final_z = final_z
@@ -27,7 +28,8 @@ class UHECRPropagationSolver(object):
         # if True injection in jacobion
         # if False injection only per dz-step
         self.enable_injection_jacobian = enable_injection_jacobian
-
+        self.enable_partial_diff_jacobian = enable_partial_diff_jacobian
+        
         self.had_int_rates = self.prince_run.int_rates
         self.adia_loss_rates_grid = self.prince_run.adia_loss_rates_grid
         self.pair_loss_rates_grid = self.prince_run.pair_loss_rates_grid 
@@ -41,6 +43,8 @@ class UHECRPropagationSolver(object):
         self.solution_vector = []
         self.list_of_sources = []
         self._init_solver()
+
+        self.diff_operator = DifferentialOperator(prince_run.cr_grid, prince_run.spec_man)
 
     def add_source_class(self, source_instance):
         self.list_of_sources.append(source_instance)
@@ -244,6 +248,21 @@ class UHECRPropagationSolver(object):
                 # state[lidx:uidx] = np.exp(np.interp(oldgrid_log, newgrid_log, newstate_log))
 
         # -------------------------------------------------------------------
+        # method 4:
+        # - partial diff euler steps
+        # -------------------------------------------------------------------
+        elif config["semi_lagr_method"] == 'method4':
+            conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
+            if self.enable_adiabatic_losses:
+                conloss += self.adia_loss_rates_grid.loss_vector(z)
+            if self.enable_pairprod_losses:
+                conloss += self.pair_loss_rates_grid.loss_vector(z)
+            #conloss = 
+            state[:] = state + self.dldz(z) * delta_z * self.diff_operator.operator.dot(conloss * state)
+
+
+
+        # -------------------------------------------------------------------
         # method x:
         # - shift the bin edges and bin widths for derivative
         # - use moment conserving special interpolator
@@ -343,8 +362,24 @@ class UHECRPropagationSolver(object):
 
     def eqn_deriv(self, z, state, *args):
         self.ncallsf += 1
-        if self.enable_injection_jacobian:
+        if self.enable_injection_jacobian and self.enable_partial_diff_jacobian:
+            conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
+            if self.enable_adiabatic_losses:
+                conloss += self.adia_loss_rates_grid.loss_vector(z)
+            if self.enable_pairprod_losses:
+                conloss += self.pair_loss_rates_grid.loss_vector(z)
+            partial_deriv = self.dldz(z) * self.diff_operator.operator.dot(conloss * state)
+            r = self.jacobian.dot(state) + self.injection(1., z) + partial_deriv
+        elif self.enable_injection_jacobian:
             r = self.jacobian.dot(state) + self.injection(1., z)
+        elif self.enable_partial_diff_jacobian:
+            conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
+            if self.enable_adiabatic_losses:
+                conloss += self.adia_loss_rates_grid.loss_vector(z)
+            if self.enable_pairprod_losses:
+                conloss += self.pair_loss_rates_grid.loss_vector(z)
+            partial_deriv = self.dldz(z) * self.diff_operator.operator.dot(conloss * state)
+            r = self.jacobian.dot(state) + partial_deriv
         else:
             r = self.jacobian.dot(state)
         return r
@@ -457,7 +492,7 @@ class UHECRPropagationSolver(object):
             # --------------------------------------------
             # Apply the injection 
             # --------------------------------------------
-            if not self.enable_injection_jacobian:
+            if not self.enable_injection_jacobian and not self.enable_partial_diff_jacobian:
                 if verbose:
                     print 'applying injection at t=', self.r.t
                 if full_reset:
@@ -469,14 +504,15 @@ class UHECRPropagationSolver(object):
             # --------------------------------------------
             # Apply the semi lagrangian
             # --------------------------------------------
-            if self.enable_adiabatic_losses or self.enable_pairprod_losses:
-                if verbose:
-                    print 'applying semi lagrangian at t=', self.r.t
-                if full_reset:
-                    self.r.set_initial_value(self.semi_lagrangian(dz, self.r.t, self.r.y), self.r.t)
-                else:
-                    self.r._integrator.call_args[3] = 20
-                    self.r._y = self.semi_lagrangian(dz, self.r.t, self.r.y)
+            if not self.enable_partial_diff_jacobian:
+                if self.enable_adiabatic_losses or self.enable_pairprod_losses:
+                    if verbose:
+                        print 'applying semi lagrangian at t=', self.r.t
+                    if full_reset:
+                        self.r.set_initial_value(self.semi_lagrangian(dz, self.r.t, self.r.y), self.r.t)
+                    else:
+                        self.r._integrator.call_args[3] = 20
+                        self.r._y = self.semi_lagrangian(dz, self.r.t, self.r.y)
 
             # --------------------------------------------
             # Some last checks and resets
@@ -529,7 +565,7 @@ class UHECRPropagationSolver(object):
             # --------------------------------------------
             # Apply the injection 
             # --------------------------------------------
-            if not self.enable_injection_jacobian:
+            if not self.enable_injection_jacobian and not self.enable_partial_diff_jacobian:
                 if verbose:
                     print 'applying injection at t=', self.r.t
                 state += self.injection(dz, curr_z)
@@ -537,10 +573,11 @@ class UHECRPropagationSolver(object):
             # --------------------------------------------
             # Apply the semi lagrangian
             # --------------------------------------------
-            if self.enable_adiabatic_losses or self.enable_pairprod_losses:
-                if verbose:
-                    print 'applying semi lagrangian at t=', self.r.t
-                state= self.semi_lagrangian(dz, curr_z, state)
+            if not self.enable_partial_diff_jacobian:
+                if self.enable_adiabatic_losses or self.enable_pairprod_losses:
+                    if verbose:
+                        print 'applying semi lagrangian at t=', self.r.t
+                    state= self.semi_lagrangian(dz, curr_z, state)
 
             # --------------------------------------------
             # Some last checks and resets
@@ -556,3 +593,128 @@ class UHECRPropagationSolver(object):
         end_time = time()
         info(2, 'Integration completed in {0} s'.format(end_time - start_time))
         self.state = state
+
+
+
+class DifferentialOperator(object):
+    def __init__(self, cr_grid, spec_man):
+        self.ebins = cr_grid.bins
+        self.egrid = cr_grid.grid
+        self.ewidths = cr_grid.widths
+        self.dim_e = cr_grid.d
+        # binsize in log(e)
+        self.log_width = np.log(self.ebins[1] / self.ebins[0])
+
+        self.spec_man = spec_man
+        self.operator = self.construct_differential_operator()
+
+    def construct_differential_operator(self):
+        from scipy.sparse import coo_matrix, block_diag
+        # Construct a 
+        # First rows of operator matrix
+        # diags_leftmost = [0, 1, 2, 3]
+        # coeffs_leftmost = [-11, 18, -9, 2]
+        # denom_leftmost = 6.
+        # diags_left_1 = [-1, 0, 1, 2, 3]
+        # coeffs_left_1 = [-3, -10, 18, -6, 1]
+        # denom_left_1 = 12.
+        # diags_left_2 = [-2, -1, 0, 1, 2, 3]
+        # coeffs_left_2 = [3, -30, -20, 60, -15, 2]
+        # denom_left_2 = 60.
+
+        # # Centered diagonals
+        # diags = [-3, -2, -1, 1, 2, 3]
+        # coeffs = [-1, 9, -45, 45, -9, 1]
+        # denom = 60.
+
+
+        # First rows of operator matrix
+        diags_leftmost = [0, 1, 2, 3]
+        coeffs_leftmost = [-11, 18, -9, 2]
+        denom_leftmost = 6.
+        diags_left_1 = [-1, 0, 1, 2, 3]
+        coeffs_left_1 = [-3, -10, 18, -6, 1]
+        denom_left_1 = 12.
+        diags_left_2 = [-2, -1, 0, 1, 2, 3]
+        coeffs_left_2 = [3, -30, -20, 60, -15, 2]
+        denom_left_2 = 60.
+
+        # Centered diagonals
+        diags = [-2, -1, 0, 1, 2, 3]
+        coeffs = [3, -30, -20, 60, -15, 2]
+        denom = 60.
+        # print diags
+        # print coeffs
+        # diags = [-d for d in diags[::-1]]
+        # coeffs = [-d for d in coeffs[::-1]]
+        # denom = denom
+        # print diags
+        # print coeffs
+        # diags = [-3, -2, -1, 1, 2, 3]
+        # coeffs = [-1, 9, -45, 45, -9, 1]
+        # denom = 60.
+
+        # diags = [-1, 0, 1, 2, 3]
+        # coeffs = [-3, -10, 18, -6, 1]
+        # denom = 12.
+
+        # diags = [0, 1, 2, 3]
+        # coeffs = [-11, 18, -9, 2]
+        # denom = 6.
+
+
+
+        # diags_leftmost = [0, 1]
+        # coeffs_leftmost = [-1, 1]
+        # denom_leftmost = 1.
+        # diags_left_1 = [0, 1]
+        # coeffs_left_1 = [-1, 1]
+        # denom_left_1 = 1.
+        # diags_left_2 = [0, 1]
+        # coeffs_left_2 = [-1, 1]
+        # denom_left_2 = 1.
+        # diags = [0, 1]
+        # coeffs = [-1, 1]
+        # denom = 1.
+
+        # Last rows at the right of operator matrix
+        diags_right_2 = [-d for d in diags_left_2[::-1]]
+        coeffs_right_2 = [-d for d in coeffs_left_2[::-1]]
+        denom_right_2 = denom_left_2
+        diags_right_1 = [-d for d in diags_left_1[::-1]]
+        coeffs_right_1 = [-d for d in coeffs_left_1[::-1]]
+        denom_right_1 = denom_left_1
+        diags_rightmost = [-d for d in diags_leftmost[::-1]]
+        coeffs_rightmost = [-d for d in coeffs_leftmost[::-1]]
+        denom_rightmost = denom_leftmost
+
+        h = self.log_width
+        dim_e = self.dim_e
+        last = dim_e - 1
+
+        op_matrix = np.zeros((dim_e, dim_e))
+        op_matrix[0, np.asarray(diags_leftmost)] = np.asarray(
+            coeffs_leftmost) / (denom_leftmost * h)
+        op_matrix[1, 1 + np.asarray(diags_left_1)] = np.asarray(
+            coeffs_left_1) / (denom_left_1 * h)
+        op_matrix[2, 2 + np.asarray(diags_left_2)] = np.asarray(
+            coeffs_left_2) / (denom_left_2 * h)
+        op_matrix[last,
+                  last + np.asarray(diags_rightmost)] = np.asarray(
+                      coeffs_rightmost) / (denom_rightmost * h)
+        op_matrix[last - 1, last - 1 + np.asarray(
+            diags_right_1)] = np.asarray(coeffs_right_1) / (denom_right_1 * h)
+        op_matrix[last - 2, last - 2 + np.asarray(
+            diags_right_2)] = np.asarray(coeffs_right_2) / (denom_right_2 * h)
+        for row in range(3, dim_e - 3):
+            op_matrix[row, row + np.asarray(diags)] = np.asarray(coeffs) / (
+                denom * h)
+        # Construct an operator by left multiplication of the back-substitution
+        # dlnE to dE. The right energy loss has to be later multiplied in every step
+        single_op = coo_matrix(
+            np.diag(1 / self.egrid).dot(op_matrix)
+        )
+
+        # construct the operator for the whole matrix, by repeating
+        nspec = self.spec_man.nspec
+        return block_diag(nspec*[single_op]).tocsr()
