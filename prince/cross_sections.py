@@ -559,7 +559,7 @@ class CrossSectionBase(object):
 
         csec = np.zeros((nxbins, cs.shape[0]))
         csec[-1, :] = cs / self.xwidths[-1]
-        print 'Warning! Test division by bin width here!'
+        # print 'Warning! Test division by bin width here!'
         if isinstance(incl_cs, tuple):
             return egr, csec
         return csec

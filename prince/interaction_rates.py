@@ -150,15 +150,15 @@ class PhotoNuclearInteractionRate(object):
 
             # Mass number of mother and daughter
             # (float) cast needed for exact ratio
-            mass_mo = float(get_AZN(moid)[0])
-            mass_da = float(get_AZN(daid)[0])
+            mass_mo = 1.#float(get_AZN(moid)[0])
+            mass_da = 1.#float(get_AZN(daid)[0])
 
             if mass_mo < mass_da or moid < 100:
                 continue
             # TODO: workaround for missing injection into redist
-            if mass_mo > 1 and daid < 100:
-                print 'skip', moid, daid
-                continue
+            # if mass_mo > 1 and daid < 100:
+            #     print 'skip', moid, daid
+            #     continue
 
             if moid == daid:
                 intp_nonel = resp.nonel_intp[moid].antiderivative()
@@ -192,7 +192,7 @@ class PhotoNuclearInteractionRate(object):
                     # ------------------------------
                     if config["bin_average"] == 'method1':
                         center_y = eph[ph_idx] * emo / m_pr
-                        int_fac = (delta_ph[ph_idx] * mass_mo / mass_da)
+                        int_fac = (delta_ph[ph_idx] *  mass_mo / mass_da)
                         if has_incl:
                             self._batch_matrix[ibatch, :] = resp.incl_intp[(moid, daid)](center_y) * int_fac
                         if has_nonel:
@@ -314,7 +314,7 @@ class PhotoNuclearInteractionRate(object):
                         self._batch_cols.append(sp_id_ref[moid].lidx() +
                                                 m_eidx)
             else:
-                info(2, 'Species combination not supported', moid, daid)
+                info(20, 'Species combination not included in model', moid, daid)
 
         self._batch_matrix.resize((ibatch, dph))
         self._batch_rows = np.array(self._batch_rows)

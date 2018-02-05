@@ -14,7 +14,7 @@ def get_particle_channels(mo, mo_energy, da_energy):
     """
     Will loop over all channels of a mother and generate a list of redistributions for all daughters
     """
-    info(1, 'Generating decay redistribution for', mo, da)
+    info(10, 'Generating decay redistribution for', mo, da)
     dbentry = spec_data[mo]
     x_grid = np.outer(da_energy, (1 / mo_energy))
 
@@ -46,7 +46,7 @@ def get_decay_matrix(mo, da, x_grid):
       float: redistribution on the grid mo_energy / da_energy
     """
 
-    info(1, 'Generating decay redistribution for', mo, da)
+    info(10, 'Generating decay redistribution for', mo, da)
 
     # --------------------------------
     # pi+ to numu or pi- to nummubar
@@ -104,15 +104,15 @@ def get_decay_matrix(mo, da, x_grid):
     
     # beta-
     elif mo > 99 and da == 11:
-        info(1, 'nu_e from beta- decay', mo, mo - 1, da)
+        info(10, 'nu_e from beta- decay', mo, mo - 1, da)
         return nu_from_beta_decay(x_grid, mo, mo - 1)
     # beta+
     elif mo > 99 and da == 12:
-        info(1, 'nubar_e from beta+ decay', mo, mo + 1, da)
+        info(10, 'nubar_e from beta+ decay', mo, mo + 1, da)
         return nu_from_beta_decay(x_grid, mo, mo + 1)
     # neutron
     elif mo > 99 and 99 < da < 200:
-        info(1, 'beta decay boost conservation', mo, da)
+        info(10, 'beta decay boost conservation', mo, da)
         return boost_conservation(x_grid)
     else:
         info(
@@ -137,7 +137,7 @@ def get_decay_matrix_bin_average(mo, da, x_lower, x_upper):
     """
     # TODO: Some of the distribution are not averaged yet.
     # The error is small for smooth distributions though
-    info(1, 'Generating decay redistribution for', mo, da)
+    info(10, 'Generating decay redistribution for', mo, da)
     
     x_grid = (x_upper + x_lower) / 2
     
@@ -199,15 +199,15 @@ def get_decay_matrix_bin_average(mo, da, x_lower, x_upper):
     # TODO: The following beta decay to neutrino distr need to be averaged analyticaly
     # beta-
     elif mo > 99 and da == 11:
-        info(1, 'nu_e from beta- decay', mo, mo - 1, da)
+        info(10, 'nu_e from beta- decay', mo, mo - 1, da)
         return nu_from_beta_decay(x_grid, mo, mo - 1)
     # beta+
     elif mo > 99 and da == 12:
-        info(1, 'nubar_e from beta+ decay', mo, mo + 1, da)
+        info(10, 'nubar_e from beta+ decay', mo, mo + 1, da)
         return nu_from_beta_decay(x_grid, mo, mo + 1)
     # neutron
     elif mo > 99 and 99 < da < 200:
-        info(1, 'beta decay boost conservation', mo, da)
+        info(10, 'beta decay boost conservation', mo, da)
         return boost_conservation_avg(x_lower,x_upper)
     else:
         info(
