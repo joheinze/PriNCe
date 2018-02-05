@@ -152,6 +152,8 @@ class PhotoNuclearInteractionRate(object):
             # (float) cast needed for exact ratio
             mass_mo = 1.#float(get_AZN(moid)[0])
             mass_da = 1.#float(get_AZN(daid)[0])
+            # mass_mo = float(get_AZN(moid)[0])
+            # mass_da = float(get_AZN(daid)[0])
 
             if mass_mo < mass_da or moid < 100:
                 continue
