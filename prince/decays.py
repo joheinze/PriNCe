@@ -433,7 +433,6 @@ def nu_from_beta_decay(x_grid, mother, daughter):
     mass_mo = spec_data[mother]['mass']
     mass_da = spec_data[daughter]['mass']
 
-    print mass_el, mass_mo, mass_da
     # this is different for beta+ emission, atleast in NeuCosmA.nco_decay.c, l.126  (JH: really? why?)
     qval = mass_mo - mass_da - 2 * mass_el
     E0 = qval + mass_el

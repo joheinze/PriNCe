@@ -4,73 +4,7 @@ import numpy as np
 from prince.cosmology import H
 from prince.util import info, PRINCE_UNITS, get_AZN, EnergyGrid
 from prince_config import config
-
-class ChangCooperSolver(object):
-    def __init__(self, ebins, nspecies):
-
-        self.ebins = ebins
-        self.ecenters = np.sqrt(ebins[1:] + ebins[:-1])
-        self.de = self.ecenters.size
-        self.dim_states = self.de*nspecies
-        self.nspecies = nspecies
-        self.dE = np.tile(ebins[1:] - ebins[:-1],self.nspecies)
-
-    def _compute_delta(self, A, B, dE):
-        bscale = 1
-        wpl = -A[:,1:] / (bscale * B[:,1:]) * dE
-        delta_pl = 1 / wpl - 1 / (np.exp(wpl) - 1)
-        wmi = -A[:,:-1] / (bscale * B[:,:-1]) * dE
-        delta_mi = 1 / wmi - 1 / (np.exp(wmi) - 1)
-        return delta_pl, delta_mi
-
-    def _setup_trigiag(self, dt, B_fake=1e-12):
-
-        self.B = B_fake * np.tile(self.ebins,self.nspecies)
-        
-        A, B = [v.reshape(self.nspecies, self.de + 1) for v in [self.A, self.B]]
-        dE = self.dE.reshape(self.nspecies, self.de)
-        dpl, dmi = self._compute_delta(A, B, dE)
-
-        # #Chang-Cooper
-        dl = -dmi * (A[:,:-1] + B[:,:-1] / dE)
-        du = (1 - dpl) * (A[:,1:] - B[:,1:] / dE)
-        dc_lhs = (2 * dE / dt + A[:,1:] * dpl + B[:,1:] / dE *
-                          (1 - dpl) - A[:,:-1] * (1 - dmi) - B[:,:-1] / dE * dmi)
-        dc_rhs = (2 * dE / dt - A[:,1:] * dpl - B[:,1:] / dE *
-                          (1 - dpl) + A[:,:-1] * (1 - dmi) - B[:,:-1] / dE * dmi)
-
-        # Crank-Nicholson
-        # du = A[:,1:]
-        # dl = -A[:,:-1]
-        # dc_lhs = 4*dE/dt + A[:,1:] - A[:,:-1]
-        # dc_rhs = 4*dE/dt - A[:,1:] + A[:,:-1]
-        return [v.reshape(self.dim_states) for v in [dl, du, dc_lhs, dc_rhs]]
-        # return dl, du, dc_lhs, dc_rhs
-
-    def setup_solver(self, dt, loss_vector, **kwargs):
-        from scipy.sparse import dia_matrix
-        # Energy loss term 1 order
-        self.A = loss_vector
-
-        dl, du, dc_lhs, dc_rhs = self._setup_trigiag(dt=dt, **kwargs)
-
-        data = np.vstack([dl, dc_lhs, du])
-        offsets = np.array([-1, 0, 1])
-        self.lhs_mat = dia_matrix(
-            (data, offsets),
-            shape=(self.dim_states, self.dim_states)).tocsc()
-        data = np.vstack([-dl, dc_rhs, -du])
-        self.rhs_mat = dia_matrix(
-            (data, offsets),
-            shape=(self.dim_states, self.dim_states)).tocsr()
-
-    def do_step(self, state):
-        from scipy.sparse.linalg import spsolve
-        return spsolve(self.lhs_mat, self.rhs_mat.dot(state))
-
-    def solve_ext(self, phc):
-        return self.solver(self.rhs_mat.dot(phc))
-
+from prince.solvers_energy import DifferentialOperator, ChangCooperSolver, SemiLagrangianSolver
 
 class UHECRPropagationSolver(object):
     def __init__(self, initial_z, final_z, prince_run,
@@ -110,11 +44,9 @@ class UHECRPropagationSolver(object):
         self.solution_vector = []
         self.list_of_sources = []
 
-        self.ccsolv = ChangCooperSolver(self.prince_run.cr_grid.bins,
-                                        self.spec_man.nspec)
         self._init_solver()
-
-        self.diff_operator = DifferentialOperator(prince_run.cr_grid, prince_run.spec_man)
+        self.diff_operator = DifferentialOperator(prince_run.cr_grid, prince_run.spec_man.nspec)
+        self.semi_lag_solver = SemiLagrangianSolver(prince_run.cr_grid)
 
     def add_source_class(self, source_instance):
         self.list_of_sources.append(source_instance)
@@ -190,126 +122,84 @@ class UHECRPropagationSolver(object):
 
         self.last_hadr_jac = None
 
-    def chang_cooper(self, delta_z, z, state):
-        # if no continuous losses are enables, just return the state.
-        if not self.enable_adiabatic_losses and not self.enable_pairprod_losses:
-                return state
-
-        # add the different contributions to continuous losses
-        self.continuous_losses = np.zeros_like(self.adiabatic_loss_rates.energy_vector)
-        if self.enable_adiabatic_losses:
-            self.continuous_losses += self.adiabatic_loss_rates.loss_vector(z)
-        if self.enable_pairprod_losses:
-            self.continuous_losses += self.pairprod_loss_rates.loss_vector(z)
-
-        self.ccsolv.setup_solver(delta_z, -self.continuous_losses* self.dldz(z))
-        return self.ccsolv.do_step(state)
-
     def semi_lagrangian(self, delta_z, z, state):
         # if no continuous losses are enables, just return the state.
         if not self.enable_adiabatic_losses and not self.enable_pairprod_losses:
                 return state
-        # -------------------------------------------------------------------
-        # method 1:
-        # - shift the bin centers and use gradient for derivative
-        # - use linear interpolation on x = log(E)
-        # -------------------------------------------------------------------
-        if config["semi_lagr_method"] == 'method1':
-            # add the different contributions to continuous losses
-            conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
-            if self.enable_adiabatic_losses:
-                conloss += self.adia_loss_rates_grid.loss_vector(z)
-            if self.enable_pairprod_losses:
-                conloss += self.pair_loss_rates_grid.loss_vector(z)
-            conloss *= self.dldz(z) * delta_z 
-            for spec in self.spec_man.species_refs:
-                lidx, uidx = spec.lidx(), spec.uidx()
-                newgrid = self.egrid - conloss[lidx:uidx]
-                oldgrid = self.egrid
 
-                newgrid_log = np.log(newgrid)
-                oldgrid_log = np.log(oldgrid)
-                gradient = np.gradient(newgrid_log,oldgrid_log) * newgrid / oldgrid
-
-                newstate = state[lidx:uidx] / gradient
-                newstate = np.where(newstate > 1e-250, newstate, 1e-250)
-                newstate_log = np.log(newstate)
-
-                state[lidx:uidx] = np.exp(np.interp(oldgrid_log, newgrid_log, newstate_log))
+        conloss = np.zeros_like(self.adia_loss_rates_bins.energy_vector)
+        if self.enable_adiabatic_losses:
+            conloss += self.adia_loss_rates_bins.loss_vector(z)
+        if self.enable_pairprod_losses:
+            conloss += self.pair_loss_rates_bins.loss_vector(z)
+        conloss *= self.dldz(z) * delta_z
 
         # -------------------------------------------------------------------
-        # method 2:
-        # - shift the bin edges and bin widths for derivative
-        # - use linear interpolation on x = log(E)
+        # numpy interpolator
         # -------------------------------------------------------------------
-        elif config["semi_lagr_method"] == 'method2':
-            conloss = np.zeros_like(self.adia_loss_rates_bins.energy_vector)
-            if self.enable_adiabatic_losses:
-                conloss += self.adia_loss_rates_bins.loss_vector(z)
-            if self.enable_pairprod_losses:
-                conloss += self.pair_loss_rates_bins.loss_vector(z)
-            conloss *= self.dldz(z) * delta_z 
+        if config["semi_lagr_method"] == 'intp_numpy':
             for spec in self.spec_man.species_refs:
                 lbin, ubin = spec.lbin(), spec.ubin()
                 lidx, uidx = spec.lidx(), spec.uidx()
-                newbins = self.ebins - conloss[lbin:ubin]
-                oldbins = self.ebins
-
-                newcenters = (newbins[1:] + newbins[:-1])/2
-                newwidths  = (newbins[1:] - newbins[:-1])
-                oldcenters = (oldbins[1:] + oldbins[:-1])/2
-                oldwidths  = (oldbins[1:] - oldbins[:-1])
-
-                newgrid_log = np.log(newcenters)
-                oldgrid_log = np.log(oldcenters)
-                gradient = newwidths / oldwidths
-
-                newstate = state[lidx:uidx] / gradient
-                newstate = np.where(newstate > 1e-250, newstate, 1e-250)
-                newstate_log = np.log(newstate)
-
-                state[lidx:uidx] = np.exp(np.interp(oldgrid_log, newgrid_log, newstate_log))
-
+                state[lidx:uidx] = self.semi_lag_solver.interpolate(conloss[lbin:ubin], state[lidx:uidx])
         # -------------------------------------------------------------------
-        # method 3:
-        # - shift the bin edges and bin widths for derivative
-        # - second order derivative for interpolation
+        # local gradient interpolation
         # -------------------------------------------------------------------
-        elif config["semi_lagr_method"] == 'method3':
-            conloss = np.zeros_like(self.adia_loss_rates_bins.energy_vector)
-            if self.enable_adiabatic_losses:
-                conloss += self.adia_loss_rates_bins.loss_vector(z)
-            if self.enable_pairprod_losses:
-                conloss += self.pair_loss_rates_bins.loss_vector(z)
-            conloss *= self.dldz(z) * delta_z 
-
+        elif config["semi_lagr_method"] == 'gradient':
             for spec in self.spec_man.species_refs:
                 lbin, ubin = spec.lbin(), spec.ubin()
                 lidx, uidx = spec.lidx(), spec.uidx()
-                newbins = self.ebins - conloss[lbin:ubin]
-                oldbins = self.ebins
-
-                newcenters = (newbins[1:] + newbins[:-1])/2
-                newwidths  = (newbins[1:] - newbins[:-1])
-                oldcenters = (oldbins[1:] + oldbins[:-1])/2
-                oldwidths  = (oldbins[1:] - oldbins[:-1])
-
-                newgrid_log = np.log(newcenters)
-                oldgrid_log = np.log(oldcenters)
-                gradient = newwidths / oldwidths
-
-                newstate = state[lidx:uidx] / gradient
-                newstate = np.where(newstate > 1e-250, newstate, 1e-250)
-                newstate_log = np.log(newstate)
-
-                deriv = np.gradient(newstate_log,newgrid_log,edge_order=2)
-                state[lidx:uidx] = np.exp(newstate_log + deriv * (oldgrid_log - newgrid_log))
+                state[lidx:uidx] = self.semi_lag_solver.interpolate_gradient(conloss[lbin:ubin], state[lidx:uidx])
 
         # -------------------------------------------------------------------
-        # method 4:
-        # - partial diff euler steps
+        # linear lagrange weigts
         # -------------------------------------------------------------------
-        elif config["semi_lagr_method"] == 'method4':
+        elif config["semi_lagr_method"] == 'linear':
+            for spec in self.spec_man.species_refs:
+                lbin, ubin = spec.lbin(), spec.ubin()
+                lidx, uidx = spec.lidx(), spec.uidx()
+                state[lidx:uidx] = self.semi_lag_solver.interpolate_linear_weights(conloss[lbin:ubin], state[lidx:uidx])
+
+        # -------------------------------------------------------------------
+        # quadratic lagrange weigts
+        # -------------------------------------------------------------------
+        elif config["semi_lagr_method"] == 'quadratic':
+            for spec in self.spec_man.species_refs:
+                lbin, ubin = spec.lbin(), spec.ubin()
+                lidx, uidx = spec.lidx(), spec.uidx()
+                state[lidx:uidx] = self.semi_lag_solver.interpolate_quadratic_weights(conloss[lbin:ubin], state[lidx:uidx])
+ 
+        # -------------------------------------------------------------------
+        # cubic lagrange weigts
+        # -------------------------------------------------------------------
+        elif config["semi_lagr_method"] == 'cubic':
+            for spec in self.spec_man.species_refs:
+                lbin, ubin = spec.lbin(), spec.ubin()
+                lidx, uidx = spec.lidx(), spec.uidx()
+                state[lidx:uidx] = self.semi_lag_solver.interpolate_cubic_weights(conloss[lbin:ubin], state[lidx:uidx])
+
+        # -------------------------------------------------------------------
+        # 4th order lagrange weigts
+        # -------------------------------------------------------------------
+        elif config["semi_lagr_method"] == '4th_order':
+            for spec in self.spec_man.species_refs:
+                lbin, ubin = spec.lbin(), spec.ubin()
+                lidx, uidx = spec.lidx(), spec.uidx()
+                state[lidx:uidx] = self.semi_lag_solver.interpolate_4thorder_weights(conloss[lbin:ubin], state[lidx:uidx])
+ 
+        # -------------------------------------------------------------------
+        # 5th order lagrange weigts
+        # -------------------------------------------------------------------
+        elif config["semi_lagr_method"] == '5th_order':
+            for spec in self.spec_man.species_refs:
+                lbin, ubin = spec.lbin(), spec.ubin()
+                lidx, uidx = spec.lidx(), spec.uidx()
+                state[lidx:uidx] = self.semi_lag_solver.interpolate_5thorder_weights(conloss[lbin:ubin], state[lidx:uidx])
+ 
+        # -------------------------------------------------------------------
+        # finite diff euler steps
+        # -------------------------------------------------------------------
+        elif config["semi_lagr_method"] == 'finite_diff':
             conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
             if self.enable_adiabatic_losses:
                 conloss += self.adia_loss_rates_grid.loss_vector(z)
@@ -370,7 +260,7 @@ class UHECRPropagationSolver(object):
         self.ncallsf = 0
         self.ncallsj = 0
 
-        ode_params_lsodes = {
+        ode_params = {
             'name': 'lsodes',
             'method': 'bdf',
             # 'nsteps': 10000,
@@ -383,46 +273,28 @@ class UHECRPropagationSolver(object):
             # 'with_jacobian': True
         }
 
-        # ode_params_vode = {
-        #     'name': 'vode',
-        #     'method': 'bdf',
-        #     'nsteps': 10000,
-        #     'rtol': 1e-1,
-        #     'atol': 1e10,
-        #     # 'order': 5,
-        #     'max_step': 0.2,
-        #     'with_jacobian': False
-        # }
-
-        # ode_params_lsoda = {
-        #     'name': 'lsoda',
-        #     'nsteps': 10000,
-        #     'rtol': 0.2,
-        #     'max_order_ns': 5,
-        #     'max_order_s': 2,
-        #     'max_step': 0.2,
-        #     # 'first_step': 1e-4,
-        # }
-
-        ode_params = ode_params_lsodes
-
-        # Setup solver
+        ode_params = ode_params
 
         # info(1,'Setting solver with jacobian')
         # self.r = ode(self.eqn_deriv, self.eqn_jac).set_integrator(**ode_params)
         info(1,'Setting solver without jacobian')
         self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
 
-    def solve(self, dz=1e-2, verbose=True, extended_output=False, full_reset=False):
+    def solve(self, dz=1e-2, verbose=True, extended_output=False, full_reset=False, record=False):
         from time import time
 
-        # stepcount = 0
+        # if record, record the spectra every few steps
+        if record:
+            from collections import defaultdict
+            record_dict = defaultdict(list)
+            print record_dict
+            record_list = record
+        stepcount = 0
         dz = -1 * dz
         start_time = time()
         self.r.set_initial_value(np.zeros(self.dim_states), self.r.t)
 
         info(2, 'Starting integration.')
-
         while self.r.successful() and (self.r.t + dz) > self.final_z:
             if verbose:
                 info(3, "Integrating at z={0}".format(self.r.t))
@@ -435,24 +307,7 @@ class UHECRPropagationSolver(object):
             self._update_jacobian(self.r.t)
             self.r.integrate(self.r.t + dz)  #,
             if verbose:
-                print 'step took', time() - step_start
-                print 'At t =', self.r.t
-                print 'jacobian calls', self.ncallsj
-                print 'function calls', self.ncallsf
-                if extended_output:
-                    NST = self.r._integrator.iwork[10]
-                    NFE = self.r._integrator.iwork[11]
-                    NJE = self.r._integrator.iwork[13]
-                    NLU = self.r._integrator.iwork[20]
-                    NNZ = self.r._integrator.iwork[19]
-                    NNZLU = self.r._integrator.iwork[24] + self.r._integrator.iwork[26] + 12
-                    print 'NST', NST
-                    print 'NFE', NFE
-                    print 'NJE', NJE
-                    print 'NLU', NLU
-                    print 'NNZLU', NNZLU
-                    print 'LAST STEP {0:4.3e}'.format(
-                        self.r._integrator.rwork[10])
+                self.print_step_info(step_start,extended_output=extended_output)
             self.ncallsf = 0
             self.ncallsj = 0
             # --------------------------------------------
@@ -486,14 +341,15 @@ class UHECRPropagationSolver(object):
             if self.r.t < -1 * dz:
                 print 'break at z =', self.r.t
                 break
-            # if stepcount == -1:
-            #     full_reset = True
-            #     stepcount = 0
-            # else:
-            #     stepcount += 1
-            # print 'reset',full_reset
+            if stepcount % 1 == 0 and  record:
+                for pid in record_list:
+                    if pid in self.spec_man.ncoid2sref:
+                        sp = self.spec_man.ncoid2sref[pid]
+                        lidx,uidx = sp.lidx(), sp.uidx()
+                        record_dict[pid].append((self.r.t,self.r.y[lidx:uidx]))
 
-        self.r.integrate(self.final_z)
+            stepcount += 1
+        # self.r.integrate(self.final_z)
 
         if not self.r.successful():
             raise Exception(
@@ -502,6 +358,32 @@ class UHECRPropagationSolver(object):
         self.state = self.r.y
         end_time = time()
         info(2, 'Integration completed in {0} s'.format(end_time - start_time))
+
+        if record:
+            return record_dict
+
+    def print_step_info(self, step_start,extended_output=False):
+        from time import time
+
+        print 'step took', time() - step_start
+        print 'At t =', self.r.t
+        print 'jacobian calls', self.ncallsj
+        print 'function calls', self.ncallsf
+        if extended_output:
+            NST = self.r._integrator.iwork[10]
+            NFE = self.r._integrator.iwork[11]
+            NJE = self.r._integrator.iwork[13]
+            NLU = self.r._integrator.iwork[20]
+            NNZ = self.r._integrator.iwork[19]
+            NNZLU = self.r._integrator.iwork[24] + self.r._integrator.iwork[26] + 12
+            print 'NST', NST
+            print 'NFE', NFE
+            print 'NJE', NJE
+            print 'NLU', NLU
+            print 'NNZLU', NNZLU
+            print 'LAST STEP {0:4.3e}'.format(
+                self.r._integrator.rwork[10])
+
 
     def solve_euler(self, dz=1e-3, verbose=True, extended_output=False, full_reset=False):
         from time import time
@@ -559,128 +441,3 @@ class UHECRPropagationSolver(object):
         end_time = time()
         info(2, 'Integration completed in {0} s'.format(end_time - start_time))
         self.state = state
-
-
-
-class DifferentialOperator(object):
-    def __init__(self, cr_grid, spec_man):
-        self.ebins = cr_grid.bins
-        self.egrid = cr_grid.grid
-        self.ewidths = cr_grid.widths
-        self.dim_e = cr_grid.d
-        # binsize in log(e)
-        self.log_width = np.log(self.ebins[1] / self.ebins[0])
-
-        self.spec_man = spec_man
-        self.operator = self.construct_differential_operator()
-
-    def construct_differential_operator(self):
-        from scipy.sparse import coo_matrix, block_diag
-        # Construct a 
-        # First rows of operator matrix
-        # diags_leftmost = [0, 1, 2, 3]
-        # coeffs_leftmost = [-11, 18, -9, 2]
-        # denom_leftmost = 6.
-        # diags_left_1 = [-1, 0, 1, 2, 3]
-        # coeffs_left_1 = [-3, -10, 18, -6, 1]
-        # denom_left_1 = 12.
-        # diags_left_2 = [-2, -1, 0, 1, 2, 3]
-        # coeffs_left_2 = [3, -30, -20, 60, -15, 2]
-        # denom_left_2 = 60.
-
-        # # Centered diagonals
-        # diags = [-3, -2, -1, 1, 2, 3]
-        # coeffs = [-1, 9, -45, 45, -9, 1]
-        # denom = 60.
-
-
-        # First rows of operator matrix
-        diags_leftmost = [0, 1, 2, 3]
-        coeffs_leftmost = [-11, 18, -9, 2]
-        denom_leftmost = 6.
-        diags_left_1 = [-1, 0, 1, 2, 3]
-        coeffs_left_1 = [-3, -10, 18, -6, 1]
-        denom_left_1 = 12.
-        diags_left_2 = [-2, -1, 0, 1, 2, 3]
-        coeffs_left_2 = [3, -30, -20, 60, -15, 2]
-        denom_left_2 = 60.
-
-        # Centered diagonals
-        diags = [-2, -1, 0, 1, 2, 3]
-        coeffs = [3, -30, -20, 60, -15, 2]
-        denom = 60.
-        # print diags
-        # print coeffs
-        # diags = [-d for d in diags[::-1]]
-        # coeffs = [-d for d in coeffs[::-1]]
-        # denom = denom
-        # print diags
-        # print coeffs
-        # diags = [-3, -2, -1, 1, 2, 3]
-        # coeffs = [-1, 9, -45, 45, -9, 1]
-        # denom = 60.
-
-        # diags = [-1, 0, 1, 2, 3]
-        # coeffs = [-3, -10, 18, -6, 1]
-        # denom = 12.
-
-        # diags = [0, 1, 2, 3]
-        # coeffs = [-11, 18, -9, 2]
-        # denom = 6.
-
-
-
-        # diags_leftmost = [0, 1]
-        # coeffs_leftmost = [-1, 1]
-        # denom_leftmost = 1.
-        # diags_left_1 = [0, 1]
-        # coeffs_left_1 = [-1, 1]
-        # denom_left_1 = 1.
-        # diags_left_2 = [0, 1]
-        # coeffs_left_2 = [-1, 1]
-        # denom_left_2 = 1.
-        # diags = [0, 1]
-        # coeffs = [-1, 1]
-        # denom = 1.
-
-        # Last rows at the right of operator matrix
-        diags_right_2 = [-d for d in diags_left_2[::-1]]
-        coeffs_right_2 = [-d for d in coeffs_left_2[::-1]]
-        denom_right_2 = denom_left_2
-        diags_right_1 = [-d for d in diags_left_1[::-1]]
-        coeffs_right_1 = [-d for d in coeffs_left_1[::-1]]
-        denom_right_1 = denom_left_1
-        diags_rightmost = [-d for d in diags_leftmost[::-1]]
-        coeffs_rightmost = [-d for d in coeffs_leftmost[::-1]]
-        denom_rightmost = denom_leftmost
-
-        h = self.log_width
-        dim_e = self.dim_e
-        last = dim_e - 1
-
-        op_matrix = np.zeros((dim_e, dim_e))
-        op_matrix[0, np.asarray(diags_leftmost)] = np.asarray(
-            coeffs_leftmost) / (denom_leftmost * h)
-        op_matrix[1, 1 + np.asarray(diags_left_1)] = np.asarray(
-            coeffs_left_1) / (denom_left_1 * h)
-        op_matrix[2, 2 + np.asarray(diags_left_2)] = np.asarray(
-            coeffs_left_2) / (denom_left_2 * h)
-        op_matrix[last,
-                  last + np.asarray(diags_rightmost)] = np.asarray(
-                      coeffs_rightmost) / (denom_rightmost * h)
-        op_matrix[last - 1, last - 1 + np.asarray(
-            diags_right_1)] = np.asarray(coeffs_right_1) / (denom_right_1 * h)
-        op_matrix[last - 2, last - 2 + np.asarray(
-            diags_right_2)] = np.asarray(coeffs_right_2) / (denom_right_2 * h)
-        for row in range(3, dim_e - 3):
-            op_matrix[row, row + np.asarray(diags)] = np.asarray(coeffs) / (
-                denom * h)
-        # Construct an operator by left multiplication of the back-substitution
-        # dlnE to dE. The right energy loss has to be later multiplied in every step
-        single_op = coo_matrix(
-            np.diag(1 / self.egrid).dot(op_matrix)
-        )
-
-        # construct the operator for the whole matrix, by repeating
-        nspec = self.spec_man.nspec
-        return block_diag(nspec*[single_op]).tocsr()

@@ -597,7 +597,6 @@ class CompositeCrossSection(CrossSectionBase):
 
         # Number of modls to join
         nmodels = len(model_list)
-
         self.model_refs = []
         # Construct instances of models and set ranges where they are valid
         for imo, (e_thr, mclass, margs) in enumerate(model_list):
@@ -619,7 +618,6 @@ class CompositeCrossSection(CrossSectionBase):
 
             # Save reference
             self.model_refs.append(csm_inst)
-
         # Create a unique list of nonel cross sections from
         # the combination of all models
         self.nonel_idcs = sorted(
