@@ -200,6 +200,88 @@ class CIBInoue2D(PhotonField):
 
         return self.int2d(E, z, assume_sorted=True)
 
+class CIBGilmore2D(PhotonField):
+    """CIB model "3" by Gilmore et al.
+
+    CIB photon distribution for z = 0...7. Requires availability of
+    an `scipy.interp2d` object file `data/CIB_gilmore_int2D.ppo`.
+
+    Note: Currently uses the fixed model from the reference as standard,
+          for the fiducial model, change the 'model' keyword
+
+    Ref.:
+        R.C. Gilmore et al., MNRAS Soc. 422, 3189 (2012) [arXiv:1104.0671]
+    """
+
+    def __init__(self, simple_scaling=False, model='fixed'):
+        import cPickle as pickle
+        self.simple_scaling = simple_scaling
+        self.int2d_fixed, self.int2d_fiducial = pickle.load(
+            open(join(config['data_dir'], 'CIB_gilmore_int2D.ppo'), 'rb'))
+
+        if model == 'fixed':
+            self.int2d = self.int2d_fixed
+        elif model == 'fiducial':
+            self.int2d = self.int2d_fiducial
+        else:
+            raise Exception('Not interpolator for model {:}'.format(model))
+
+    def get_photon_density(self, E, z):
+        """Returns the redshift-scaled number density of CIB photons
+
+        Accepts scalar, vector and matrix arguments.
+
+        Args:
+          z (float): redshift
+          E (float): photon energy (GeV)
+
+        Returns:
+          float: CMB photon spectrum in :math:`{\\rm GeV}}^{-1} {\\rm cm}}^{-3}`
+        """
+        if self.simple_scaling:
+            Ered = E / (1. + z)
+            nlocal = self.int2d(Ered, 0., assume_sorted=True)
+            return (1. + z)**2 * nlocal 
+        else:
+            return self.int2d(E, z, assume_sorted=True)
+
+class CIBDominguez2D(PhotonField):
+    """CIB model "3" by Gilmore et al.
+
+    CIB photon distribution for z = 0...2. Requires availability of
+    an `scipy.interp2d` object file `data/CIB_dominguez_int2D.ppo`.
+
+    Note: The class contains an interpolators for the upper and lower limits,
+          which are not yet accessable through a function
+
+    Ref.:
+        R.C. Gilmore et al., MNRAS 410, 2556 (2011) [arXiv:1104.0671]
+    """
+
+    def __init__(self, simple_scaling=False):
+        import cPickle as pickle
+        self.simple_scaling = simple_scaling
+        self.int2d, self.int2d_lower, self.int2d_upper = pickle.load(
+            open(join(config['data_dir'], 'CIB_dominguez_int2D.ppo'), 'rb'))
+
+    def get_photon_density(self, E, z):
+        """Returns the redshift-scaled number density of CIB photons
+
+        Accepts scalar, vector and matrix arguments.
+
+        Args:
+          z (float): redshift
+          E (float): photon energy (GeV)
+
+        Returns:
+          float: CMB photon spectrum in :math:`{\\rm GeV}}^{-1} {\\rm cm}}^{-3}`
+        """
+        if self.simple_scaling:
+            Ered = E / (1. + z)
+            nlocal = self.int2d(Ered, 0., assume_sorted=True)
+            return (1. + z)**2 * nlocal 
+        else:
+            return self.int2d(E, z, assume_sorted=True)
 
 class CIBFranceschiniZ0(PhotonField):
     """CIB model "1" by Fraceschini et al.

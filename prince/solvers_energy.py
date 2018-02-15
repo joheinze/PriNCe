@@ -328,20 +328,20 @@ class DifferentialOperator(object):
         from scipy.sparse import coo_matrix, block_diag
         # Construct a 
         # First rows of operator matrix
-        # diags_leftmost = [0, 1, 2, 3]
-        # coeffs_leftmost = [-11, 18, -9, 2]
-        # denom_leftmost = 6.
-        # diags_left_1 = [-1, 0, 1, 2, 3]
-        # coeffs_left_1 = [-3, -10, 18, -6, 1]
-        # denom_left_1 = 12.
-        # diags_left_2 = [-2, -1, 0, 1, 2, 3]
-        # coeffs_left_2 = [3, -30, -20, 60, -15, 2]
-        # denom_left_2 = 60.
+        diags_leftmost = [0, 1, 2, 3]
+        coeffs_leftmost = [-11, 18, -9, 2]
+        denom_leftmost = 6.
+        diags_left_1 = [-1, 0, 1, 2, 3]
+        coeffs_left_1 = [-3, -10, 18, -6, 1]
+        denom_left_1 = 12.
+        diags_left_2 = [-2, -1, 0, 1, 2, 3]
+        coeffs_left_2 = [3, -30, -20, 60, -15, 2]
+        denom_left_2 = 60.
 
-        # # Centered diagonals
-        # diags = [-3, -2, -1, 1, 2, 3]
-        # coeffs = [-1, 9, -45, 45, -9, 1]
-        # denom = 60.
+        # Centered diagonals
+        diags = [-3, -2, -1, 1, 2, 3]
+        coeffs = [-1, 9, -45, 45, -9, 1]
+        denom = 60.
 
         # # First rows of operator matrix
         # diags_leftmost = [0, 1]
@@ -379,21 +379,21 @@ class DifferentialOperator(object):
         
 
 
-        # First rows of operator matrix
-        diags_leftmost = [0, 1, 2, 3]
-        coeffs_leftmost = [-11, 18, -9, 2]
-        denom_leftmost = 6.
-        diags_left_1 = [-1, 0, 1, 2, 3]
-        coeffs_left_1 = [-3, -10, 18, -6, 1]
-        denom_left_1 = 12.
-        diags_left_2 = [-2, -1, 0, 1, 2, 3]
-        coeffs_left_2 = [3, -30, -20, 60, -15, 2]
-        denom_left_2 = 60.
+        # # First rows of operator matrix
+        # diags_leftmost = [0, 1, 2, 3]
+        # coeffs_leftmost = [-11, 18, -9, 2]
+        # denom_leftmost = 6.
+        # diags_left_1 = [-1, 0, 1, 2, 3]
+        # coeffs_left_1 = [-3, -10, 18, -6, 1]
+        # denom_left_1 = 12.
+        # diags_left_2 = [-2, -1, 0, 1, 2, 3]
+        # coeffs_left_2 = [3, -30, -20, 60, -15, 2]
+        # denom_left_2 = 60.
 
-        # Centered diagonals
-        diags = [-2, -1, 0, 1, 2, 3]
-        coeffs = [3, -30, -20, 60, -15, 2]
-        denom = 60.
+        # # Centered diagonals
+        # diags = [-2, -1, 0, 1, 2, 3]
+        # coeffs = [3, -30, -20, 60, -15, 2]
+        # denom = 60.
 
 
         # print diags

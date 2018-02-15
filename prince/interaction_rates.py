@@ -499,8 +499,9 @@ class ContinuousPairProductionLossRate(object):
         self.e_photon = prince_run.ph_grid
 
         # xi is dimensionless (natural units) variable
-        xi_steps = 100 if 'xi_steps' not in kwargs else kwargs['xi_steps']
-        self.xi = np.logspace(np.log10(2 + 1e-8), 8., xi_steps)
+        xi_steps = 400 if 'xi_steps' not in kwargs else kwargs['xi_steps']
+        print 'using', xi_steps, 'steps in xi'
+        self.xi = np.logspace(np.log10(2 + 1e-8), 16., xi_steps)
 
         # weights for integration
         self.phi_xi2 = self._phi(self.xi) / (self.xi**2)
