@@ -8,7 +8,7 @@ from os.path import join
 
 import numpy as np
 from scipy.interpolate import UnivariateSpline
-
+from scipy.integrate import trapz
 import cosmology as cosm
 from prince_config import config
 
@@ -153,7 +153,10 @@ class CIBFranceschini2D(PhotonField):
         if self.simple_scaling:
             Ered = E / (1. + z)
             nlocal = self.int2d(Ered, 0., assume_sorted=True)
-            return (1. + z)**2 * nlocal 
+            nz = self.int2d(Ered, z, assume_sorted=True)
+            scale = trapz(nz,Ered) / trapz(nlocal,Ered) / (1+z)**3
+            print scale
+            return (1. + z)**2 * nlocal * scale
         else:
             return self.int2d(E, z, assume_sorted=True)
 
@@ -170,8 +173,9 @@ class CIBInoue2D(PhotonField):
         Y. Inoue et al. [arXiv:1212.1683]
     """
 
-    def __init__(self, model='base'):
+    def __init__(self, model='base', simple_scaling=False):
         import cPickle as pickle
+        self.simple_scaling = simple_scaling
         self.int2d_base, self.int2d_min, self.int2d_max = pickle.load(
             open(join(config['data_dir'], 'CIB_inoue_int2D.ppo'), 'rb'))
 
@@ -197,8 +201,14 @@ class CIBInoue2D(PhotonField):
         Returns:
           float: CMB photon spectrum in :math:`{\\rm GeV}}^{-1} {\\rm cm}}^{-3}`
         """
-
-        return self.int2d(E, z, assume_sorted=True)
+        if self.simple_scaling:
+            Ered = E / (1. + z)
+            nlocal = self.int2d(Ered, 0., assume_sorted=True)
+            nz = self.int2d(Ered, z, assume_sorted=True)
+            scale = trapz(nz,Ered) / trapz(nlocal,Ered) / (1+z)**3
+            return (1. + z)**2 * nlocal * scale
+        else:
+            return self.int2d(E, z, assume_sorted=True)
 
 class CIBGilmore2D(PhotonField):
     """CIB model "3" by Gilmore et al.
@@ -213,7 +223,7 @@ class CIBGilmore2D(PhotonField):
         R.C. Gilmore et al., MNRAS Soc. 422, 3189 (2012) [arXiv:1104.0671]
     """
 
-    def __init__(self, simple_scaling=False, model='fixed'):
+    def __init__(self, simple_scaling=False, model='fiducial'):
         import cPickle as pickle
         self.simple_scaling = simple_scaling
         self.int2d_fixed, self.int2d_fiducial = pickle.load(
@@ -241,7 +251,9 @@ class CIBGilmore2D(PhotonField):
         if self.simple_scaling:
             Ered = E / (1. + z)
             nlocal = self.int2d(Ered, 0., assume_sorted=True)
-            return (1. + z)**2 * nlocal 
+            nz = self.int2d(Ered, z, assume_sorted=True)
+            scale = trapz(nz,Ered) / trapz(nlocal,Ered) / (1+z)**3
+            return (1. + z)**2 * nlocal * scale
         else:
             return self.int2d(E, z, assume_sorted=True)
 
@@ -279,7 +291,9 @@ class CIBDominguez2D(PhotonField):
         if self.simple_scaling:
             Ered = E / (1. + z)
             nlocal = self.int2d(Ered, 0., assume_sorted=True)
-            return (1. + z)**2 * nlocal 
+            nz = self.int2d(Ered, z, assume_sorted=True)
+            scale = trapz(nz,Ered) / trapz(nlocal,Ered) / (1+z)**3
+            return (1. + z)**2 * nlocal * scale
         else:
             return self.int2d(E, z, assume_sorted=True)
 

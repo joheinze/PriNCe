@@ -558,8 +558,12 @@ class CrossSectionBase(object):
             return cs
 
         csec = np.zeros((nxbins, cs.shape[0]))
-        csec[-1, :] = cs / self.xwidths[-1]
-        # print 'Warning! Test division by bin width here!'
+        # TODO: The factor 2 in the following line is a workarround to account for the latter linear interpolation
+        #       This is needed because linear spline integral will result in a trapz, 
+        #       which has half the area of the actual first bin 
+        corr_factor = 2 * self.xwidths[-1] / (self.xcenters[-1] - self.xcenters[-2])
+        csec[-1, :] = cs / self.xwidths[-1] * corr_factor
+        info(0, 'Warning! Workaround to account for linear interpolation in x, factor 2 added!')
         if isinstance(incl_cs, tuple):
             return egr, csec
         return csec

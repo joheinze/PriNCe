@@ -6,6 +6,117 @@ from prince.util import info, PRINCE_UNITS, get_AZN, EnergyGrid
 from prince_config import config
 from prince.solvers_energy import DifferentialOperator, ChangCooperSolver, SemiLagrangianSolver
 
+class UHECRPropagationResult(object):
+    """Reduced version of solver class, that only holds the result vector and defined add and multiply
+    """
+    def __init__(self, state, egrid, spec_man):
+        self.spec_man = spec_man
+        self.egrid = egrid
+
+        self.state = state
+
+    @property
+    def known_species(self):
+        return self.spec_man.known_species
+
+    def __add__(self, other):
+        cumstate = self.state + other.state
+
+        if self.egrid is not other.egrid:
+            raise Exception('Cannot add Propagation Results, they are defined in different energy grids!')
+        if self.spec_man is not other.spec_man:
+            raise Exception('Cannot add Propagation Results, have different species managers!')
+        else:
+            return UHECRPropagationResult(cumstate, self.egrid, self.spec_man)
+
+    def __mul__(self, number):
+        if not np.isscalar(number):
+            raise Exception('Can only multiply result by scalar number, got type {:} instead!'.format(type(number)))
+        else:
+            newstate = self.state * number
+            return UHECRPropagationResult(newstate, self.egrid, self.spec_man)
+
+    def get_solution(self, nco_id):
+        """Returns the spectrum in energy per nucleon"""
+        sp = self.spec_man.ncoid2sref[nco_id]
+        return self.egrid, self.state[sp.lidx():sp.uidx()]
+
+    def get_solution_scale(self, nco_id, epow=0):
+        """Returns the spectrum scaled back to total energy"""
+        spec = self.spec_man.ncoid2sref[nco_id]
+        egrid = spec.A * self.egrid
+        return egrid, egrid**epow * self.state[
+            spec.lidx():spec.uidx()] / spec.A
+
+    def get_solution_group(self, nco_ids, epow=3, egrid=None):
+        """Return the summed spectrum (in total energy) for all elements in the range"""
+        # Take egrid from first id ( doesn't cover the range for iron for example)
+        # create a common egrid or used supplied one
+        if egrid is None:
+            max_mass = max([s.A for s in self.spec_man.species_refs])
+            emin_log, emax_log, nbins = list(config["cosmic_ray_grid"])
+            emax_log = np.log10(max_mass * 10**emax_log)
+            nbins *= 4
+            com_egrid = EnergyGrid(emin_log, emax_log, nbins).grid
+        else:
+            com_egrid = egrid
+
+        # print com_egrid
+        spectrum = np.zeros_like(com_egrid)
+        for pid in nco_ids:
+            curr_egrid, curr_spec = self.get_solution_scale(pid, epow=0)
+            res = np.exp(np.interp(
+                np.log(com_egrid),
+                np.log(curr_egrid),
+                np.log(curr_spec),
+                left=np.nan,right=np.nan))
+            spectrum += np.nan_to_num(res)
+
+        return com_egrid, com_egrid**epow * spectrum
+
+    def get_lnA(self, nco_ids, egrid=None):
+        """Return the average ln(A) as a function of total energy for all elements in the range"""
+        # create a common egrid or used supplied one
+        if egrid is None:
+            max_mass = max([s.A for s in self.spec_man.species_refs])
+            emin_log, emax_log, nbins = list(config["cosmic_ray_grid"])
+            emax_log = np.log10(max_mass * 10**emax_log)
+            nbins *= 4
+            com_egrid = EnergyGrid(emin_log, emax_log, nbins).grid
+        else:
+            com_egrid = egrid
+            
+        # collect all the spectra in 2d array of dimension     
+        spectra = np.zeros((len(nco_ids), com_egrid.size))
+        for idx, pid in enumerate(nco_ids):
+            curr_egrid, curr_spec = self.get_solution_scale(pid, epow=0)
+            res = np.exp(np.interp(
+                np.log(com_egrid),
+                np.log(curr_egrid),
+                np.log(curr_spec),
+                left=np.nan,right=np.nan))
+            spectra[idx] = np.nan_to_num(res)
+        lnA = np.array([np.log(get_AZN(el)[0]) for el in nco_ids])
+
+        # build the average lnA and variance for each energy by weigting with the spectrum
+        avg = np.zeros_like(com_egrid)
+        var = np.zeros_like(com_egrid)
+        for idx, line in enumerate(spectra.T):
+            if np.sum(line) == 0.:
+                avg[idx] = 0.
+                var[idx] = 0.
+            else:
+                avg[idx] = np.average(lnA, weights=line)
+                var[idx] = np.average((lnA - avg[idx])**2, weights=line)
+
+        return com_egrid, avg, var
+
+    def get_energy_density(self, nco_id):
+        from scipy.integrate import trapz
+
+        A, _, _ = get_AZN(nco_id)
+        return trapz(A * self.egrid * self.get_solution(nco_id), self.egrid)
+
 class UHECRPropagationSolver(object):
     def __init__(self, initial_z, final_z, prince_run,
                  enable_adiabatic_losses=True,
@@ -39,59 +150,111 @@ class UHECRPropagationSolver(object):
         self.intp = None
 
         self.state = np.zeros(prince_run.dim_states)
+        self.result = None
         self.dim_states = prince_run.dim_states
 
-        self.solution_vector = []
         self.list_of_sources = []
 
         self._init_solver()
         self.diff_operator = DifferentialOperator(prince_run.cr_grid, prince_run.spec_man.nspec)
         self.semi_lag_solver = SemiLagrangianSolver(prince_run.cr_grid)
 
+    @property
+    def known_species(self):
+        return self.prince_run.spec_man.known_species
+
+    @property
+    def res(self):
+        if self.result is None:
+            self.result = UHECRPropagationResult(self.state, self.egrid, self.spec_man)
+        return self.result
+
     def add_source_class(self, source_instance):
         self.list_of_sources.append(source_instance)
 
-    def get_solution(self, nco_id):
-        """Returns the spectrum in energy per nucleon"""
-        sp = self.prince_run.spec_man.ncoid2sref[nco_id]
-        return self.egrid, self.state[sp.lidx():sp.uidx()]
+    # def get_solution(self, nco_id):
+    #     """Returns the spectrum in energy per nucleon"""
+    #     sp = self.prince_run.spec_man.ncoid2sref[nco_id]
+    #     return self.egrid, self.state[sp.lidx():sp.uidx()]
 
-    def get_solution_scale(self, nco_id, epow=0):
-        """Returns the spectrum scaled back to total energy"""
-        spec = self.prince_run.spec_man.ncoid2sref[nco_id]
-        egrid = spec.A * self.egrid
-        return egrid, egrid**epow * self.state[
-            spec.lidx():spec.uidx()] / spec.A
+    # def get_solution_scale(self, nco_id, epow=0):
+    #     """Returns the spectrum scaled back to total energy"""
+    #     spec = self.prince_run.spec_man.ncoid2sref[nco_id]
+    #     egrid = spec.A * self.egrid
+    #     return egrid, egrid**epow * self.state[
+    #         spec.lidx():spec.uidx()] / spec.A
 
-    def get_energy_density(self, nco_id):
-        from scipy.integrate import trapz
+    # def get_solution_group(self, nco_ids, epow=3, egrid=None):
+    #     """Return the summed spectrum (in total energy) for all elements in the range"""
+    #     # Take egrid from first id ( doesn't cover the range for iron for example)
+    #     # create a common egrid or used supplied one
+    #     if egrid is None:
+    #         max_mass = max([s.A for s in self.spec_man.species_refs])
+    #         emin_log, emax_log, nbins = list(config["cosmic_ray_grid"])
+    #         emax_log = np.log10(max_mass * 10**emax_log)
+    #         nbins *= 4
+    #         com_egrid = EnergyGrid(emin_log, emax_log, nbins).grid
+    #     else:
+    #         com_egrid = egrid
 
-        A, _, _ = get_AZN(nco_id)
-        return trapz(A * self.egrid * self.get_solution(nco_id), self.egrid)
+    #     spectrum = np.zeros_like(com_egrid)
+    #     for pid in nco_ids:
+    #         curr_egrid, curr_spec = self.get_solution_scale(pid, epow=0)
+    #         res = np.exp(np.interp(
+    #             np.log(com_egrid),
+    #             np.log(curr_egrid),
+    #             np.log(curr_spec),
+    #             left=np.nan,right=np.nan))
+    #         spectrum += res
 
-    def get_solution_group(self, nco_ids, epow=3):
-        """Return the summed spectrum (in total energy) for all elements in the range"""
-        # Take egrid from first id ( doesn't cover the range for iron for example)
-        max_mass = max([s.A for s in self.spec_man.species_refs])
-        emin_log, emax_log, nbins = list(config["cosmic_ray_grid"])
-        emax_log = np.log10(max_mass * 10**emax_log)
-        nbins *= 2
-        com_egrid = EnergyGrid(emin_log, emax_log, nbins).grid
-        spec = np.zeros_like(com_egrid)
-        for pid in nco_ids:
-            curr_egrid, curr_spec = self.get_solution_scale(pid, epow=0)
-            spec += np.exp(
-                np.interp(
-                    np.log(com_egrid),
-                    np.log(curr_egrid),
-                    np.log(curr_spec),
-                    left=0.,
-                    right=0.))
+    #     return com_egrid, com_egrid**epow * spectrum
 
-        return com_egrid, com_egrid**epow * spec
+    # def get_lnA(self, nco_ids, egrid=None):
+    #     """Return the average ln(A) as a function of total energy for all elements in the range"""
+    #     # create a common egrid or used supplied one
+    #     if egrid is None:
+    #         max_mass = max([s.A for s in self.spec_man.species_refs])
+    #         emin_log, emax_log, nbins = list(config["cosmic_ray_grid"])
+    #         emax_log = np.log10(max_mass * 10**emax_log)
+    #         nbins *= 4
+    #         com_egrid = EnergyGrid(emin_log, emax_log, nbins).grid
+    #     else:
+    #         com_egrid = egrid
+            
+    #     # collect all the spectra in 2d array of dimension     
+    #     spectra = np.zeros((len(nco_ids), com_egrid.size))
+    #     for idx, pid in enumerate(nco_ids):
+    #         curr_egrid, curr_spec = self.get_solution_scale(pid, epow=0)
+    #         res = np.exp(np.interp(
+    #             np.log(com_egrid),
+    #             np.log(curr_egrid),
+    #             np.log(curr_spec),
+    #             left=np.nan,right=np.nan))
+    #         spectra[idx] = np.nan_to_num(res)
+    #     lnA = np.array([np.log(get_AZN(el)[0]) for el in nco_ids])
+
+    #     # build the average lnA and variance for each energy by weigting with the spectrum
+    #     avg = np.zeros_like(com_egrid)
+    #     var = np.zeros_like(com_egrid)
+    #     for idx, line in enumerate(spectra.T):
+    #         if np.sum(line) == 0.:
+    #             avg[idx] = 0.
+    #             var[idx] = 0.
+    #         else:
+    #             avg[idx] = np.average(lnA, weights=line)
+    #             var[idx] = np.average((lnA - avg[idx])**2, weights=line)
+
+    #     return com_egrid, avg, var
+
+    # def get_energy_density(self, nco_id):
+    #     from scipy.integrate import trapz
+
+    #     A, _, _ = get_AZN(nco_id)
+    #     return trapz(A * self.egrid * self.get_solution(nco_id), self.egrid)
 
     def set_initial_condition(self, spectrum=None, nco_id=None):
         self.state *= 0.
+        self.result = None
         if spectrum is not None and nco_id is not None:
             sp = self.prince_run.spec_man.ncoid2sref[nco_id]
             self.state[sp.lidx():sp.uidx()] = spectrum
@@ -264,7 +427,7 @@ class UHECRPropagationSolver(object):
             'name': 'lsodes',
             'method': 'bdf',
             # 'nsteps': 10000,
-            'rtol': 1e-4,
+            'rtol': 1e-6,
             # 'atol': 1e5,
             'ndim': self.dim_states,
             'nnz': self.jacobian.nnz,
@@ -293,6 +456,10 @@ class UHECRPropagationSolver(object):
         dz = -1 * dz
         start_time = time()
         self.r.set_initial_value(np.zeros(self.dim_states), self.r.t)
+
+
+        # from tqdm import tqdm
+        # pbar = tqdm(total=-1*int(self.r.t / dz))
 
         info(2, 'Starting integration.')
         while self.r.successful() and (self.r.t + dz) > self.final_z:
@@ -349,6 +516,7 @@ class UHECRPropagationSolver(object):
                         record_dict[pid].append((self.r.t,self.r.y[lidx:uidx]))
 
             stepcount += 1
+            # pbar.update()
         # self.r.integrate(self.final_z)
 
         if not self.r.successful():
