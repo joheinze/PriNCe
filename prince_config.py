@@ -74,7 +74,7 @@ config = {
 
     # Format (log10(E_min), log10(E_max), nbins/decade of energy)
     # Main energy grid for solver
-    "cosmic_ray_grid": (5, 14, 8),
+    "cosmic_ray_grid": (3, 14, 8),
     # Photon grid of target field, only for calculation of rates
     "photon_grid": (-15, -6, 8),
     # Scale of the energy grid
@@ -118,6 +118,9 @@ config = {
 
     # Build equation system up to a maximal nuclear mass of
     "max_mass": np.inf,
+
+    # Include secondaries like photons and neutrinos
+    "secondaries": True,
 
     #===========================================================================
     # Parameters of numerical integration

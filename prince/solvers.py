@@ -172,86 +172,6 @@ class UHECRPropagationSolver(object):
     def add_source_class(self, source_instance):
         self.list_of_sources.append(source_instance)
 
-    # def get_solution(self, nco_id):
-    #     """Returns the spectrum in energy per nucleon"""
-    #     sp = self.prince_run.spec_man.ncoid2sref[nco_id]
-    #     return self.egrid, self.state[sp.lidx():sp.uidx()]
-
-    # def get_solution_scale(self, nco_id, epow=0):
-    #     """Returns the spectrum scaled back to total energy"""
-    #     spec = self.prince_run.spec_man.ncoid2sref[nco_id]
-    #     egrid = spec.A * self.egrid
-    #     return egrid, egrid**epow * self.state[
-    #         spec.lidx():spec.uidx()] / spec.A
-
-    # def get_solution_group(self, nco_ids, epow=3, egrid=None):
-    #     """Return the summed spectrum (in total energy) for all elements in the range"""
-    #     # Take egrid from first id ( doesn't cover the range for iron for example)
-    #     # create a common egrid or used supplied one
-    #     if egrid is None:
-    #         max_mass = max([s.A for s in self.spec_man.species_refs])
-    #         emin_log, emax_log, nbins = list(config["cosmic_ray_grid"])
-    #         emax_log = np.log10(max_mass * 10**emax_log)
-    #         nbins *= 4
-    #         com_egrid = EnergyGrid(emin_log, emax_log, nbins).grid
-    #     else:
-    #         com_egrid = egrid
-
-    #     spectrum = np.zeros_like(com_egrid)
-    #     for pid in nco_ids:
-    #         curr_egrid, curr_spec = self.get_solution_scale(pid, epow=0)
-    #         res = np.exp(np.interp(
-    #             np.log(com_egrid),
-    #             np.log(curr_egrid),
-    #             np.log(curr_spec),
-    #             left=np.nan,right=np.nan))
-    #         spectrum += res
-
-    #     return com_egrid, com_egrid**epow * spectrum
-
-    # def get_lnA(self, nco_ids, egrid=None):
-    #     """Return the average ln(A) as a function of total energy for all elements in the range"""
-    #     # create a common egrid or used supplied one
-    #     if egrid is None:
-    #         max_mass = max([s.A for s in self.spec_man.species_refs])
-    #         emin_log, emax_log, nbins = list(config["cosmic_ray_grid"])
-    #         emax_log = np.log10(max_mass * 10**emax_log)
-    #         nbins *= 4
-    #         com_egrid = EnergyGrid(emin_log, emax_log, nbins).grid
-    #     else:
-    #         com_egrid = egrid
-            
-    #     # collect all the spectra in 2d array of dimension     
-    #     spectra = np.zeros((len(nco_ids), com_egrid.size))
-    #     for idx, pid in enumerate(nco_ids):
-    #         curr_egrid, curr_spec = self.get_solution_scale(pid, epow=0)
-    #         res = np.exp(np.interp(
-    #             np.log(com_egrid),
-    #             np.log(curr_egrid),
-    #             np.log(curr_spec),
-    #             left=np.nan,right=np.nan))
-    #         spectra[idx] = np.nan_to_num(res)
-    #     lnA = np.array([np.log(get_AZN(el)[0]) for el in nco_ids])
-
-    #     # build the average lnA and variance for each energy by weigting with the spectrum
-    #     avg = np.zeros_like(com_egrid)
-    #     var = np.zeros_like(com_egrid)
-    #     for idx, line in enumerate(spectra.T):
-    #         if np.sum(line) == 0.:
-    #             avg[idx] = 0.
-    #             var[idx] = 0.
-    #         else:
-    #             avg[idx] = np.average(lnA, weights=line)
-    #             var[idx] = np.average((lnA - avg[idx])**2, weights=line)
-
-    #     return com_egrid, avg, var
-
-    # def get_energy_density(self, nco_id):
-    #     from scipy.integrate import trapz
-
-    #     A, _, _ = get_AZN(nco_id)
-    #     return trapz(A * self.egrid * self.get_solution(nco_id), self.egrid)
-
     def set_initial_condition(self, spectrum=None, nco_id=None):
         self.state *= 0.
         self.result = None
@@ -443,46 +363,47 @@ class UHECRPropagationSolver(object):
         info(1,'Setting solver without jacobian')
         self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
 
-    def solve(self, dz=1e-2, verbose=True, extended_output=False, full_reset=False, record=False):
+    def solve(self, dz=1e-2, verbose=True, extended_output=False, full_reset=False, progressbar=False):
         from time import time
 
-        # if record, record the spectra every few steps
-        if record:
-            from collections import defaultdict
-            record_dict = defaultdict(list)
-            print record_dict
-            record_list = record
         stepcount = 0
         dz = -1 * dz
         start_time = time()
         self.r.set_initial_value(np.zeros(self.dim_states), self.r.t)
 
-
-        # from tqdm import tqdm
-        # pbar = tqdm(total=-1*int(self.r.t / dz))
-
+        if progressbar:
+            if progressbar == 'notebook':
+                from tqdm import tqdm_notebook as tqdm
+            else:
+                from tqdm import tqdm
+            pbar = tqdm(total=-1*int(self.r.t / dz))
+            pbar = tqdm()
+            pbar.update()
+        else:
+            pbar = None
+            
         info(2, 'Starting integration.')
         while self.r.successful() and (self.r.t + dz) > self.final_z:
             if verbose:
-                info(3, "Integrating at z={0}".format(self.r.t))
+                info(3, "Integrating at z = {0}".format(self.r.t))
             step_start = time()
             # --------------------------------------------
             # Solve for hadronic interactions
             # --------------------------------------------
             if verbose:
-                print 'Solving hadr losses at t=', self.r.t
+                print 'Solving hadr losses at t =', self.r.t
             self._update_jacobian(self.r.t)
-            self.r.integrate(self.r.t + dz)  #,
+            self.r.integrate(self.r.t + dz)
             if verbose:
                 self.print_step_info(step_start,extended_output=extended_output)
             self.ncallsf = 0
             self.ncallsj = 0
             # --------------------------------------------
-            # Apply the injection 
+            # Apply the injection
             # --------------------------------------------
             if not self.enable_injection_jacobian and not self.enable_partial_diff_jacobian:
                 if verbose:
-                    print 'applying injection at t=', self.r.t
+                    print 'applying injection at t =', self.r.t
                 if full_reset:
                     self.r.set_initial_value(self.r.y + self.injection(dz, self.r.t), self.r.t)
                 else:
@@ -495,7 +416,7 @@ class UHECRPropagationSolver(object):
             if not self.enable_partial_diff_jacobian:
                 if self.enable_adiabatic_losses or self.enable_pairprod_losses:
                     if verbose:
-                        print 'applying semi lagrangian at t=', self.r.t
+                        print 'applying semi lagrangian at t =', self.r.t
                     if full_reset:
                         self.r.set_initial_value(self.semi_lagrangian(dz, self.r.t, self.r.y), self.r.t)
                     else:
@@ -508,17 +429,13 @@ class UHECRPropagationSolver(object):
             if self.r.t < -1 * dz:
                 print 'break at z =', self.r.t
                 break
-            if stepcount % 1 == 0 and  record:
-                for pid in record_list:
-                    if pid in self.spec_man.ncoid2sref:
-                        sp = self.spec_man.ncoid2sref[pid]
-                        lidx,uidx = sp.lidx(), sp.uidx()
-                        record_dict[pid].append((self.r.t,self.r.y[lidx:uidx]))
 
             stepcount += 1
-            # pbar.update()
+            if pbar is not None:
+                pbar.update()
         # self.r.integrate(self.final_z)
-
+        if pbar is not None:
+            pbar.close()
         if not self.r.successful():
             raise Exception(
                 'Integration failed. Change integrator setup and retry.')
@@ -526,9 +443,6 @@ class UHECRPropagationSolver(object):
         self.state = self.r.y
         end_time = time()
         info(2, 'Integration completed in {0} s'.format(end_time - start_time))
-
-        if record:
-            return record_dict
 
     def print_step_info(self, step_start,extended_output=False):
         from time import time
@@ -573,7 +487,7 @@ class UHECRPropagationSolver(object):
             # Solve for hadronic interactions
             # --------------------------------------------
             if verbose:
-                print 'Solving hadr losses at t=', self.r.t
+                print 'Solving hadr losses at t =', self.r.t
             self._update_jacobian(curr_z)
 
             state += self.eqn_deriv(curr_z, state)*dz
@@ -583,7 +497,7 @@ class UHECRPropagationSolver(object):
             # --------------------------------------------
             if not self.enable_injection_jacobian and not self.enable_partial_diff_jacobian:
                 if verbose:
-                    print 'applying injection at t=', self.r.t
+                    print 'applying injection at t =', self.r.t
                 state += self.injection(dz, curr_z)
             
             # --------------------------------------------
@@ -592,7 +506,7 @@ class UHECRPropagationSolver(object):
             if not self.enable_partial_diff_jacobian:
                 if self.enable_adiabatic_losses or self.enable_pairprod_losses:
                     if verbose:
-                        print 'applying semi lagrangian at t=', self.r.t
+                        print 'applying semi lagrangian at t =', self.r.t
                     state= self.semi_lagrangian(dz, curr_z, state)
 
             # --------------------------------------------

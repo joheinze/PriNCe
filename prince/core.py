@@ -68,6 +68,10 @@ class PriNCeRun(object):
                 s for s in self.cross_sections.known_species
                 if get_AZN(s)[0] <= config["max_mass"]
             ]
+
+        if not config["secondaries"]:
+            system_species = [s for s in system_species if s >= 100]
+        
         # Initialize species manager for all species for which cross sections are known
         self.spec_man = data.SpeciesManager(system_species, self.ed)
 
