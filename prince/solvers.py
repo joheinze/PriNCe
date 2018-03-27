@@ -128,6 +128,9 @@ class UHECRPropagationSolver(object):
         self.initial_z = initial_z
         self.final_z = final_z
 
+        self.current_z_rates = None
+        self.recomp_z_threshold = config["update_rates_z_threshold"]
+
         self.prince_run = prince_run
         self.spec_man = prince_run.spec_man
         self.egrid = prince_run.egrid
@@ -217,10 +220,12 @@ class UHECRPropagationSolver(object):
             conloss += self.pair_loss_rates_bins.loss_vector(z)
         conloss *= self.dldz(z) * delta_z
 
+        method = config["semi_lagr_method"]
+
         # -------------------------------------------------------------------
         # numpy interpolator
         # -------------------------------------------------------------------
-        if config["semi_lagr_method"] == 'intp_numpy':
+        if method == 'intp_numpy':
             for spec in self.spec_man.species_refs:
                 lbin, ubin = spec.lbin(), spec.ubin()
                 lidx, uidx = spec.lidx(), spec.uidx()
@@ -228,7 +233,7 @@ class UHECRPropagationSolver(object):
         # -------------------------------------------------------------------
         # local gradient interpolation
         # -------------------------------------------------------------------
-        elif config["semi_lagr_method"] == 'gradient':
+        elif method == 'gradient':
             for spec in self.spec_man.species_refs:
                 lbin, ubin = spec.lbin(), spec.ubin()
                 lidx, uidx = spec.lidx(), spec.uidx()
@@ -237,7 +242,7 @@ class UHECRPropagationSolver(object):
         # -------------------------------------------------------------------
         # linear lagrange weigts
         # -------------------------------------------------------------------
-        elif config["semi_lagr_method"] == 'linear':
+        elif method == 'linear':
             for spec in self.spec_man.species_refs:
                 lbin, ubin = spec.lbin(), spec.ubin()
                 lidx, uidx = spec.lidx(), spec.uidx()
@@ -246,7 +251,7 @@ class UHECRPropagationSolver(object):
         # -------------------------------------------------------------------
         # quadratic lagrange weigts
         # -------------------------------------------------------------------
-        elif config["semi_lagr_method"] == 'quadratic':
+        elif method == 'quadratic':
             for spec in self.spec_man.species_refs:
                 lbin, ubin = spec.lbin(), spec.ubin()
                 lidx, uidx = spec.lidx(), spec.uidx()
@@ -255,7 +260,7 @@ class UHECRPropagationSolver(object):
         # -------------------------------------------------------------------
         # cubic lagrange weigts
         # -------------------------------------------------------------------
-        elif config["semi_lagr_method"] == 'cubic':
+        elif method == 'cubic':
             for spec in self.spec_man.species_refs:
                 lbin, ubin = spec.lbin(), spec.ubin()
                 lidx, uidx = spec.lidx(), spec.uidx()
@@ -264,7 +269,7 @@ class UHECRPropagationSolver(object):
         # -------------------------------------------------------------------
         # 4th order lagrange weigts
         # -------------------------------------------------------------------
-        elif config["semi_lagr_method"] == '4th_order':
+        elif method == '4th_order':
             for spec in self.spec_man.species_refs:
                 lbin, ubin = spec.lbin(), spec.ubin()
                 lidx, uidx = spec.lidx(), spec.uidx()
@@ -273,7 +278,7 @@ class UHECRPropagationSolver(object):
         # -------------------------------------------------------------------
         # 5th order lagrange weigts
         # -------------------------------------------------------------------
-        elif config["semi_lagr_method"] == '5th_order':
+        elif method == '5th_order':
             for spec in self.spec_man.species_refs:
                 lbin, ubin = spec.lbin(), spec.ubin()
                 lidx, uidx = spec.lidx(), spec.uidx()
@@ -282,7 +287,7 @@ class UHECRPropagationSolver(object):
         # -------------------------------------------------------------------
         # finite diff euler steps
         # -------------------------------------------------------------------
-        elif config["semi_lagr_method"] == 'finite_diff':
+        elif method == 'finite_diff':
             conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
             if self.enable_adiabatic_losses:
                 conloss += self.adia_loss_rates_grid.loss_vector(z)
@@ -295,12 +300,17 @@ class UHECRPropagationSolver(object):
         # if method was not in list before, raise an Expection
         # -------------------------------------------------------------------
         else:
-            raise Exception('Unknown semi-lagrangian method ({:})'.format(config["semi_lagr_method"]))
+            raise Exception('Unknown semi-lagrangian method ({:})'.format(method))
 
         return state
 
     def eqn_deriv(self, z, state, *args):
         self.ncallsf += 1
+        # Update rates/cross sections only if solver requests to do so
+        if abs(z - self.current_z_rates) > self.recomp_z_threshold:
+            self._update_jacobian(z)
+            self.current_z_rates = z
+
         if self.enable_injection_jacobian and self.enable_partial_diff_jacobian:
             conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
             if self.enable_adiabatic_losses:
@@ -339,28 +349,21 @@ class UHECRPropagationSolver(object):
     def _init_solver(self):
         from scipy.integrate import ode
         from scipy.sparse import csc_matrix
+
+        # Pre-inialize rate matrices 
         self._update_jacobian(self.initial_z)
+        self.current_z_rates = self.initial_z
+        # Reset counters
         self.ncallsf = 0
         self.ncallsj = 0
-
-        ode_params = {
-            'name': 'lsodes',
-            'method': 'bdf',
-            # 'nsteps': 10000,
-            'rtol': 1e-6,
-            # 'atol': 1e5,
-            'ndim': self.dim_states,
-            'nnz': self.jacobian.nnz,
-            # 'csc_jacobian': self.jacobian.tocsc(),
-            # 'max_order_s': 5,
-            # 'with_jacobian': True
-        }
-
-        ode_params = ode_params
+        # Expand solver parameters with run-dependent options
+        ode_params = config["ode_params"]
+        ode_params['ndim'] = self.dim_states
+        ode_params['nnz'] = self.jacobian.nnz
 
         # info(1,'Setting solver with jacobian')
         # self.r = ode(self.eqn_deriv, self.eqn_jac).set_integrator(**ode_params)
-        info(1,'Setting solver without jacobian')
+        info(1, 'Setting solver without jacobian')
         self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
 
     def solve(self, dz=1e-2, verbose=True, extended_output=False, full_reset=False, progressbar=False):
@@ -381,7 +384,7 @@ class UHECRPropagationSolver(object):
             pbar.update()
         else:
             pbar = None
-            
+
         info(2, 'Starting integration.')
         while self.r.successful() and (self.r.t + dz) > self.final_z:
             if verbose:
@@ -392,7 +395,7 @@ class UHECRPropagationSolver(object):
             # --------------------------------------------
             if verbose:
                 print 'Solving hadr losses at t =', self.r.t
-            self._update_jacobian(self.r.t)
+
             self.r.integrate(self.r.t + dz)
             if verbose:
                 self.print_step_info(step_start,extended_output=extended_output)

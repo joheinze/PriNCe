@@ -126,37 +126,42 @@ config = {
     # Parameters of numerical integration
     #===========================================================================
 
-    # Selection of integrator (euler/odepack)
-    "integrator": "euler",
+    # Update threshold of rates/cross sections
+    "update_rates_z_threshold": 0.01,
 
-    # euler kernel implementation (numpy/MKL/CUDA).
-    "kernel_config": "MKL",
+    # #Number of MKL threads (for sparse matrix multiplication the performance
+    # #advantage from using more than 1 thread is limited by memory bandwidth)
+    "MKL_threads": 1,
 
-    #parameters for the odepack integrator. More details at
-    #http://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html
+    # Sparse matrix-vector product from "MKL"|"scipy"
+    "spmv_lib": "MKL",
+
+    # Parameters for the lsodes integrator. 
     "ode_params": {
-        'name': 'vode',
-        'method': 'adams',
-        'nsteps': 10000,
-        'max_step': 10.0
+        'name': 'lsodes',
+        'method': 'bdf',
+        'rtol': 1e-6,
+        # 'atol': 1e5,
+        # 'max_order_s': 2,
+        # 'with_jacobian': True
     },
 
-    # Use sparse linear algebra (recommended!)
-    "use_sparse": True,
+    # # Use sparse linear algebra (recommended!)
+    # "use_sparse": True,
 
-    #Number of MKL threads (for sparse matrix multiplication the performance
-    #advantage from using more than 1 thread is limited by memory bandwidth)
-    "MKL_threads": 24,
+    # # Selection of integrator (euler/odepack)
+    # "integrator": "euler",
 
-    # Float precision (32 only yields speed up with CUDA, MKL gets slower?)
-    "FP_precision": 64,
+    # # euler kernel implementation (numpy/MKL/CUDA).
+    # "kernel_config": "MKL",
+
+
+    # # Float precision (32 only yields speed up with CUDA, MKL gets slower?)
+    # "FP_precision": 64,
 
     #=========================================================================
     # Advanced settings
     #=========================================================================
-
-    # A more common setting
-    "hybrid_crossover": 0.05,
 
     # Possibilities to control some more advanced stuff
     "adv_settings": {
