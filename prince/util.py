@@ -7,12 +7,10 @@ import scipy.constants as spc
 import numpy as np
 from prince_config import config
 
-
 def convert_to_namedtuple(dictionary, name='GenericNamedTuple'):
     """Converts a dictionary to a named tuple."""
     from collections import namedtuple
     return namedtuple(name, dictionary.keys())(**dictionary)
-
 
 # Default units in Prince are ***cm, s, GeV***
 # Define here all constants and unit conversions and use
@@ -302,7 +300,7 @@ class EnergyGrid(object):
         self.grid = 0.5 * (self.bins[1:] + self.bins[:-1])
         self.widths = self.bins[1:] - self.bins[:-1]
         self.d = self.grid.size
-        info(1, 'Energy grid initialized {0:3.1e} - {1:3.1e}, {2} bins'.format(
+        info(5, 'Energy grid initialized {0:3.1e} - {1:3.1e}, {2} bins'.format(
             self.bins[0], self.bins[-1], self.grid.size))
 
 class LogEnergyGrid(object):

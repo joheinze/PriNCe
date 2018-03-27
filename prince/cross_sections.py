@@ -558,8 +558,12 @@ class CrossSectionBase(object):
             return cs
 
         csec = np.zeros((nxbins, cs.shape[0]))
-        csec[-1, :] = cs / self.xwidths[-1]
-        # print 'Warning! Test division by bin width here!'
+        # TODO: The factor 2 in the following line is a workarround to account for the latter linear interpolation
+        #       This is needed because linear spline integral will result in a trapz, 
+        #       which has half the area of the actual first bin 
+        corr_factor = 2 * self.xwidths[-1] / (self.xcenters[-1] - self.xcenters[-2])
+        csec[-1, :] = cs / self.xwidths[-1] * corr_factor
+        info(0, 'Warning! Workaround to account for linear interpolation in x, factor 2 added!')
         if isinstance(incl_cs, tuple):
             return egr, csec
         return csec
@@ -597,7 +601,6 @@ class CompositeCrossSection(CrossSectionBase):
 
         # Number of modls to join
         nmodels = len(model_list)
-
         self.model_refs = []
         # Construct instances of models and set ranges where they are valid
         for imo, (e_thr, mclass, margs) in enumerate(model_list):
@@ -619,7 +622,6 @@ class CompositeCrossSection(CrossSectionBase):
 
             # Save reference
             self.model_refs.append(csm_inst)
-
         # Create a unique list of nonel cross sections from
         # the combination of all models
         self.nonel_idcs = sorted(
@@ -976,99 +978,6 @@ class TabulatedCrossSection(CrossSectionBase):
         # Set initial range to whole egrid
         self.set_range()
         info(2, "Finished initialization")
-
-class NEUCOSMAPhotohadronic(CrossSectionBase):
-    """Class to import photohadronic models from the NeuCosmA file format"""
-
-    def __init__(self, NeuCosmA_filename = '', max_mass=None):
-        if max_mass is None:
-            self.max_mass = config["max_mass"]
-        CrossSectionBase.__init__(self)
-        
-        import os.path as path
-        filepath = path.join(config['raw_data_dir'],'cross_sections_NeuCosmA',NeuCosmA_filename)
-        self._load_NEUCOSMA_file(filepath)
-        self._optimize_and_generate_index()
-
-    def _load_NEUCOSMA_file(self, filename):
-        """Loads a txt file with format as define in the internal note.
-
-        Args:
-            filename (string): name of the ile including path
-
-        Returns:
-            (filename1, filename2) Two pickled dictionaries saved on the
-            same directory as `filename` which contain:
-            filename1: a dictionary indexed (mother, daughter) where the
-            the g function and the multiplicity are stored.
-            filename2: a dictionary indexed (mother) where the f function
-            and the total inelasticcross section are stored.
-        """
-
-        # The file format is as following (by column):
-        # 1. parent id
-        # 2. daughter id
-        # 3. systematic flag (currently ignored)
-        # 4. x
-        # 5. Delta_x
-        # 6. log10(E [GeV]) (E or eps_r or y depending on corresp. column)
-        # 7. h_ij(x,y) [mubarn = 10^-30 cm^2]
-        # 8. d_sigma_ij(x,eps_r) / deps_r [mubarn = 10^-30 cm^2]
-        # 9. M_ij(eps_r)
-        # 10. f_i(y) [mubarn = 10^-30 cm^2]
-
-        with open(filename) as f:
-            text_data = f.readlines()
-
-        cs_incl_diff = {}
-        resp_nonel = {}
-        resp_incl = {}
-
-        # empty lists for reading lines
-        x_list  = []
-        dx_list = []
-        e_list  = []
-
-        h_list = []
-        dcs_list = []
-        f_list = []
-
-        mo_old, da_old =  text_data[0].split()[:2]
-        mo_old = int(mo_old)
-        da_old = int(da_old)
-
-        for line in text_data:
-            mo, da, _, x, dx, e, h_ij, d_cs_ij, _, f_i = line.split()
-            mo = int(mo)
-            da = int(da)
-            x  = float(x)
-            dx = float(x)
-            e  = float(e)
-            h_ij   = float(h_ij)
-            dcs_ij = float(dcs_ij)
-            f_i    = float(f_i)
-
-            x_list.append(x)
-            dx_list.append(dx)
-
-            if not mo == mo_old:
-                # new mother, start new lists
-                x_list  = []
-                dx_list = []
-                e_list  = []
-
-                h_list = []
-                dcs_list = []
-                f_list = []
-
-                da_old = da
-        
-        #TODO: Reader not yet working, main problem for use in PriNCe:
-        # File does not contain the nonelatics crosssection sigma_i
-        # instead only the response f_i, so this does not work with the reduce channels routine
-
-
-
 
 class NEUCOSMACrossSection(CrossSectionBase):
     """Class to import cross sections from a NEUCOSMA file

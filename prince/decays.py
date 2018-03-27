@@ -434,10 +434,12 @@ def nu_from_beta_decay(x_grid, mother, daughter):
     mass_da = spec_data[daughter]['mass']
 
     # this is different for beta+ emission, atleast in NeuCosmA.nco_decay.c, l.126  (JH: really? why?)
-    E0 = mass_el + mass_mo - mass_da
+    qval = mass_mo - mass_da - 2 * mass_el
+    E0 = qval + mass_el
     ye = mass_el / E0
-    y_grid = mass_mo / 2 / E0 * x_grid
+    y_grid = x_grid * mass_mo / 2 / E0
 
+    # norm factor, nomalizing the formula to 1
     norm = 1. / 60. * (np.sqrt(1. - ye**2) * (2 - 9 * ye**2 - 8 * ye**4) +
                        15 * ye**4 * np.log(ye / (1 - np.sqrt(1 - ye**2))))
 
@@ -445,7 +447,11 @@ def nu_from_beta_decay(x_grid, mother, daughter):
     yshort = y_grid[cond]
 
     result = np.zeros(y_grid.shape)
-    result[cond] = 1 / norm * yshort**2 * (
+    # factor for substitution y -> x
+    subst = mass_mo / 2 / E0
+
+    # total formula
+    result[cond] = subst / norm * yshort**2 * (
         1 - yshort) * np.sqrt((1 - yshort)**2 - ye**2)
     
     result[x_grid > 1] *= 0.

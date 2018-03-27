@@ -46,14 +46,16 @@ class PriNCeRun(object):
             self.cross_sections = cross_sections.CompositeCrossSection(
                 [(0., cross_sections.TabulatedCrossSection, ('CRP2_TALYS',)),
                  (0.14, cross_sections.SophiaSuperposition, ())])
-        
+            # self.cross_sections = cross_sections.CompositeCrossSection(
+            #     [(0., cross_sections.TabulatedCrossSection, ('peanut_IAS',)),
+            #      (0.14, cross_sections.SophiaSuperposition, ())])
         # Photon field handler
         if 'photon_field' in kwargs:
             self.photon_field = kwargs['photon_field']
         else:
             self.photon_field = photonfields.CombinedPhotonField(
                 [photonfields.CMBPhotonSpectrum, 
-                 photonfields.CIBInoue2D])
+                 photonfields.CIBGilmore2D])
 
         # Store adv_set
         self.adv_set = config["adv_settings"]
@@ -66,6 +68,10 @@ class PriNCeRun(object):
                 s for s in self.cross_sections.known_species
                 if get_AZN(s)[0] <= config["max_mass"]
             ]
+
+        if not config["secondaries"]:
+            system_species = [s for s in system_species if s >= 100]
+        
         # Initialize species manager for all species for which cross sections are known
         self.spec_man = data.SpeciesManager(system_species, self.ed)
 

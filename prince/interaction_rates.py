@@ -61,7 +61,7 @@ class PhotoNuclearInteractionRate(object):
 
         Return value from cache if redshift value didn't change since last call.
         """
-        photon_vector = np.zeros_like(self.e_photon.grid)
+        # photon_vector = np.zeros_like(self.e_photon.grid)
         photon_vector = self.photon_field.get_photon_density(self.e_photon.grid, z)
 
         return photon_vector
@@ -137,7 +137,12 @@ class PhotoNuclearInteractionRate(object):
             # flags=['buffered','external_loop']
             )
 
+        # values for x and y to cut on:
         x_cut = config['x_cut']
+        y_cut = config['y_cut']
+        x_cut_proton = config['x_cut_proton']
+        # Xmin = 1e-8,1e-5,1e-2,1e-1.
+        # ymax = 1e1, 1e3, 1e5, 1e8.
 
         if config["bin_average"] == 'method1':
             info(1, 'Using bin central value for diff channel')
@@ -152,6 +157,10 @@ class PhotoNuclearInteractionRate(object):
             # (float) cast needed for exact ratio
             mass_mo = 1.#float(get_AZN(moid)[0])
             mass_da = 1.#float(get_AZN(daid)[0])
+            # mass_mo = float(get_AZN(moid)[0])
+            # mass_da = float(get_AZN(daid)[0])
+            # if daid == 101:
+            #     mass_da = 2.
 
             if mass_mo < mass_da or moid < 100:
                 continue
@@ -192,7 +201,8 @@ class PhotoNuclearInteractionRate(object):
                     # ------------------------------
                     if config["bin_average"] == 'method1':
                         center_y = eph[ph_idx] * emo / m_pr
-                        int_fac = (delta_ph[ph_idx] *  mass_mo / mass_da)
+                        int_fac = (delta_ph[ph_idx])
+                        # int_fac = (delta_ph[ph_idx] *  mass_mo / mass_da)
                         if has_incl:
                             self._batch_matrix[ibatch, :] = resp.incl_intp[(moid, daid)](center_y) * int_fac
                         if has_nonel:
@@ -209,8 +219,9 @@ class PhotoNuclearInteractionRate(object):
                         yu = plims[1, ph_idx] * emo / m_pr
                         delta_y = delta_ph[ph_idx] * emo / m_pr
 
-                        int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
-                                mass_mo / mass_da)
+                        int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo)
+                        # int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
+                        #         mass_mo / mass_da)
                         diff_fac = 1. / delta_x / delta_y
                         if has_incl:
                             self._batch_matrix[ibatch, :] = (
@@ -257,10 +268,10 @@ class PhotoNuclearInteractionRate(object):
                     xu = elims[1, d_eidx] / emo
                     yl = plims[0, ph_idx] * emo / m_pr
                     yu = plims[1, ph_idx] * emo / m_pr
-                    #TODO: Thresholds set for testing
-                    # if daid == 101 and xl < 0.1:
-                    #     continue
-                    if xl < 1e-6 or yu < ymin:
+                    # TODO: Thresholds set for testing
+                    if daid == 101 and xl < x_cut_proton:
+                        continue
+                    if xl < x_cut or yu < ymin or yl > y_cut:
                         continue
 
                     # ------------------------------
@@ -497,8 +508,9 @@ class ContinuousPairProductionLossRate(object):
         self.e_photon = prince_run.ph_grid
 
         # xi is dimensionless (natural units) variable
-        xi_steps = 100 if 'xi_steps' not in kwargs else kwargs['xi_steps']
-        self.xi = np.logspace(np.log10(2 + 1e-8), 8., xi_steps)
+        xi_steps = 400 if 'xi_steps' not in kwargs else kwargs['xi_steps']
+        print 'using', xi_steps, 'steps in xi'
+        self.xi = np.logspace(np.log10(2 + 1e-8), 16., xi_steps)
 
         # weights for integration
         self.phi_xi2 = self._phi(self.xi) / (self.xi**2)
