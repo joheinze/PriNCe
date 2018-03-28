@@ -377,7 +377,6 @@ class UHECRPropagationSolver(object):
             else:
                 from tqdm import tqdm
             pbar = tqdm(total=-1*int(self.r.t / dz))
-            pbar = tqdm()
             pbar.update()
         else:
             pbar = None
@@ -448,7 +447,7 @@ class UHECRPropagationSolver(object):
         from time import time
 
         print 'step took', time() - step_start
-        print 'At t =', self.r.t
+        print 'At t = ', self.r.t
         print 'jacobian calls', self.ncallsj
         print 'function calls', self.ncallsf
         if extended_output:
