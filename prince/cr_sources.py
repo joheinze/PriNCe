@@ -4,46 +4,35 @@ from abc import ABCMeta, abstractmethod
 
 import numpy as np
 
-from prince.cosmology import star_formation_rate
-from prince.util import info, PRINCE_UNITS, get_AZN
 from prince_config import config
-
+from prince.util import info
 
 class CosmicRaySource(object):
     __metaclass__ = ABCMeta
 
-    def __init__(self, prince_run, ncoid, norm=1., *args, **kwargs):
-
+    def __init__(self, prince_run, ncoids = None, params = None, norm=1., m='flat', *args, **kwargs):
+        # read out standard information from core class
         self.prince_run = prince_run
         self.cr_grid = prince_run.cr_grid.grid
-
         self.norm = norm
+        self.spec_man = prince_run.spec_man
 
+        self.params = params
+        self.ncoids = ncoids if ncoids is not None else params.keys()
+        self.source_evo_m = m
+        self._compute_injection_grid()
+
+    def _compute_injection_grid(self):
         self.injection_grid = np.zeros(self.prince_run.dim_states)
-        self.inj_spec = prince_run.spec_man.ncoid2sref[ncoid]
-
-        # compute the injection rate on the fixed energy grid
-        self.injection_grid[self.inj_spec.lidx():self.inj_spec.uidx(
-        )] = self.injection_spectrum(self.cr_grid)
-
-    @abstractmethod
-    def injection_spectrum(self, energy):
-        """Prototype for derived source class"""
-
-    @abstractmethod
-    def evolution(self, z):
-        """Prototype for derived source class"""
-
-    def get_local_emissivity(self, Emin, Emax):
-        """
-        Normalize the spectrum to the local cosmic ray injection rate of 1e44 erg MpC^-3 yr^-1
-        """
-        from scipy import integrate
-        A = self.inj_spec.A
-        intenergy, _ = integrate.quad(
-            lambda energy: energy / A * self.injection_spectrum(energy / A), 
-            Emin, Emax)
-        return intenergy
+        for pid in self.ncoids:
+            if pid in self.params:
+                params = self.params[pid]
+            else:
+                params = params
+            # info(0, 'Injecting particle {:} with parameters {:}'.format(pid, params))
+            inj_spec = self.spec_man.ncoid2sref[pid]
+            self.injection_grid[inj_spec.lidx():inj_spec.uidx(
+            )] = self.injection_spectrum(pid, self.cr_grid, params)
 
     def injection_rate(self, z):
         """
@@ -51,135 +40,83 @@ class CosmicRaySource(object):
         """
         return self.norm * self.evolution(z) * self.injection_grid
 
-    def injection_rate_single(self,energy,z):
+    def injection_rate_single(self,pid,energy,z):
         """
         return the injection rate for a single energy and redshift
         """
-        return self.norm * self.evolution(z) * self.injection_spectrum(energy)
+        if pid in self.params:
+            params = self.params[pid]
+        else:
+            params = params
+        return self.norm * self.evolution(z) * self.injection_spectrum(pid, energy,params)
 
-class SimpleSource(CosmicRaySource):
-    def __init__(self,
-                 prince_run,
-                 spectral_index=2.,
-                 emax=1e13,
-                 m=0.,
-                 ncoid=101,
-                 *args,
-                 **kwargs):
-
-        self.spectral_index = spectral_index
-        # Convert maximal energy given per particle in energy per nucleon
-        self.inj_spec = prince_run.spec_man.ncoid2sref[ncoid]
-        self.emax = emax / self.inj_spec.A
-
-        self.m = m
-
-        CosmicRaySource.__init__(self, prince_run, ncoid=ncoid, *args, **kwargs)
-
-    def injection_spectrum(self, energy):
-        """
-        power-law injection spectrum with spectral index and maximal energy cutoff
-        """
-        from numpy import exp
-        result = energy**(-self.spectral_index) * exp(-energy / self.emax)
-
-        return result
+    @abstractmethod
+    def injection_spectrum(self, pid, energy, params):
+        """Prototype for derived source class"""
 
     def evolution(self, z):
         """Source evolution function
 
         By providing an m parameter, evolution can be scaled.
         """
+        from cosmology import star_formation_rate
+        if self.source_evo_m == 'flat':
+            return 1.
+        else:
+            return (1 + z)**self.source_evo_m * star_formation_rate(z)
 
-        return (1 + z)**self.m * star_formation_rate(z)
+class SimpleSource(CosmicRaySource):
 
-
-class AugerFitSource(CosmicRaySource):
-    def __init__(self, prince_run, ncoid, rmax, spectral_index, norm, *args,
-                 **kwargs):
-
-        self.inj_spec = prince_run.spec_man.ncoid2sref[ncoid]
-
-        self.emax = rmax * self.inj_spec.Z
-        self.spectral_index = spectral_index
-
-        CosmicRaySource.__init__(
-            self, prince_run, ncoid=ncoid, norm=norm, *args, **kwargs)
-
-    def evolution(self, z):
-        """Source evolution function
-
-        Uniform source distribution.
-        """
-
-        return 1.
-
-    def injection_spectrum(self, energy):
+    def injection_spectrum(self, pid, energy, params):
         """
         power-law injection spectrum with spectral index and maximal energy cutoff
         """
-        from numpy import exp
+        spectral_index, emax, relnorm = params
+        inj_spec = self.spec_man.ncoid2sref[pid]
+        emax = emax / inj_spec.A
+        result = relnorm * energy**(-spectral_index) * np.exp(-energy / emax)
 
-        A = float(self.inj_spec.A)
+        return result
+
+class AugerFitSource(CosmicRaySource):
+
+    def injection_spectrum(self, pid, energy, params):
+        """
+        power-law injection spectrum with spectral index and maximal energy cutoff
+        """
+        spectral_index, rcut, relnorm = params
+        inj_spec = self.spec_man.ncoid2sref[pid]
+        A = float(inj_spec.A)
+        emax = rcut * inj_spec.Z
         e_k = A * energy
-        result = A * (e_k/1e9)**(-self.spectral_index) * np.where(
-            e_k < self.emax, 1., exp(1 - (e_k) / self.emax))
+        result = relnorm * A * (e_k/1e9)**(-spectral_index) * np.where(
+            e_k < emax, 1., np.exp(1 - e_k / emax))
 
         return result
 
 class RigdityCutoffSource(CosmicRaySource):
-    def __init__(self, prince_run, ncoid, rmax, spectral_index, norm, *args,
-                 **kwargs):
 
-        self.inj_spec = prince_run.spec_man.ncoid2sref[ncoid]
-
-        self.emax = rmax * self.inj_spec.Z
-        self.spectral_index = spectral_index
-        norm = norm
-
-        CosmicRaySource.__init__(
-            self, prince_run, ncoid=ncoid, norm=norm, *args, **kwargs)
-
-    def evolution(self, z):
-        """Source evolution function
-
-        Uniform source distribution.
-        """
-
-        return 1.
-
-    def injection_spectrum(self, energy):
+    def injection_spectrum(self, pid, energy, params):
         """
         power-law injection spectrum with spectral index and maximal energy cutoff
         """
-        from numpy import exp
-
-        A = float(self.inj_spec.A)
+        spectral_index, rcut, relnorm = params
+        inj_spec = self.spec_man.ncoid2sref[pid]
+        A = float(inj_spec.A)
+        emax = rcut * inj_spec.Z
         e_k = A * energy
-        result = A * self.norm * (e_k/1e9)**(-self.spectral_index) * exp(1 - (e_k) / self.emax)
+        result = relnorm * A * (e_k/1e9)**(-spectral_index) * np.exp(1 - e_k / emax)
 
         return result
 
 class SpectrumSource(CosmicRaySource):
-    def __init__(self, edata, specdata, pid=101):
-        from scipy.interpolate import InterpolatedUnivariateSpline
-        from prince.util import EnergyGrid
-        self.injection_spline = InterpolatedUnivariateSpline(
-            edata, specdata, ext='zeros')
 
-        self.norm = 1.
-        self.e_cosmicray = EnergyGrid(*config["cosmic_ray_grid"])
+    def injection_spectrum(self, pid, energy, params):
+        egrid, specgrid = params
+        inj_spec = self.spec_man.ncoid2sref[pid]
+        egrid = egrid / inj_spec.A
+        specgrid = specgrid * inj_spec.A
+        result = np.interp(energy,egrid,specgrid,left=0.,right=0.)
 
-        self.particle_id = pid
-        self._normalize_spectrum()
-
-        # compute the injection rate on the fixed energy grid
-        egrid = self.e_cosmicray.grid
-        self.injection_grid = self.injection_spectrum(egrid)
-
-    def injection_spectrum(self, energy):
-        """
-        power-law injection spectrum with spectral index and maximal energy cutoff
-        """
-        result = self.norm * self.injection_spline(energy)
         return result
+

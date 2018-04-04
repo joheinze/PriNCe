@@ -193,8 +193,11 @@ class UHECRPropagationSolver(object):
         """This needs to return the injection rate
         at each redshift value z"""
         f = self.dldz(z) * dz * PRINCE_UNITS.cm2sec
-        return f * np.sum(
-            [s.injection_rate(z) for s in self.list_of_sources], axis=0)
+        if len(self.list_of_sources) > 1:
+            return f * np.sum(
+                [s.injection_rate(z) for s in self.list_of_sources], axis=0)
+        else:
+            return f * self.list_of_sources[0].injection_rate(z)
 
     def _update_jacobian(self, z):
         info(5, 'Updating jacobian matrix at redshift', z)
@@ -366,7 +369,7 @@ class UHECRPropagationSolver(object):
         info(1, 'Setting solver without jacobian')
         self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
 
-    def solve(self, dz=1e-2, verbose=True, extended_output=False, full_reset=False, progressbar=False):
+    def solve(self, dz=1e-3, verbose=True, extended_output=False, full_reset=False, progressbar=False):
         from time import time
 
         stepcount = 0
@@ -435,7 +438,9 @@ class UHECRPropagationSolver(object):
             stepcount += 1
             if pbar is not None:
                 pbar.update()
-        # self.r.integrate(self.final_z)
+        self.r.integrate(self.final_z)
+        if pbar is not None:
+            pbar.update()
         if pbar is not None:
             pbar.close()
         if not self.r.successful():
