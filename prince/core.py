@@ -106,3 +106,8 @@ class PriNCeRun(object):
     def ebins(self):
         """Energy grid used for species."""
         return self.cr_grid.bins
+
+    def compute_propagation(self, initial_z=1., final_z=0., ncoid = 101):
+        """computes a propagation with standard model input (see kwargs)"""
+        from solvers import UHECRPropagationSolver
+        solver = UHECRPropagationSolver(initial_z=initial_z, final_z=final_z,prince_run=self)

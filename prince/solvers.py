@@ -6,14 +6,36 @@ from prince.util import info, PRINCE_UNITS, get_AZN, EnergyGrid
 from prince_config import config
 from prince.solvers_energy import DifferentialOperator, ChangCooperSolver, SemiLagrangianSolver
 
+
 class UHECRPropagationResult(object):
     """Reduced version of solver class, that only holds the result vector and defined add and multiply
     """
+
     def __init__(self, state, egrid, spec_man):
         self.spec_man = spec_man
         self.egrid = egrid
-
         self.state = state
+
+    def to_dict(self):
+        dic = {}
+        dic['egrid'] = self.egrid
+        dic['edim'] = self.egrid.size
+        dic['state'] = self.state
+        dic['known_spec'] = self.known_species
+
+        return dic
+
+    @classmethod
+    def from_dict(cls, dic):
+        egrid = dic['egrid']
+        edim = dic['edim']
+        state = dic['state']
+        known_spec = dic['known_spec']
+
+        from data import SpeciesManager
+        spec_man = SpeciesManager(known_spec, edim)
+
+        return cls(state, egrid, spec_man)
 
     @property
     def known_species(self):
@@ -22,34 +44,55 @@ class UHECRPropagationResult(object):
     def __add__(self, other):
         cumstate = self.state + other.state
 
-        if self.egrid is not other.egrid:
-            raise Exception('Cannot add Propagation Results, they are defined in different energy grids!')
-        if self.spec_man is not other.spec_man:
-            raise Exception('Cannot add Propagation Results, have different species managers!')
+        if not np.array_equal(self.egrid, other.egrid):
+            raise Exception(
+                'Cannot add Propagation Results, they are defined in different energy grids!'
+            )
+        if not np.array_equal(self.known_species, other.known_species):
+            raise Exception(
+                'Cannot add Propagation Results, have different species managers!'
+            )
         else:
             return UHECRPropagationResult(cumstate, self.egrid, self.spec_man)
 
     def __mul__(self, number):
         if not np.isscalar(number):
-            raise Exception('Can only multiply result by scalar number, got type {:} instead!'.format(type(number)))
+            raise Exception(
+                'Can only multiply result by scalar number, got type {:} instead!'.
+                format(type(number)))
         else:
             newstate = self.state * number
             return UHECRPropagationResult(newstate, self.egrid, self.spec_man)
 
     def get_solution(self, nco_id):
         """Returns the spectrum in energy per nucleon"""
-        sp = self.spec_man.ncoid2sref[nco_id]
-        return self.egrid, self.state[sp.lidx():sp.uidx()]
+        spec = self.spec_man.ncoid2sref[nco_id]
+        return self.egrid, self.state[spec.lidx():spec.uidx()]
 
     def get_solution_scale(self, nco_id, epow=0):
         """Returns the spectrum scaled back to total energy"""
         spec = self.spec_man.ncoid2sref[nco_id]
         egrid = spec.A * self.egrid
-        return egrid, egrid**epow * self.state[
-            spec.lidx():spec.uidx()] / spec.A
+        return egrid, egrid**epow * self.state[spec.lidx():
+                                               spec.uidx()] / spec.A
 
-    def get_solution_group(self, nco_ids, epow=3, egrid=None):
-        """Return the summed spectrum (in total energy) for all elements in the range"""
+    def _check_id_grid(self, nco_ids, egrid):
+        if type(nco_ids) is list:
+            pass
+        elif nco_ids == 'CR':
+            nco_ids = [s for s in self.known_species if s >= 100]
+        elif nco_ids == 'nu':
+            nco_ids = [
+                s for s in self.known_species if s in [12, 13, 14, 15, 16]
+            ]
+        elif nco_ids == 'all':
+            nco_ids = self.known_species
+        elif type(nco_ids) is tuple:
+            select, vmin, vmax = nco_ids
+            nco_ids = [
+                s for s in self.known_species if vmin <= select(s) <= vmax
+            ]
+
         # Take egrid from first id ( doesn't cover the range for iron for example)
         # create a common egrid or used supplied one
         if egrid is None:
@@ -61,55 +104,52 @@ class UHECRPropagationResult(object):
         else:
             com_egrid = egrid
 
-        # print com_egrid
-        spectrum = np.zeros_like(com_egrid)
-        for pid in nco_ids:
-            curr_egrid, curr_spec = self.get_solution_scale(pid, epow=0)
-            res = np.exp(np.interp(
-                np.log(com_egrid),
-                np.log(curr_egrid),
-                np.log(curr_spec),
-                left=np.nan,right=np.nan))
-            spectrum += np.nan_to_num(res)
+        return nco_ids, com_egrid
 
-        return com_egrid, com_egrid**epow * spectrum
+    def get_solution_group(self, nco_ids, epow=3, egrid=None):
+        """Return the summed spectrum (in total energy) for all elements in the range"""
+        nco_ids, com_egrid = self._check_id_grid(nco_ids, egrid)
+
+        spectra = np.zeros((len(nco_ids), com_egrid.size))
+        for idx, pid in enumerate(nco_ids):
+            curr_egrid, curr_spec = self.get_solution_scale(pid, epow=epow)
+            res = np.exp(
+                np.interp(
+                    np.log(com_egrid),
+                    np.log(curr_egrid),
+                    np.log(curr_spec),
+                    left=np.nan,
+                    right=np.nan))
+            spectra[idx] = np.nan_to_num(res)
+        spectrum = spectra.sum(axis=0)
+
+        return com_egrid, spectrum
 
     def get_lnA(self, nco_ids, egrid=None):
         """Return the average ln(A) as a function of total energy for all elements in the range"""
-        # create a common egrid or used supplied one
-        if egrid is None:
-            max_mass = max([s.A for s in self.spec_man.species_refs])
-            emin_log, emax_log, nbins = list(config["cosmic_ray_grid"])
-            emax_log = np.log10(max_mass * 10**emax_log)
-            nbins *= 4
-            com_egrid = EnergyGrid(emin_log, emax_log, nbins).grid
-        else:
-            com_egrid = egrid
-            
-        # collect all the spectra in 2d array of dimension     
+        nco_ids, com_egrid = self._check_id_grid(nco_ids, egrid)
+
+        # collect all the spectra in 2d array of dimension
         spectra = np.zeros((len(nco_ids), com_egrid.size))
         for idx, pid in enumerate(nco_ids):
-            curr_egrid, curr_spec = self.get_solution_scale(pid, epow=0)
-            res = np.exp(np.interp(
-                np.log(com_egrid),
-                np.log(curr_egrid),
-                np.log(curr_spec),
-                left=np.nan,right=np.nan))
+            curr_egrid, curr_spec = self.get_solution_scale(pid)
+            res = np.exp(
+                np.interp(
+                    np.log(com_egrid),
+                    np.log(curr_egrid),
+                    np.log(curr_spec),
+                    left=np.nan,
+                    right=np.nan))
             spectra[idx] = np.nan_to_num(res)
+
+        # get the average and variance by using the spectra as weights
         lnA = np.array([np.log(get_AZN(el)[0]) for el in nco_ids])
+        average = (
+            lnA[:, np.newaxis] * spectra).sum(axis=0) / spectra.sum(axis=0)
+        variance = (lnA[:, np.newaxis]**2 * spectra
+                    ).sum(axis=0) / spectra.sum(axis=0) - average**2
 
-        # build the average lnA and variance for each energy by weigting with the spectrum
-        avg = np.zeros_like(com_egrid)
-        var = np.zeros_like(com_egrid)
-        for idx, line in enumerate(spectra.T):
-            if np.sum(line) == 0.:
-                avg[idx] = 0.
-                var[idx] = 0.
-            else:
-                avg[idx] = np.average(lnA, weights=line)
-                var[idx] = np.average((lnA - avg[idx])**2, weights=line)
-
-        return com_egrid, avg, var
+        return com_egrid, average, variance
 
     def get_energy_density(self, nco_id):
         from scipy.integrate import trapz
@@ -117,14 +157,19 @@ class UHECRPropagationResult(object):
         A, _, _ = get_AZN(nco_id)
         return trapz(A * self.egrid * self.get_solution(nco_id), self.egrid)
 
+
 class UHECRPropagationSolver(object):
-    def __init__(self, initial_z, final_z, prince_run,
-                 enable_adiabatic_losses=True,
-                 enable_pairprod_losses=True,
-                 enable_photohad_losses=True,
-                 enable_injection_jacobian=True,
-                 enable_partial_diff_jacobian=False,
-                ):
+    def __init__(
+            self,
+            initial_z,
+            final_z,
+            prince_run,
+            enable_adiabatic_losses=True,
+            enable_pairprod_losses=True,
+            enable_photohad_losses=True,
+            enable_injection_jacobian=True,
+            enable_partial_diff_jacobian=False,
+    ):
         self.initial_z = initial_z
         self.final_z = final_z
 
@@ -139,15 +184,15 @@ class UHECRPropagationSolver(object):
         self.enable_adiabatic_losses = enable_adiabatic_losses
         self.enable_pairprod_losses = enable_pairprod_losses
         self.enable_photohad_losses = enable_photohad_losses
-        #Flag for Jacobian injection: 
+        #Flag for Jacobian injection:
         # if True injection in jacobion
         # if False injection only per dz-step
         self.enable_injection_jacobian = enable_injection_jacobian
         self.enable_partial_diff_jacobian = enable_partial_diff_jacobian
-        
+
         self.had_int_rates = self.prince_run.int_rates
         self.adia_loss_rates_grid = self.prince_run.adia_loss_rates_grid
-        self.pair_loss_rates_grid = self.prince_run.pair_loss_rates_grid 
+        self.pair_loss_rates_grid = self.prince_run.pair_loss_rates_grid
         self.adia_loss_rates_bins = self.prince_run.adia_loss_rates_bins
         self.pair_loss_rates_bins = self.prince_run.pair_loss_rates_bins
         self.intp = None
@@ -159,7 +204,8 @@ class UHECRPropagationSolver(object):
         self.list_of_sources = []
 
         self._init_solver()
-        self.diff_operator = DifferentialOperator(prince_run.cr_grid, prince_run.spec_man.nspec)
+        self.diff_operator = DifferentialOperator(prince_run.cr_grid,
+                                                  prince_run.spec_man.nspec)
         self.semi_lag_solver = SemiLagrangianSolver(prince_run.cr_grid)
 
     @property
@@ -169,7 +215,8 @@ class UHECRPropagationSolver(object):
     @property
     def res(self):
         if self.result is None:
-            self.result = UHECRPropagationResult(self.state, self.egrid, self.spec_man)
+            self.result = UHECRPropagationResult(self.state, self.egrid,
+                                                 self.spec_man)
         return self.result
 
     def add_source_class(self, source_instance):
@@ -202,11 +249,13 @@ class UHECRPropagationSolver(object):
     def _update_jacobian(self, z):
         info(5, 'Updating jacobian matrix at redshift', z)
 
-        # enable photohadronic losses, or use a zero matrix 
+        # enable photohadronic losses, or use a zero matrix
         if self.enable_photohad_losses:
-            self.jacobian = self.had_int_rates.get_hadr_jacobian(z, self.dldz(z),force_update=True)
+            self.jacobian = self.had_int_rates.get_hadr_jacobian(
+                z, self.dldz(z), force_update=True)
         else:
-            self.jacobian = self.had_int_rates.get_hadr_jacobian(z, self.dldz(z),force_update=True)
+            self.jacobian = self.had_int_rates.get_hadr_jacobian(
+                z, self.dldz(z), force_update=True)
             self.jacobian.data *= 0.
 
         self.last_hadr_jac = None
@@ -214,7 +263,7 @@ class UHECRPropagationSolver(object):
     def semi_lagrangian(self, delta_z, z, state):
         # if no continuous losses are enables, just return the state.
         if not self.enable_adiabatic_losses and not self.enable_pairprod_losses:
-                return state
+            return state
 
         conloss = np.zeros_like(self.adia_loss_rates_bins.energy_vector)
         if self.enable_adiabatic_losses:
@@ -232,7 +281,8 @@ class UHECRPropagationSolver(object):
             for spec in self.spec_man.species_refs:
                 lbin, ubin = spec.lbin(), spec.ubin()
                 lidx, uidx = spec.lidx(), spec.uidx()
-                state[lidx:uidx] = self.semi_lag_solver.interpolate(conloss[lbin:ubin], state[lidx:uidx])
+                state[lidx:uidx] = self.semi_lag_solver.interpolate(
+                    conloss[lbin:ubin], state[lidx:uidx])
         # -------------------------------------------------------------------
         # local gradient interpolation
         # -------------------------------------------------------------------
@@ -240,7 +290,8 @@ class UHECRPropagationSolver(object):
             for spec in self.spec_man.species_refs:
                 lbin, ubin = spec.lbin(), spec.ubin()
                 lidx, uidx = spec.lidx(), spec.uidx()
-                state[lidx:uidx] = self.semi_lag_solver.interpolate_gradient(conloss[lbin:ubin], state[lidx:uidx])
+                state[lidx:uidx] = self.semi_lag_solver.interpolate_gradient(
+                    conloss[lbin:ubin], state[lidx:uidx])
 
         # -------------------------------------------------------------------
         # linear lagrange weigts
@@ -249,7 +300,9 @@ class UHECRPropagationSolver(object):
             for spec in self.spec_man.species_refs:
                 lbin, ubin = spec.lbin(), spec.ubin()
                 lidx, uidx = spec.lidx(), spec.uidx()
-                state[lidx:uidx] = self.semi_lag_solver.interpolate_linear_weights(conloss[lbin:ubin], state[lidx:uidx])
+                state[lidx:
+                      uidx] = self.semi_lag_solver.interpolate_linear_weights(
+                          conloss[lbin:ubin], state[lidx:uidx])
 
         # -------------------------------------------------------------------
         # quadratic lagrange weigts
@@ -258,8 +311,11 @@ class UHECRPropagationSolver(object):
             for spec in self.spec_man.species_refs:
                 lbin, ubin = spec.lbin(), spec.ubin()
                 lidx, uidx = spec.lidx(), spec.uidx()
-                state[lidx:uidx] = self.semi_lag_solver.interpolate_quadratic_weights(conloss[lbin:ubin], state[lidx:uidx])
- 
+                state[
+                    lidx:
+                    uidx] = self.semi_lag_solver.interpolate_quadratic_weights(
+                        conloss[lbin:ubin], state[lidx:uidx])
+
         # -------------------------------------------------------------------
         # cubic lagrange weigts
         # -------------------------------------------------------------------
@@ -267,7 +323,9 @@ class UHECRPropagationSolver(object):
             for spec in self.spec_man.species_refs:
                 lbin, ubin = spec.lbin(), spec.ubin()
                 lidx, uidx = spec.lidx(), spec.uidx()
-                state[lidx:uidx] = self.semi_lag_solver.interpolate_cubic_weights(conloss[lbin:ubin], state[lidx:uidx])
+                state[lidx:
+                      uidx] = self.semi_lag_solver.interpolate_cubic_weights(
+                          conloss[lbin:ubin], state[lidx:uidx])
 
         # -------------------------------------------------------------------
         # 4th order lagrange weigts
@@ -276,8 +334,11 @@ class UHECRPropagationSolver(object):
             for spec in self.spec_man.species_refs:
                 lbin, ubin = spec.lbin(), spec.ubin()
                 lidx, uidx = spec.lidx(), spec.uidx()
-                state[lidx:uidx] = self.semi_lag_solver.interpolate_4thorder_weights(conloss[lbin:ubin], state[lidx:uidx])
- 
+                state[
+                    lidx:
+                    uidx] = self.semi_lag_solver.interpolate_4thorder_weights(
+                        conloss[lbin:ubin], state[lidx:uidx])
+
         # -------------------------------------------------------------------
         # 5th order lagrange weigts
         # -------------------------------------------------------------------
@@ -285,8 +346,11 @@ class UHECRPropagationSolver(object):
             for spec in self.spec_man.species_refs:
                 lbin, ubin = spec.lbin(), spec.ubin()
                 lidx, uidx = spec.lidx(), spec.uidx()
-                state[lidx:uidx] = self.semi_lag_solver.interpolate_5thorder_weights(conloss[lbin:ubin], state[lidx:uidx])
- 
+                state[
+                    lidx:
+                    uidx] = self.semi_lag_solver.interpolate_5thorder_weights(
+                        conloss[lbin:ubin], state[lidx:uidx])
+
         # -------------------------------------------------------------------
         # finite diff euler steps
         # -------------------------------------------------------------------
@@ -297,13 +361,16 @@ class UHECRPropagationSolver(object):
             if self.enable_pairprod_losses:
                 conloss += self.pair_loss_rates_grid.loss_vector(z)
 
-            state[:] = state + self.dldz(z) * delta_z * self.diff_operator.operator.dot(conloss * state)
+            state[:] = state + self.dldz(
+                z) * delta_z * self.diff_operator.operator.dot(
+                    conloss * state)
 
         # -------------------------------------------------------------------
         # if method was not in list before, raise an Expection
         # -------------------------------------------------------------------
         else:
-            raise Exception('Unknown semi-lagrangian method ({:})'.format(method))
+            raise Exception(
+                'Unknown semi-lagrangian method ({:})'.format(method))
 
         return state
 
@@ -320,8 +387,10 @@ class UHECRPropagationSolver(object):
                 conloss += self.adia_loss_rates_grid.loss_vector(z)
             if self.enable_pairprod_losses:
                 conloss += self.pair_loss_rates_grid.loss_vector(z)
-            partial_deriv = self.dldz(z) * self.diff_operator.operator.dot(conloss * state)
-            r = self.jacobian.dot(state) + self.injection(1., z) + partial_deriv
+            partial_deriv = self.dldz(z) * self.diff_operator.operator.dot(
+                conloss * state)
+            r = self.jacobian.dot(state) + self.injection(1.,
+                                                          z) + partial_deriv
         elif self.enable_injection_jacobian:
             r = self.jacobian.dot(state) + self.injection(1., z)
         elif self.enable_partial_diff_jacobian:
@@ -330,7 +399,8 @@ class UHECRPropagationSolver(object):
                 conloss += self.adia_loss_rates_grid.loss_vector(z)
             if self.enable_pairprod_losses:
                 conloss += self.pair_loss_rates_grid.loss_vector(z)
-            partial_deriv = self.dldz(z) * self.diff_operator.operator.dot(conloss * state)
+            partial_deriv = self.dldz(z) * self.diff_operator.operator.dot(
+                conloss * state)
             r = self.jacobian.dot(state) + partial_deriv
         else:
             r = self.jacobian.dot(state)
@@ -340,12 +410,12 @@ class UHECRPropagationSolver(object):
         self.ncallsj += 1
         if self.last_hadr_jac is None:
             if self.enable_photohad_losses:
-                    self.last_hadr_jac = self.had_int_rates.get_dense_hadr_jacobian(
-                        z, self.dldz(z))
+                self.last_hadr_jac = self.had_int_rates.get_dense_hadr_jacobian(
+                    z, self.dldz(z))
             else:
-                    self.last_hadr_jac = self.had_int_rates.get_dense_hadr_jacobian(
-                        z, self.dldz(z))
-                    self.last_hadr_jac *= 0.
+                self.last_hadr_jac = self.had_int_rates.get_dense_hadr_jacobian(
+                    z, self.dldz(z))
+                self.last_hadr_jac *= 0.
 
         return self.last_hadr_jac
 
@@ -353,7 +423,7 @@ class UHECRPropagationSolver(object):
         from scipy.integrate import ode
         from scipy.sparse import csc_matrix
 
-        # Pre-inialize rate matrices 
+        # Pre-inialize rate matrices
         self._update_jacobian(self.initial_z)
         self.current_z_rates = self.initial_z
         # Reset counters
@@ -369,7 +439,12 @@ class UHECRPropagationSolver(object):
         info(1, 'Setting solver without jacobian')
         self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
 
-    def solve(self, dz=1e-3, verbose=True, extended_output=False, full_reset=False, progressbar=False):
+    def solve(self,
+              dz=1e-3,
+              verbose=True,
+              extended_output=False,
+              full_reset=False,
+              progressbar=False):
         from time import time
 
         stepcount = 0
@@ -382,7 +457,7 @@ class UHECRPropagationSolver(object):
                 from tqdm import tqdm_notebook as tqdm
             else:
                 from tqdm import tqdm
-            pbar = tqdm(total=-1*int(self.r.t / dz))
+            pbar = tqdm(total=-1 * int(self.r.t / dz))
             pbar.update()
         else:
             pbar = None
@@ -400,7 +475,8 @@ class UHECRPropagationSolver(object):
 
             self.r.integrate(self.r.t + dz)
             if verbose:
-                self.print_step_info(step_start,extended_output=extended_output)
+                self.print_step_info(
+                    step_start, extended_output=extended_output)
             self.ncallsf = 0
             self.ncallsj = 0
             # --------------------------------------------
@@ -410,7 +486,8 @@ class UHECRPropagationSolver(object):
                 if verbose:
                     print 'applying injection at t =', self.r.t
                 if full_reset:
-                    self.r.set_initial_value(self.r.y + self.injection(dz, self.r.t), self.r.t)
+                    self.r.set_initial_value(
+                        self.r.y + self.injection(dz, self.r.t), self.r.t)
                 else:
                     self.r._integrator.call_args[3] = 20
                     self.r._y += self.injection(dz, self.r.t)
@@ -423,10 +500,13 @@ class UHECRPropagationSolver(object):
                     if verbose:
                         print 'applying semi lagrangian at t =', self.r.t
                     if full_reset:
-                        self.r.set_initial_value(self.semi_lagrangian(dz, self.r.t, self.r.y), self.r.t)
+                        self.r.set_initial_value(
+                            self.semi_lagrangian(dz, self.r.t, self.r.y),
+                            self.r.t)
                     else:
                         self.r._integrator.call_args[3] = 20
-                        self.r._y = self.semi_lagrangian(dz, self.r.t, self.r.y)
+                        self.r._y = self.semi_lagrangian(
+                            dz, self.r.t, self.r.y)
 
             # --------------------------------------------
             # Some last checks and resets
@@ -451,7 +531,7 @@ class UHECRPropagationSolver(object):
         end_time = time()
         info(2, 'Integration completed in {0} s'.format(end_time - start_time))
 
-    def print_step_info(self, step_start,extended_output=False):
+    def print_step_info(self, step_start, extended_output=False):
         from time import time
 
         print 'step took', time() - step_start
@@ -470,11 +550,13 @@ class UHECRPropagationSolver(object):
             print 'NJE', NJE
             print 'NLU', NLU
             print 'NNZLU', NNZLU
-            print 'LAST STEP {0:4.3e}'.format(
-                self.r._integrator.rwork[10])
+            print 'LAST STEP {0:4.3e}'.format(self.r._integrator.rwork[10])
 
-
-    def solve_euler(self, dz=1e-3, verbose=True, extended_output=False, full_reset=False):
+    def solve_euler(self,
+                    dz=1e-3,
+                    verbose=True,
+                    extended_output=False,
+                    full_reset=False):
         from time import time
 
         # stepcount = 0
@@ -489,7 +571,7 @@ class UHECRPropagationSolver(object):
             if verbose:
                 info(3, "Integrating at z={0}".format(curr_z))
             step_start = time()
-            
+
             # --------------------------------------------
             # Solve for hadronic interactions
             # --------------------------------------------
@@ -497,16 +579,16 @@ class UHECRPropagationSolver(object):
                 print 'Solving hadr losses at t =', self.r.t
             self._update_jacobian(curr_z)
 
-            state += self.eqn_deriv(curr_z, state)*dz
+            state += self.eqn_deriv(curr_z, state) * dz
 
             # --------------------------------------------
-            # Apply the injection 
+            # Apply the injection
             # --------------------------------------------
             if not self.enable_injection_jacobian and not self.enable_partial_diff_jacobian:
                 if verbose:
                     print 'applying injection at t =', self.r.t
                 state += self.injection(dz, curr_z)
-            
+
             # --------------------------------------------
             # Apply the semi lagrangian
             # --------------------------------------------
@@ -514,7 +596,7 @@ class UHECRPropagationSolver(object):
                 if self.enable_adiabatic_losses or self.enable_pairprod_losses:
                     if verbose:
                         print 'applying semi lagrangian at t =', self.r.t
-                    state= self.semi_lagrangian(dz, curr_z, state)
+                    state = self.semi_lagrangian(dz, curr_z, state)
 
             # --------------------------------------------
             # Some last checks and resets
@@ -523,7 +605,7 @@ class UHECRPropagationSolver(object):
                 print 'break at z =', self.r.t
                 break
 
-            curr_z += dz 
+            curr_z += dz
 
         # self.r.integrate(self.final_z)
 
