@@ -19,7 +19,6 @@ class UHECRPropagationResult(object):
     def to_dict(self):
         dic = {}
         dic['egrid'] = self.egrid
-        dic['edim'] = self.egrid.size
         dic['state'] = self.state
         dic['known_spec'] = self.known_species
 
@@ -28,7 +27,7 @@ class UHECRPropagationResult(object):
     @classmethod
     def from_dict(cls, dic):
         egrid = dic['egrid']
-        edim = dic['edim']
+        edim = egrid.size
         state = dic['state']
         known_spec = dic['known_spec']
 
@@ -77,6 +76,17 @@ class UHECRPropagationResult(object):
                                                spec.uidx()] / spec.A
 
     def _check_id_grid(self, nco_ids, egrid):
+        # Take egrid from first id ( doesn't cover the range for iron for example)
+        # create a common egrid or used supplied one
+        if egrid is None:
+            max_mass = max([s.A for s in self.spec_man.species_refs])
+            emin_log, emax_log, nbins = list(config["cosmic_ray_grid"])
+            emax_log = np.log10(max_mass * 10**emax_log)
+            nbins *= 4
+            com_egrid = EnergyGrid(emin_log, emax_log, nbins).grid
+        else:
+            com_egrid = egrid
+
         if type(nco_ids) is list:
             pass
         elif nco_ids == 'CR':
@@ -93,23 +103,11 @@ class UHECRPropagationResult(object):
                 s for s in self.known_species if vmin <= select(s) <= vmax
             ]
 
-        # Take egrid from first id ( doesn't cover the range for iron for example)
-        # create a common egrid or used supplied one
-        if egrid is None:
-            max_mass = max([s.A for s in self.spec_man.species_refs])
-            emin_log, emax_log, nbins = list(config["cosmic_ray_grid"])
-            emax_log = np.log10(max_mass * 10**emax_log)
-            nbins *= 4
-            com_egrid = EnergyGrid(emin_log, emax_log, nbins).grid
-        else:
-            com_egrid = egrid
-
         return nco_ids, com_egrid
 
     def get_solution_group(self, nco_ids, epow=3, egrid=None):
         """Return the summed spectrum (in total energy) for all elements in the range"""
         nco_ids, com_egrid = self._check_id_grid(nco_ids, egrid)
-
         spectra = np.zeros((len(nco_ids), com_egrid.size))
         for idx, pid in enumerate(nco_ids):
             curr_egrid, curr_spec = self.get_solution_scale(pid, epow=epow)
