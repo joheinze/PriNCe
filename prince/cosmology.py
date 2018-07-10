@@ -43,10 +43,23 @@ def star_formation_rate(z, z_inhomogeneous=0.):
         return 0.
     elif z <= 0.97:
         return (1. + z)**3.44
-    elif z > 0.97 and z <= 4.48:
+    elif 0.97 < z <= 4.48:
         return 10.**1.09 * (1. + z)**-0.26
     else:
         return 10.**6.66 * (1. + z)**-7.8
+
+def grb_rate(z, z_inhomogeneous=0.):
+    return (1+z)**1.4 * star_formation_rate(z,z_inhomogeneous=z_inhomogeneous)
+
+def agn_rate(z, z_inhomogeneous=0.):
+    if z < z_inhomogeneous:
+        return 0.
+    elif z <= 1.7:
+        return (1+z)**5
+    elif 1.7 < z <= 2.7:
+        return (1+1.7)**5
+    else:
+        return (1+1.7)**5 * 10**(2.7-z)
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt

@@ -55,6 +55,8 @@ def get_AZN(nco_id):
     if nco_id >= 100:
         Z = nco_id % 100
         A = (nco_id - Z) / 100
+    else:
+        Z,A = 0,0
 
     return A, Z, A - Z
 

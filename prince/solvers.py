@@ -108,6 +108,7 @@ class UHECRPropagationResult(object):
     def get_solution_group(self, nco_ids, epow=3, egrid=None):
         """Return the summed spectrum (in total energy) for all elements in the range"""
         nco_ids, com_egrid = self._check_id_grid(nco_ids, egrid)
+
         spectra = np.zeros((len(nco_ids), com_egrid.size))
         for idx, pid in enumerate(nco_ids):
             curr_egrid, curr_spec = self.get_solution_scale(pid, epow=epow)
@@ -431,7 +432,8 @@ class UHECRPropagationSolver(object):
         ode_params = config["ode_params"]
         ode_params['ndim'] = self.dim_states
         ode_params['nnz'] = self.jacobian.nnz
-
+        # ode_params['tcrit'] = 0.
+        # ode_params['max_step'] = 1e-3
         # info(1,'Setting solver with jacobian')
         # self.r = ode(self.eqn_deriv, self.eqn_jac).set_integrator(**ode_params)
         info(1, 'Setting solver without jacobian')
@@ -445,6 +447,7 @@ class UHECRPropagationSolver(object):
               progressbar=False):
         from time import time
 
+        reset_counter = 0
         stepcount = 0
         dz = -1 * dz
         start_time = time()
@@ -484,8 +487,17 @@ class UHECRPropagationSolver(object):
                 if verbose:
                     print 'applying injection at t =', self.r.t
                 if full_reset:
-                    self.r.set_initial_value(
-                        self.r.y + self.injection(dz, self.r.t), self.r.t)
+                    if type(full_reset) is int and reset_counter == full_reset:
+                        self.r.set_initial_value(
+                            self.r.y + self.injection(dz, self.r.t), self.r.t)
+                        reset_counter = 0
+                        print 'resetting solver inj'
+                    if type(full_reset) is bool:
+                        self.r.set_initial_value(
+                            self.r.y + self.injection(dz, self.r.t), self.r.t)
+                    else:
+                        self.r._integrator.call_args[3] = 20
+                        self.r._y += self.injection(dz, self.r.t)
                 else:
                     self.r._integrator.call_args[3] = 20
                     self.r._y += self.injection(dz, self.r.t)
@@ -498,9 +510,21 @@ class UHECRPropagationSolver(object):
                     if verbose:
                         print 'applying semi lagrangian at t =', self.r.t
                     if full_reset:
-                        self.r.set_initial_value(
-                            self.semi_lagrangian(dz, self.r.t, self.r.y),
-                            self.r.t)
+                        if type(full_reset) is int and reset_counter == full_reset:
+                            self.r.set_initial_value(
+                                self.semi_lagrangian(dz, self.r.t, self.r.y),
+                                self.r.t)
+                            print reset_counter
+                            reset_counter = 0
+                            print 'resetting solver lag'
+                        if type(full_reset) is bool:
+                            self.r.set_initial_value(
+                                self.semi_lagrangian(dz, self.r.t, self.r.y),
+                                self.r.t)
+                        else:
+                            self.r._integrator.call_args[3] = 20
+                            self.r._y = self.semi_lagrangian(
+                                dz, self.r.t, self.r.y)
                     else:
                         self.r._integrator.call_args[3] = 20
                         self.r._y = self.semi_lagrangian(
@@ -514,6 +538,7 @@ class UHECRPropagationSolver(object):
                 break
 
             stepcount += 1
+            reset_counter += 1
             if pbar is not None:
                 pbar.update()
         self.r.integrate(self.final_z)
@@ -553,8 +578,7 @@ class UHECRPropagationSolver(object):
     def solve_euler(self,
                     dz=1e-3,
                     verbose=True,
-                    extended_output=False,
-                    full_reset=False):
+                    extended_output=False):
         from time import time
 
         # stepcount = 0

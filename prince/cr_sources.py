@@ -18,7 +18,8 @@ class CosmicRaySource(object):
         self.spec_man = prince_run.spec_man
 
         self.params = params
-        self.ncoids = ncoids if ncoids is not None else params.keys()
+        self.ncoids = np.array(ncoids if ncoids is not None else params.keys())
+        self.ncoids.sort()
         self.source_evo_m = m
         self._compute_injection_grid()
 
@@ -34,6 +35,24 @@ class CosmicRaySource(object):
             self.injection_grid[inj_spec.lidx():inj_spec.uidx(
             )] = self.injection_spectrum(pid, self.cr_grid, params)
 
+    def integrated_lum(self, Emin=6e9):
+        integrals = np.zeros_like(self.ncoids,dtype=np.float)
+        integrals2 = np.zeros_like(self.ncoids,dtype=np.float)
+
+        from scipy.integrate import trapz
+        for idx, pid in enumerate(self.ncoids):
+            s = self.spec_man.ncoid2sref[pid]
+            A = s.A
+
+            egrid = self.cr_grid * A
+            injec = self.injection_grid[s.slice] / A
+
+            sl = np.argwhere(egrid > Emin)
+            sl = sl.flatten()
+            integrals[idx] = trapz(injec[sl], egrid[sl])
+            integrals2[idx] = trapz(injec[sl] * egrid[sl], egrid[sl])
+        return integrals, integrals2
+
     def injection_rate(self, z):
         """
         return the injection rate on the given energy grid
@@ -46,9 +65,7 @@ class CosmicRaySource(object):
         """
         if pid in self.params:
             params = self.params[pid]
-        else:
-            params = params
-        return self.norm * self.evolution(z) * self.injection_spectrum(pid, energy,params)
+        return self.norm * self.evolution(z) * self.injection_spectrum(pid, energy, params)
 
     @abstractmethod
     def injection_spectrum(self, pid, energy, params):
@@ -59,11 +76,38 @@ class CosmicRaySource(object):
 
         By providing an m parameter, evolution can be scaled.
         """
-        from cosmology import star_formation_rate
+        from cosmology import star_formation_rate, grb_rate, agn_rate
+
+        # TODO: Current workarround, as the integrator might try 
+        # negative z to estimate the source evolution
+        if z < -1.:
+            raise Exception('Source evolution not defined for negative z = {:}'.format(z))
+
         if self.source_evo_m == 'flat':
             return 1.
-        else:
+        elif type(self.source_evo_m) is float:
             return (1 + z)**self.source_evo_m * star_formation_rate(z)
+        elif type(self.source_evo_m) is tuple:
+            if self.source_evo_m[0] == 'SFR':
+                return (1 + z)**self.source_evo_m[1] * star_formation_rate(z)
+            elif self.source_evo_m[0] == 'GRB':
+                return (1 + z)**self.source_evo_m[1] * grb_rate(z)
+            elif self.source_evo_m[0] == 'AGN':
+                return (1 + z)**self.source_evo_m[1] * agn_rate(z)
+            elif self.source_evo_m[0] == 'simple':
+                return (1 + z)**self.source_evo_m[1]
+            elif self.source_evo_m[0] == 'simple_flat':
+                if z <= 1:
+                    return (1 + z)**self.source_evo_m[1]
+                else:
+                    return (1 + 1)**self.source_evo_m[1]
+            elif self.source_evo_m[0] == 'simple_SFR':
+                if z <= 1:
+                    return (1 + z)**self.source_evo_m[1]
+                else:
+                    return (1 + 1)**3.6 * (1 + z)**(self.source_evo_m[1] - 3.6)
+        else:
+            raise Exception('Unknown source evo type: {:}'.format(self.source_evo_m))
 
 class SimpleSource(CosmicRaySource):
 
@@ -93,6 +137,23 @@ class AugerFitSource(CosmicRaySource):
             e_k < emax, 1., np.exp(1 - e_k / emax))
 
         return result
+
+class RigidityFlexSource(CosmicRaySource):
+
+    def injection_spectrum(self, pid, energy, params):
+        """
+        power-law injection spectrum with spectral index and maximal energy cutoff
+        """
+        spectral_index, rcut, alpha, relnorm = params
+        inj_spec = self.spec_man.ncoid2sref[pid]
+        A = float(inj_spec.A)
+        emax = rcut * inj_spec.Z**alpha
+        e_k = A * energy
+        result = relnorm * A * (e_k/1e9)**(-spectral_index) * np.where(
+            e_k < emax, 1., np.exp(1 - e_k / emax))
+
+        return result
+
 
 class RigdityCutoffSource(CosmicRaySource):
 
