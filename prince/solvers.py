@@ -168,9 +168,12 @@ class UHECRPropagationSolver(object):
             enable_photohad_losses=True,
             enable_injection_jacobian=True,
             enable_partial_diff_jacobian=False,
+            ode_newparams=None,
+            z_offset=0.,
     ):
-        self.initial_z = initial_z
-        self.final_z = final_z
+        self.initial_z = initial_z + z_offset
+        self.final_z = final_z + z_offset
+        self.z_offset = z_offset
 
         self.current_z_rates = None
         self.recomp_z_threshold = config["update_rates_z_threshold"]
@@ -202,7 +205,7 @@ class UHECRPropagationSolver(object):
 
         self.list_of_sources = []
 
-        self._init_solver()
+        self._init_solver(ode_newparams=ode_newparams)
         self.diff_operator = DifferentialOperator(prince_run.cr_grid,
                                                   prince_run.spec_man.nspec)
         self.semi_lag_solver = SemiLagrangianSolver(prince_run.cr_grid)
@@ -260,6 +263,8 @@ class UHECRPropagationSolver(object):
         self.last_hadr_jac = None
 
     def semi_lagrangian(self, delta_z, z, state):
+        z = z - self.z_offset
+
         # if no continuous losses are enables, just return the state.
         if not self.enable_adiabatic_losses and not self.enable_pairprod_losses:
             return state
@@ -374,7 +379,20 @@ class UHECRPropagationSolver(object):
         return state
 
     def eqn_deriv(self, z, state, *args):
+        z = z - self.z_offset
+
+        # if self.ncallsf < 10:
+        # if self.zcallsf != z or self.ncallsf < 10:
+        if self.zcallsf != z:
+            print ' deriv called at z = ', z
+        #     # print 'statevector:', state
+        #     # print state.min(), state.max()
+
+            self.zcallsf = z
+
         self.ncallsf += 1
+
+
         # Update rates/cross sections only if solver requests to do so
         if abs(z - self.current_z_rates) > self.recomp_z_threshold:
             self._update_jacobian(z)
@@ -407,6 +425,7 @@ class UHECRPropagationSolver(object):
 
     def eqn_jac(self, z, state, *jac_args):
         self.ncallsj += 1
+        from scipy.sparse import dia_matrix
         if self.last_hadr_jac is None:
             if self.enable_photohad_losses:
                 self.last_hadr_jac = self.had_int_rates.get_dense_hadr_jacobian(
@@ -415,10 +434,20 @@ class UHECRPropagationSolver(object):
                 self.last_hadr_jac = self.had_int_rates.get_dense_hadr_jacobian(
                     z, self.dldz(z))
                 self.last_hadr_jac *= 0.
+            # if self.enable_partial_diff_jacobian:
+            #     conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
+            #     if self.enable_adiabatic_losses:
+            #         conloss += self.adia_loss_rates_grid.loss_vector(z)
+            #     if self.enable_pairprod_losses:
+            #         conloss += self.pair_loss_rates_grid.loss_vector(z)
+            #     partial_deriv = self.dldz(z) * self.diff_operator.operator.dot(
+            #         dia_matrix((conloss,0),shape=(conloss.shape[0],conloss.shape[0]))
+            #         )
+            #     self.last_hadr_jac += partial_deriv
 
         return self.last_hadr_jac
 
-    def _init_solver(self):
+    def _init_solver(self,ode_newparams=None):
         from scipy.integrate import ode
         from scipy.sparse import csc_matrix
 
@@ -428,15 +457,23 @@ class UHECRPropagationSolver(object):
         # Reset counters
         self.ncallsf = 0
         self.ncallsj = 0
+        self.zcallsf = 0.
         # Expand solver parameters with run-dependent options
         ode_params = config["ode_params"]
         ode_params['ndim'] = self.dim_states
         ode_params['nnz'] = self.jacobian.nnz
+        ode_params['tcrit'] = None
+        ode_params['atol'] = 1e68
         # ode_params['tcrit'] = 0.
         # ode_params['max_step'] = 1e-3
         # info(1,'Setting solver with jacobian')
         # self.r = ode(self.eqn_deriv, self.eqn_jac).set_integrator(**ode_params)
         info(1, 'Setting solver without jacobian')
+        if ode_newparams is not None:
+            ode_params.update(ode_newparams)
+        # ode_params['min_step'] = 0. #1e-4
+        # ode_params['max_step'] = 0. #5e-4
+        print ode_params
         self.r = ode(self.eqn_deriv).set_integrator(**ode_params)
 
     def solve(self,
@@ -451,20 +488,26 @@ class UHECRPropagationSolver(object):
         stepcount = 0
         dz = -1 * dz
         start_time = time()
-        self.r.set_initial_value(np.zeros(self.dim_states), self.r.t)
+        # print self.injection(dz, self.initial_z).shape, self.injection(dz, self.initial_z).max()
+        # print self.injection(dz, self.initial_z)
+        initial_state = np.zeros(self.dim_states)
+        # initial_state = self.injection(dz, self.initial_z)
+        # initial_state = np.ones(self.dim_states) * 1e-40
+        self.r.set_initial_value(initial_state, self.r.t)
 
         if progressbar:
             if progressbar == 'notebook':
                 from tqdm import tqdm_notebook as tqdm
             else:
                 from tqdm import tqdm
-            pbar = tqdm(total=-1 * int(self.r.t / dz))
+            pbar = tqdm(total=-1 * int((self.r.t - self.z_offset) / dz))
             pbar.update()
         else:
             pbar = None
 
         info(2, 'Starting integration.')
         while self.r.successful() and (self.r.t + dz) > self.final_z:
+            # print '------ at', self.r.t, '------'
             if verbose:
                 info(3, "Integrating at z = {0}".format(self.r.t))
             step_start = time()
@@ -474,22 +517,27 @@ class UHECRPropagationSolver(object):
             if verbose:
                 print 'Solving hadr losses at t =', self.r.t
 
-            self.r.integrate(self.r.t + dz)
+            self.r.integrate(self.r.t + dz,relax=False,step=False)
             if verbose:
                 self.print_step_info(
                     step_start, extended_output=extended_output)
+            # print '------ numc', self.ncallsf, '------'
+            # print ' '
             self.ncallsf = 0
             self.ncallsj = 0
             # --------------------------------------------
             # Apply the injection
             # --------------------------------------------
             if not self.enable_injection_jacobian and not self.enable_partial_diff_jacobian:
+                print 'injection incoming'
                 if verbose:
                     print 'applying injection at t =', self.r.t
                 if full_reset:
                     if type(full_reset) is int and reset_counter == full_reset:
-                        self.r.set_initial_value(
-                            self.r.y + self.injection(dz, self.r.t), self.r.t)
+                        # self.r.set_initial_value(
+                        #     self.r.y + self.injection(dz, self.r.t), self.r.t)
+                        self.r._integrator.call_args[3] = 1
+                        self.r._y += self.injection(dz, self.r.t)
                         reset_counter = 0
                         print 'resetting solver inj'
                     if type(full_reset) is bool:
@@ -506,6 +554,7 @@ class UHECRPropagationSolver(object):
             # Apply the semi lagrangian
             # --------------------------------------------
             if not self.enable_partial_diff_jacobian:
+                print 'semi lag incoming'
                 if self.enable_adiabatic_losses or self.enable_pairprod_losses:
                     if verbose:
                         print 'applying semi lagrangian at t =', self.r.t
@@ -529,13 +578,24 @@ class UHECRPropagationSolver(object):
                         self.r._integrator.call_args[3] = 20
                         self.r._y = self.semi_lagrangian(
                             dz, self.r.t, self.r.y)
-
             # --------------------------------------------
             # Some last checks and resets
             # --------------------------------------------
             if self.r.t < -1 * dz:
                 print 'break at z =', self.r.t
                 break
+
+            print 'time', self.r.t, self.r._integrator.rwork[12]
+            print 'last_step', self.r._integrator.rwork[10]
+            print 'next_step', self.r._integrator.rwork[11]
+            print 'tolerance_scale', self.r._integrator.rwork[13]
+            # print 'nsteps', self.r._integrator.iwork[10]
+            # print 'nderiv', self.r._integrator.iwork[11]
+            print 'last_order', self.r._integrator.iwork[13]
+            print 'next_order', self.r._integrator.iwork[13]
+            print '---'*20
+            if verbose:
+                print '---'*20
 
             stepcount += 1
             reset_counter += 1
@@ -634,3 +694,127 @@ class UHECRPropagationSolver(object):
         end_time = time()
         info(2, 'Integration completed in {0} s'.format(end_time - start_time))
         self.state = state
+
+    def solve_bdf(self,
+              dz=1e-3,
+              verbose=True,
+              extended_output=False,
+              full_reset=False,
+              progressbar=False):
+        from time import time
+
+        reset_counter = 0
+        stepcount = 0
+        dz = -1 * dz
+        start_time = time()
+        # print self.injection(dz, self.initial_z).shape, self.injection(dz, self.initial_z).max()
+        # print self.injection(dz, self.initial_z)
+        initial_state = np.zeros(self.dim_states)
+        # initial_state = self.injection(dz, self.initial_z)
+        # initial_state = np.ones(self.dim_states) * 1e-40
+
+        from scipy.integrate import BDF, Radau
+        self.r_bdf = BDF(self.eqn_deriv,
+                         self.initial_z,
+                         initial_state,
+                         self.final_z,
+                         max_step = -1 * dz,
+                        #  max_step = np.inf,
+                         atol = 1e20,
+                         rtol = 1e-10,
+                        #  jac = self.eqn_jac,
+                         jac_sparsity = self.eqn_jac(self.initial_z, initial_state),
+                         vectorized = False)
+
+
+
+        if progressbar:
+            if progressbar == 'notebook':
+                from tqdm import tqdm_notebook as tqdm
+            else:
+                from tqdm import tqdm
+            pbar = tqdm(total=-(self.initial_z - self.final_z)/dz)
+            pbar.update()
+        else:
+            pbar = None
+
+        info(2, 'Starting integration.')
+        while self.r_bdf.status == 'running':
+            # print '------ at', self.r.t, '------'
+            if verbose:
+                info(3, "Integrating at z = {0}".format(self.r.t))
+            step_start = time()
+            # --------------------------------------------
+            # Solve for hadronic interactions
+            # --------------------------------------------
+            if verbose:
+                print 'Solving hadr losses at t =', self.r_bdf.t
+
+            self.r_bdf.step()
+
+            print 'step finished at', self.r_bdf.t
+            # self.r.integrate(self.r.t + dz,relax=False,step=False)
+            # if verbose:
+            #     self.print_step_info(
+            #         step_start, extended_output=extended_output)
+            # print '------ numc', self.ncallsf, '------'
+            # print ' '
+            # self.ncallsf = 0
+            # self.ncallsj = 0
+            # --------------------------------------------
+            # Apply the semi lagrangian
+            # --------------------------------------------
+            # if not self.enable_partial_diff_jacobian:
+            #     if self.enable_adiabatic_losses or self.enable_pairprod_losses:
+            #         if verbose:
+            #             print 'applying semi lagrangian at t =', self.r.t
+            #         if full_reset:
+            #             if type(full_reset) is int and reset_counter == full_reset:
+            #                 self.r.set_initial_value(
+            #                     self.semi_lagrangian(dz, self.r.t, self.r.y),
+            #                     self.r.t)
+            #                 print reset_counter
+            #                 reset_counter = 0
+            #                 print 'resetting solver lag'
+            #             if type(full_reset) is bool:
+            #                 self.r.set_initial_value(
+            #                     self.semi_lagrangian(dz, self.r.t, self.r.y),
+            #                     self.r.t)
+            #             else:
+            #                 self.r._integrator.call_args[3] = 20
+            #                 self.r._y = self.semi_lagrangian(
+            #                     dz, self.r.t, self.r.y)
+            #         else:
+            #             self.r._integrator.call_args[3] = 20
+            #             self.r._y = self.semi_lagrangian(
+            #                 dz, self.r.t, self.r.y)
+
+            # if self.enable_adiabatic_losses or self.enable_pairprod_losses:
+            #     print 'applying semi lagrangian at t =', self.r.t
+            #     print self.r_bdf.step_size
+            #     self.r_bdf.y = self.semi_lagrangian(
+            #         self.r_bdf.step_size, self.r_bdf.t, self.r_bdf.y)
+            # --------------------------------------------
+            # Some last checks and resets
+            # --------------------------------------------
+            if verbose:
+                print '---'*20
+
+            stepcount += 1
+            reset_counter += 1
+            if pbar is not None:
+                pbar.update()
+
+        print self.r_bdf.status
+        # self.r.integrate(self.final_z)
+        # if pbar is not None:
+        #     pbar.update()
+        # if pbar is not None:
+        #     pbar.close()
+        # if not self.r.successful():
+        #     raise Exception(
+        #         'Integration failed. Change integrator setup and retry.')
+
+        self.state = self.r_bdf.y
+        end_time = time()
+        info(2, 'Integration completed in {0} s'.format(end_time - start_time))
