@@ -1,6 +1,7 @@
 """The module contains everything to handle cross section interfaces."""
 
 import numpy as np
+from scipy.integrate import trapz
 
 from prince.util import info
 from prince_config import config, spec_data
@@ -199,12 +200,12 @@ def get_decay_matrix_bin_average(mo, da, x_lower, x_upper):
     # TODO: The following beta decay to neutrino distr need to be averaged analyticaly
     # beta-
     elif mo > 99 and da == 11:
-        info(10, 'nu_e from beta- decay', mo, mo - 1, da)
-        return nu_from_beta_decay(x_grid, mo, mo - 1)
+        info(10, 'nu_e from beta+ decay', mo, mo + 1, da)
+        return nu_from_beta_decay(x_grid, mo, mo + 1)
     # beta+
     elif mo > 99 and da == 12:
-        info(10, 'nubar_e from beta+ decay', mo, mo + 1, da)
-        return nu_from_beta_decay(x_grid, mo, mo + 1)
+        info(10, 'nubar_e from beta- decay', mo, mo - 1, da)
+        return nu_from_beta_decay(x_grid, mo, mo - 1)
     # neutron
     elif mo > 99 and 99 < da < 200:
         info(10, 'beta decay boost conservation', mo, da)
@@ -415,6 +416,75 @@ def boost_conservation_avg(x_lower, x_upper):
     dist[cond] = 1. / bins_width
     return dist
 
+
+def nu_from_beta_decay_new(x_grid, mother, daughter, Gamma=200, angle=None):
+    """
+    Energy distribution of a neutrinos from beta-decays of mother to daughter
+    The res frame distrution is boosted to the observers frame and then angular averaging is done numerically
+
+    Args:
+      x (float): energy fraction transferred to the secondary
+      mother (int): id of mother
+      daughter (int): id of daughter
+
+      Gamma (float): Lorentz factor of the parent particle, default: 200
+      For large Gamma this should not play a role, as the decay is scale invariant
+    Returns:
+      float: probability density at x
+    """
+    info(10, 'Calculating neutrino energy from beta decay', mother, daughter)
+
+    mass_el = spec_data[20]['mass']
+    mass_mo = spec_data[mother]['mass']
+    mass_da = spec_data[daughter]['mass']
+
+    Z_mo = spec_data[mother]['charge'] 
+    Z_da = spec_data[daughter]['charge']
+
+
+    if mother == 100 and daughter == 101:
+        # for this channel the masses are already nucleon masses
+        qval = mass_mo - mass_da - mass_el
+    elif Z_da == Z_mo + 1: # beta+ decay
+        print 'beta +'
+        qval = mass_mo - mass_da - 2 * mass_el
+    elif Z_da == Z_mo - 1: # beta- decay
+        print 'beta -'
+        qval = mass_mo - mass_da
+    else:
+        raise Exception('Not an allowed beta decay channel: {:} -> {:}'.format(mother, daughter))
+
+    # substitute this to the energy grid
+    E0 = qval + mass_el
+    # print 'Qval',qval,'E0',E0
+    Emo = Gamma * mass_mo
+    E = x_grid * Emo
+
+    if angle is None:
+        ctheta = np.linspace(-1,1,10000)
+    else:
+        ctheta = angle
+
+    E_mesh, ctheta_mesh = np.meshgrid(E,ctheta,indexing='ij')
+
+    boost = Gamma * (1 - ctheta_mesh)
+
+    Emax = E0 * boost
+    res = E_mesh**2 / boost**5 * (Emax - E_mesh) * np.sqrt((E_mesh - Emax)**2 - boost**2 * mass_el**2)
+    res[E_mesh > Emax] = 0.
+    res = np.nan_to_num(res)
+
+    if angle is None:
+        # now average over angle
+        res = trapz(res,x=ctheta,axis=1)
+        res = res / trapz(res,x=x_grid)
+    else:
+        res = res[:,0]
+        res = res / trapz(res,x=x_grid)
+
+    return res
+
+
 def nu_from_beta_decay(x_grid, mother, daughter):
     """
     Energy distribution of a neutrinos from beta-decays of mother to daughter
@@ -433,9 +503,22 @@ def nu_from_beta_decay(x_grid, mother, daughter):
     mass_mo = spec_data[mother]['mass']
     mass_da = spec_data[daughter]['mass']
 
-    # this is different for beta+ emission, atleast in NeuCosmA.nco_decay.c, l.126  (JH: really? why?)
-    qval = mass_mo - mass_da - 2 * mass_el
+    Z_mo = spec_data[mother]['charge'] 
+    Z_da = spec_data[daughter]['charge']
+
+
+    if mother == 100 and daughter == 101:
+        # for this channel the masses are already nucleon masses
+        qval = mass_mo - mass_da - mass_el
+    elif Z_da == Z_mo + 1: # beta+ decay
+        qval = mass_mo - mass_da - 2 * mass_el
+    elif Z_da == Z_mo - 1: # beta- decay
+        qval = mass_mo - mass_da
+    else:
+        raise Exception('Not an allowed beta decay channel: {:} -> {:}'.format(mother, daughter))
+
     E0 = qval + mass_el
+    print 'Qval',qval,'E0',E0
     ye = mass_el / E0
     y_grid = x_grid * mass_mo / 2 / E0
 
@@ -444,6 +527,7 @@ def nu_from_beta_decay(x_grid, mother, daughter):
                        15 * ye**4 * np.log(ye / (1 - np.sqrt(1 - ye**2))))
 
     cond = y_grid < 1 - ye
+    print (1 - ye) * 2 * E0 /mass_mo
     yshort = y_grid[cond]
 
     result = np.zeros(y_grid.shape)

@@ -211,7 +211,6 @@ class UHECRPropagationSolver(object):
         # Reset counters
         self.ncallsf = 0
         self.ncallsj = 0
-        self.zcallsf = 0
 
     @property
     def known_species(self):
@@ -373,14 +372,30 @@ class UHECRPropagationSolver(object):
     def eqn_deriv(self, z, state, *args):
         z = z - self.z_offset
 
-        # if self.ncallsf < 10:
-        # if self.zcallsf != z or self.ncallsf < 10:
-        # if self.zcallsf != z:
-        #     print ' deriv called at z = ', z
-        #     # print 'statevector:', state
-        #     # print state.min(), state.max()
+        self.ncallsf += 1
+        
+        # Update rates/cross sections only if solver requests to do so
+        if abs(z - self.current_z_rates) > self.recomp_z_threshold:
+            self._update_jacobian(z)
+            self.current_z_rates = z
+        
+        r = self.jacobian.dot(state)
+        if self.enable_injection_jacobian:
+            r += self.injection(1., z)
+        if self.enable_partial_diff_jacobian:
+            conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
+            if self.enable_adiabatic_losses:
+                conloss += self.adia_loss_rates_grid.loss_vector(z)
+            if self.enable_pairprod_losses:
+                conloss += self.pair_loss_rates_grid.loss_vector(z)
+            partial_deriv = self.dldz(z) * self.diff_operator.operator.dot(
+                conloss * state)
+            r += partial_deriv
 
-            # self.zcallsf = z
+        return r
+
+    def eqn_deriv_old(self, z, state, *args):
+        z = z - self.z_offset
 
         self.ncallsf += 1
 
@@ -416,6 +431,7 @@ class UHECRPropagationSolver(object):
 
     def eqn_jac(self, z, state, *jac_args):
         self.ncallsj += 1
+
         from scipy.sparse import dia_matrix
         if self.last_hadr_jac is None:
             if self.enable_photohad_losses:
@@ -425,23 +441,14 @@ class UHECRPropagationSolver(object):
                 self.last_hadr_jac = self.had_int_rates.get_dense_hadr_jacobian(
                     z, self.dldz(z))
                 self.last_hadr_jac *= 0.
-            # if self.enable_partial_diff_jacobian:
-            #     conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
-            #     if self.enable_adiabatic_losses:
-            #         conloss += self.adia_loss_rates_grid.loss_vector(z)
-            #     if self.enable_pairprod_losses:
-            #         conloss += self.pair_loss_rates_grid.loss_vector(z)
-            #     partial_deriv = self.dldz(z) * self.diff_operator.operator.dot(
-            #         dia_matrix((conloss,0),shape=(conloss.shape[0],conloss.shape[0]))
-            #         )
-            #     self.last_hadr_jac += partial_deriv
 
         return self.last_hadr_jac
 
 class UHECRPropagationSolverLSODES(UHECRPropagationSolver):
     def __init__(*args,**kwargs):
         ode_newparams = kwargs.pop('ode_newparams')
-        UHECRPropagationSolver.__init__(*args,**kwargs)
+        super(UHECRPropagationSolverLSODES, self).__init__(*args,**kwargs)
+        # UHECRPropagationSolver.__init__(self,*args,**kwargs)
         self._init_solver(ode_newparams=ode_newparams)
 
 
@@ -456,7 +463,6 @@ class UHECRPropagationSolverLSODES(UHECRPropagationSolver):
         # Reset counters
         self.ncallsf = 0
         self.ncallsj = 0
-        self.zcallsf = 0
 
         # Expand solver parameters with run-dependent options
         ode_params = config["ode_params"]
@@ -492,11 +498,8 @@ class UHECRPropagationSolverLSODES(UHECRPropagationSolver):
         stepcount = 0
         dz = -1 * dz
         start_time = time()
-        # print self.injection(dz, self.initial_z).shape, self.injection(dz, self.initial_z).max()
-        # print self.injection(dz, self.initial_z)
+
         initial_state = np.zeros(self.dim_states)
-        # initial_state = self.injection(dz, self.initial_z)
-        # initial_state = np.ones(self.dim_states) * 1e-40
         self.r.set_initial_value(initial_state, self.r.t)
 
         if progressbar:
@@ -641,7 +644,8 @@ class UHECRPropagationSolverLSODES(UHECRPropagationSolver):
 
 class UHECRPropagationSolverEULER(UHECRPropagationSolver):
     def __init__(*args,**kwargs):
-        UHECRPropagationSolver.__init__(*args,**kwargs)
+        super(UHECRPropagationSolverEULER, self).__init__(*args,**kwargs)
+        # UHECRPropagationSolver.__init__(self,*args,**kwargs)
 
     def solve(self,
                     dz=1e-3,
@@ -704,8 +708,9 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
         self.state = state
 
 class UHECRPropagationSolverBDF(UHECRPropagationSolver):
-    def __init__(*args,**kwargs):
-        UHECRPropagationSolver.__init__(*args,**kwargs)
+    def __init__(self,*args,**kwargs):
+        super(UHECRPropagationSolverBDF, self).__init__(*args,**kwargs)
+        # UHECRPropagationSolver.__init__(self,*args,**kwargs)
 
     def _init_solver(self, dz):
         initial_state = np.zeros(self.dim_states)
@@ -713,6 +718,9 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
         self._update_jacobian(self.initial_z)
         self.current_z_rates = self.initial_z
 
+        # find the maximum injection and reduce the system by this
+        self.red_idx = np.nonzero(self.injection(1.,0.))[0].max()
+        
         from scipy.integrate import BDF
         self.r = BDF(self.eqn_deriv,
                          self.initial_z,
@@ -738,8 +746,9 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
         dz = -1 * dz
         start_time = time()
 
-        
+        info(2, 'Setting up Solver')
         self._init_solver(dz)
+        info(2, 'Solver initialized in {0} s'.format(time() - start_time))
 
         if progressbar:
             if progressbar == 'notebook':

@@ -141,7 +141,8 @@ config = {
         'name': 'lsodes',
         'method': 'bdf',
         'rtol': 1e-6,
-        # 'atol': 1e5,
+        'atol': 1e68,
+        'tcrit': None,
         # 'max_order_s': 2,
         # 'with_jacobian': True
     },
