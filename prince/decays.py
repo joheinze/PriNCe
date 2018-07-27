@@ -198,14 +198,15 @@ def get_decay_matrix_bin_average(mo, da, x_lower, x_upper):
     # neutrinos from beta decays
     # --------------------------------
     # TODO: The following beta decay to neutrino distr need to be averaged analyticaly
+    # TODO: Also the angular averaging is done numerically still
     # beta-
     elif mo > 99 and da == 11:
-        info(10, 'nu_e from beta+ decay', mo, mo + 1, da)
-        return nu_from_beta_decay(x_grid, mo, mo + 1)
+        info(10, 'nu_e from beta+ decay', mo, mo - 1, da)
+        return nu_from_beta_decay(x_grid, mo, mo - 1)
     # beta+
     elif mo > 99 and da == 12:
-        info(10, 'nubar_e from beta- decay', mo, mo - 1, da)
-        return nu_from_beta_decay(x_grid, mo, mo - 1)
+        info(10, 'nubar_e from beta- decay', mo, mo + 1, da)
+        return nu_from_beta_decay(x_grid, mo, mo + 1)
     # neutron
     elif mo > 99 and 99 < da < 200:
         info(10, 'beta decay boost conservation', mo, da)
@@ -417,7 +418,7 @@ def boost_conservation_avg(x_lower, x_upper):
     return dist
 
 
-def nu_from_beta_decay_new(x_grid, mother, daughter, Gamma=200, angle=None):
+def nu_from_beta_decay(x_grid, mother, daughter, Gamma=200, angle=None):
     """
     Energy distribution of a neutrinos from beta-decays of mother to daughter
     The res frame distrution is boosted to the observers frame and then angular averaging is done numerically
@@ -434,6 +435,14 @@ def nu_from_beta_decay_new(x_grid, mother, daughter, Gamma=200, angle=None):
     """
     info(10, 'Calculating neutrino energy from beta decay', mother, daughter)
 
+    # remember shape, but only calculate for last column, as x repeats in each column
+    shape = x_grid.shape
+    if len(shape) == 2:
+        x_grid = x_grid[:,-1]
+    
+    # shape = x_grid.shape
+    # x_grid = x_grid.flatten()
+
     mass_el = spec_data[20]['mass']
     mass_mo = spec_data[mother]['mass']
     mass_da = spec_data[daughter]['mass']
@@ -445,11 +454,9 @@ def nu_from_beta_decay_new(x_grid, mother, daughter, Gamma=200, angle=None):
     if mother == 100 and daughter == 101:
         # for this channel the masses are already nucleon masses
         qval = mass_mo - mass_da - mass_el
-    elif Z_da == Z_mo + 1: # beta+ decay
-        print 'beta +'
+    elif Z_da == Z_mo - 1: # beta+ decay
         qval = mass_mo - mass_da - 2 * mass_el
-    elif Z_da == Z_mo - 1: # beta- decay
-        print 'beta -'
+    elif Z_da == Z_mo + 1: # beta- decay
         qval = mass_mo - mass_da
     else:
         raise Exception('Not an allowed beta decay channel: {:} -> {:}'.format(mother, daughter))
@@ -461,12 +468,11 @@ def nu_from_beta_decay_new(x_grid, mother, daughter, Gamma=200, angle=None):
     E = x_grid * Emo
 
     if angle is None:
-        ctheta = np.linspace(-1,1,10000)
+        ctheta = np.linspace(-1,1,1000)
     else:
         ctheta = angle
 
     E_mesh, ctheta_mesh = np.meshgrid(E,ctheta,indexing='ij')
-
     boost = Gamma * (1 - ctheta_mesh)
 
     Emax = E0 * boost
@@ -482,10 +488,18 @@ def nu_from_beta_decay_new(x_grid, mother, daughter, Gamma=200, angle=None):
         res = res[:,0]
         res = res / trapz(res,x=x_grid)
 
+    # now fill this into diagonals of matrix
+    if len(shape) == 2:
+        #'filling matrix'
+        res_mat = np.zeros(shape)
+        for idx, val in enumerate(res[::-1]):
+            np.fill_diagonal(res_mat[:,idx:],val)
+        res = res_mat
+
     return res
 
 
-def nu_from_beta_decay(x_grid, mother, daughter):
+def nu_from_beta_decay_old(x_grid, mother, daughter):
     """
     Energy distribution of a neutrinos from beta-decays of mother to daughter
 

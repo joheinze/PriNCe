@@ -563,7 +563,7 @@ class CrossSectionBase(object):
         #       which has half the area of the actual first bin 
         corr_factor = 2 * self.xwidths[-1] / (self.xcenters[-1] - self.xcenters[-2])
         csec[-1, :] = cs / self.xwidths[-1] * corr_factor
-        info(0, 'Warning! Workaround to account for linear interpolation in x, factor 2 added!')
+        info(4, 'Warning! Workaround to account for linear interpolation in x, factor 2 added!')
         if isinstance(incl_cs, tuple):
             return egr, csec
         return csec

@@ -709,6 +709,10 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
 
 class UHECRPropagationSolverBDF(UHECRPropagationSolver):
     def __init__(self,*args,**kwargs):
+        if 'atol' in kwargs:
+            self.atol = kwargs.pop('atol')
+        else:
+            self.atol = 1e40
         super(UHECRPropagationSolverBDF, self).__init__(*args,**kwargs)
         # UHECRPropagationSolver.__init__(self,*args,**kwargs)
 
@@ -720,14 +724,14 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
 
         # find the maximum injection and reduce the system by this
         self.red_idx = np.nonzero(self.injection(1.,0.))[0].max()
-        
+
         from scipy.integrate import BDF
         self.r = BDF(self.eqn_deriv,
                          self.initial_z,
                          initial_state,
                          self.final_z,
                          max_step = np.abs(dz),
-                         atol = 1e20,
+                         atol = self.atol,
                          rtol = 1e-10,
                         #  jac = self.eqn_jac,
                          jac_sparsity = self.eqn_jac(self.initial_z, initial_state),
@@ -788,6 +792,10 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
         if verbose:
             print 'Integrator finished with t = {:}, last step was dt = {:}'.format(r.t,r.last_step)
 
-        self.state = self.r.y
+        # after each run we delete the solver to save memory
+        self.state = self.r.y.copy()
+        del self.r
+        # self.state = self.r.y
+
         end_time = time()
         info(2, 'Integration completed in {0} s'.format(end_time - start_time))
