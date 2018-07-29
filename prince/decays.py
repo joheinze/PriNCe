@@ -141,12 +141,21 @@ def get_decay_matrix_bin_average(mo, da, x_lower, x_upper):
     info(10, 'Generating decay redistribution for', mo, da)
     
     x_grid = (x_upper + x_lower) / 2
-    
+
+    # remember shape, but only calculate for last column, as x repeats in each column
+    from scipy.integrate import trapz
+    shape = x_grid.shape
+
+    if len(shape) == 2:
+        x_grid = x_grid[:,-1]
+        x_upper = x_upper[:,-1]
+        x_lower = x_lower[:,-1]
+
     # --------------------------------
     # pi+ to numu or pi- to nummubar
     # --------------------------------
     if mo in [2, 3] and da in [13, 14]:
-        return pion_to_numu_avg(x_lower,x_upper)
+        result = pion_to_numu_avg(x_lower,x_upper)
 
     # --------------------------------
     # pi+ to mu+ or pi- to mu-
@@ -155,13 +164,13 @@ def get_decay_matrix_bin_average(mo, da, x_lower, x_upper):
     elif mo in [2, 3] and da in [5, 6, 7, 8, 9, 10]:
         # (any helicity)
         if da in [7, 10]:
-            return pion_to_muon_avg(x_lower,x_upper)
+            result = pion_to_muon_avg(x_lower,x_upper)
         # left handed, hel = -1
         elif da in [5, 8]:
-            return pion_to_muon_avg(x_lower,x_upper) * prob_muon_hel(x_grid, -1.)
+            result = pion_to_muon_avg(x_lower,x_upper) * prob_muon_hel(x_grid, -1.)
         # right handed, hel = 1
         elif da in [6, 9]:
-            return pion_to_muon_avg(x_lower,x_upper) * prob_muon_hel(x_grid, 1.)
+            result = pion_to_muon_avg(x_lower,x_upper) * prob_muon_hel(x_grid, 1.)
         else:
             raise Exception(
                 'This should newer have happened, check if-statements above!')
@@ -183,16 +192,16 @@ def get_decay_matrix_bin_average(mo, da, x_lower, x_upper):
         hel = muon_hel[mo]
         # muon+ to electron neutrino
         if mo in [5, 6, 7] and da in [11]:
-            return muonplus_to_nue(x_grid, hel)
+            result = muonplus_to_nue(x_grid, hel)
         # muon+ to muon anti-neutrino
         elif mo in [5, 6, 7] and da in [14]:
-            return muonplus_to_numubar(x_grid, hel)
+            result = muonplus_to_numubar(x_grid, hel)
         # muon- to elec anti-neutrino
         elif mo in [8, 9, 10] and da in [12]:
-            return muonplus_to_nue(x_grid, -1 * hel)
+            result = muonplus_to_nue(x_grid, -1 * hel)
         # muon- to muon neutrino
         elif mo in [8, 9, 10] and da in [13]:
-            return muonplus_to_numubar(x_grid, -1 * hel)
+            result = muonplus_to_numubar(x_grid, -1 * hel)
 
     # --------------------------------
     # neutrinos from beta decays
@@ -202,22 +211,32 @@ def get_decay_matrix_bin_average(mo, da, x_lower, x_upper):
     # beta-
     elif mo > 99 and da == 11:
         info(10, 'nu_e from beta+ decay', mo, mo - 1, da)
-        return nu_from_beta_decay(x_grid, mo, mo - 1)
+        result = nu_from_beta_decay(x_grid, mo, mo - 1)
     # beta+
     elif mo > 99 and da == 12:
         info(10, 'nubar_e from beta- decay', mo, mo + 1, da)
-        return nu_from_beta_decay(x_grid, mo, mo + 1)
+        result = nu_from_beta_decay(x_grid, mo, mo + 1)
     # neutron
     elif mo > 99 and 99 < da < 200:
         info(10, 'beta decay boost conservation', mo, da)
-        return boost_conservation_avg(x_lower,x_upper)
+        result = boost_conservation_avg(x_lower,x_upper)
     else:
         info(
             5,
             'Called with unknown channel {:} to {:}, returning an empty redistribution'.
             format(mo, da))
         # no known channel, return zeros
-        return np.zeros(x_grid.shape)
+        result = np.zeros(x_grid.shape)
+
+    # now fill this into diagonals of matrix
+    if len(shape) == 2:
+        #'filling matrix'
+        res_mat = np.zeros(shape)
+        for idx, val in enumerate(result[::-1]):
+            np.fill_diagonal(res_mat[:,idx:],val)
+        result = res_mat
+
+    return result
 
 def pion_to_numu(x):
     """
@@ -435,14 +454,6 @@ def nu_from_beta_decay(x_grid, mother, daughter, Gamma=200, angle=None):
     """
     info(10, 'Calculating neutrino energy from beta decay', mother, daughter)
 
-    # remember shape, but only calculate for last column, as x repeats in each column
-    shape = x_grid.shape
-    if len(shape) == 2:
-        x_grid = x_grid[:,-1]
-    
-    # shape = x_grid.shape
-    # x_grid = x_grid.flatten()
-
     mass_el = spec_data[20]['mass']
     mass_mo = spec_data[mother]['mass']
     mass_da = spec_data[daughter]['mass']
@@ -487,14 +498,6 @@ def nu_from_beta_decay(x_grid, mother, daughter, Gamma=200, angle=None):
     else:
         res = res[:,0]
         res = res / trapz(res,x=x_grid)
-
-    # now fill this into diagonals of matrix
-    if len(shape) == 2:
-        #'filling matrix'
-        res_mat = np.zeros(shape)
-        for idx, val in enumerate(res[::-1]):
-            np.fill_diagonal(res_mat[:,idx:],val)
-        res = res_mat
 
     return res
 
