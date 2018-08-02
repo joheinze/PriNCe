@@ -72,8 +72,7 @@ class UHECRPropagationResult(object):
         """Returns the spectrum scaled back to total energy"""
         spec = self.spec_man.ncoid2sref[nco_id]
         egrid = spec.A * self.egrid
-        return egrid, egrid**epow * self.state[spec.lidx():
-                                               spec.uidx()] / spec.A
+        return egrid, egrid**epow * self.state[spec.lidx():spec.uidx()] / spec.A
 
     def _check_id_grid(self, nco_ids, egrid):
         # Take egrid from first id ( doesn't cover the range for iron for example)
@@ -145,8 +144,8 @@ class UHECRPropagationResult(object):
         lnA = np.array([np.log(get_AZN(el)[0]) for el in nco_ids])
         average = (
             lnA[:, np.newaxis] * spectra).sum(axis=0) / spectra.sum(axis=0)
-        variance = (lnA[:, np.newaxis]**2 * spectra
-                    ).sum(axis=0) / spectra.sum(axis=0) - average**2
+        variance = (lnA[:, np.newaxis]**2 *
+                    spectra).sum(axis=0) / spectra.sum(axis=0) - average**2
 
         return com_egrid, average, variance
 
@@ -357,8 +356,7 @@ class UHECRPropagationSolver(object):
                 conloss += self.pair_loss_rates_grid.loss_vector(z)
 
             state[:] = state + self.dldz(
-                z) * delta_z * self.diff_operator.operator.dot(
-                    conloss * state)
+                z) * delta_z * self.diff_operator.operator.dot(conloss * state)
 
         # -------------------------------------------------------------------
         # if method was not in list before, raise an Expection
@@ -373,12 +371,12 @@ class UHECRPropagationSolver(object):
         z = z - self.z_offset
 
         self.ncallsf += 1
-        
+
         # Update rates/cross sections only if solver requests to do so
         if abs(z - self.current_z_rates) > self.recomp_z_threshold:
             self._update_jacobian(z)
             self.current_z_rates = z
-        
+
         r = self.jacobian.dot(state)
         if self.enable_injection_jacobian:
             r += self.injection(1., z)
@@ -444,15 +442,15 @@ class UHECRPropagationSolver(object):
 
         return self.last_hadr_jac
 
+
 class UHECRPropagationSolverLSODES(UHECRPropagationSolver):
-    def __init__(*args,**kwargs):
+    def __init__(*args, **kwargs):
         ode_newparams = kwargs.pop('ode_newparams')
-        super(UHECRPropagationSolverLSODES, self).__init__(*args,**kwargs)
+        super(UHECRPropagationSolverLSODES, self).__init__(*args, **kwargs)
         # UHECRPropagationSolver.__init__(self,*args,**kwargs)
         self._init_solver(ode_newparams=ode_newparams)
 
-
-    def _init_solver(self,ode_newparams=None):
+    def _init_solver(self, ode_newparams=None):
         from scipy.integrate import ode
         from scipy.sparse import csc_matrix
 
@@ -524,7 +522,7 @@ class UHECRPropagationSolverLSODES(UHECRPropagationSolver):
             if verbose:
                 print 'Solving hadr losses at t =', self.r.t
 
-            self.r.integrate(self.r.t + dz,relax=False,step=False)
+            self.r.integrate(self.r.t + dz, relax=False, step=False)
             if verbose:
                 self.print_step_info(
                     step_start, extended_output=extended_output)
@@ -538,7 +536,7 @@ class UHECRPropagationSolverLSODES(UHECRPropagationSolver):
             if not self.enable_injection_jacobian and not self.enable_partial_diff_jacobian:
                 print 'injection incoming'
                 if verbose:
-                     print 'applying injection at t =', self.r.t
+                    print 'applying injection at t =', self.r.t
                 if full_reset:
                     if type(full_reset) is int and reset_counter == full_reset:
                         # self.r.set_initial_value(
@@ -566,7 +564,8 @@ class UHECRPropagationSolverLSODES(UHECRPropagationSolver):
                     if verbose:
                         print 'applying semi lagrangian at t =', self.r.t
                     if full_reset:
-                        if type(full_reset) is int and reset_counter == full_reset:
+                        if type(full_reset
+                                ) is int and reset_counter == full_reset:
                             self.r.set_initial_value(
                                 self.semi_lagrangian(dz, self.r.t, self.r.y),
                                 self.r.t)
@@ -600,9 +599,9 @@ class UHECRPropagationSolverLSODES(UHECRPropagationSolver):
             # print 'nderiv', self.r._integrator.iwork[11]
             print 'last_order', self.r._integrator.iwork[13]
             print 'next_order', self.r._integrator.iwork[13]
-            print '---'*20
+            print '---' * 20
             if verbose:
-                print '---'*20
+                print '---' * 20
 
             stepcount += 1
             reset_counter += 1
@@ -642,15 +641,13 @@ class UHECRPropagationSolverLSODES(UHECRPropagationSolver):
             print 'NNZLU', NNZLU
             print 'LAST STEP {0:4.3e}'.format(self.r._integrator.rwork[10])
 
+
 class UHECRPropagationSolverEULER(UHECRPropagationSolver):
-    def __init__(*args,**kwargs):
-        super(UHECRPropagationSolverEULER, self).__init__(*args,**kwargs)
+    def __init__(*args, **kwargs):
+        super(UHECRPropagationSolverEULER, self).__init__(*args, **kwargs)
         # UHECRPropagationSolver.__init__(self,*args,**kwargs)
 
-    def solve(self,
-                    dz=1e-3,
-                    verbose=True,
-                    extended_output=False):
+    def solve(self, dz=1e-3, verbose=True, extended_output=False):
         from time import time
 
         # stepcount = 0
@@ -707,13 +704,14 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
         info(2, 'Integration completed in {0} s'.format(end_time - start_time))
         self.state = state
 
+
 class UHECRPropagationSolverBDF(UHECRPropagationSolver):
-    def __init__(self,*args,**kwargs):
+    def __init__(self, *args, **kwargs):
         if 'atol' in kwargs:
             self.atol = kwargs.pop('atol')
         else:
             self.atol = 1e40
-        super(UHECRPropagationSolverBDF, self).__init__(*args,**kwargs)
+        super(UHECRPropagationSolverBDF, self).__init__(*args, **kwargs)
         # UHECRPropagationSolver.__init__(self,*args,**kwargs)
 
     def _init_solver(self, dz):
@@ -723,19 +721,20 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
         self.current_z_rates = self.initial_z
 
         # find the maximum injection and reduce the system by this
-        self.red_idx = np.nonzero(self.injection(1.,0.))[0].max()
+        self.red_idx = np.nonzero(self.injection(1., 0.))[0].max()
 
         from scipy.integrate import BDF
-        self.r = BDF(self.eqn_deriv,
-                         self.initial_z,
-                         initial_state,
-                         self.final_z,
-                         max_step = np.abs(dz),
-                         atol = self.atol,
-                         rtol = 1e-10,
-                        #  jac = self.eqn_jac,
-                         jac_sparsity = self.eqn_jac(self.initial_z, initial_state),
-                         vectorized = False)
+        self.r = BDF(
+            self.eqn_deriv,
+            self.initial_z,
+            initial_state,
+            self.final_z,
+            max_step=np.abs(dz),
+            atol=self.atol,
+            rtol=1e-10,
+            #  jac = self.eqn_jac,
+            jac_sparsity=self.eqn_jac(self.initial_z, initial_state),
+            vectorized=False)
 
     def solve(self,
               dz=1e-3,
@@ -759,7 +758,7 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
                 from tqdm import tqdm_notebook as tqdm
             else:
                 from tqdm import tqdm
-            pbar = tqdm(total=-(self.initial_z - self.final_z)/dz)
+            pbar = tqdm(total=-(self.initial_z - self.final_z) / dz)
             pbar.update()
         else:
             pbar = None
@@ -780,7 +779,7 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
             # Some last checks and resets
             # --------------------------------------------
             if verbose:
-                print '---'*20
+                print '---' * 20
 
             stepcount += 1
             reset_counter += 1
@@ -788,9 +787,12 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
                 pbar.update()
 
         if self.r.status == 'failed':
-            raise Exception('Integrator failed at t = {:}, try adjusting the tolerances'.format(self.r.t))
+            raise Exception(
+                'Integrator failed at t = {:}, try adjusting the tolerances'.
+                format(self.r.t))
         if verbose:
-            print 'Integrator finished with t = {:}, last step was dt = {:}'.format(r.t,r.last_step)
+            print 'Integrator finished with t = {:}, last step was dt = {:}'.format(
+                r.t, r.last_step)
 
         # after each run we delete the solver to save memory
         self.state = self.r.y.copy()

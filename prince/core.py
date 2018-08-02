@@ -26,17 +26,18 @@ class PriNCeRun(object):
 
         # Initialize energy grid
         if config["grid_scale"] == 'E':
-            info(1,'initialising Energy grid')
+            info(1, 'initialising Energy grid')
             self.cr_grid = util.EnergyGrid(*config["cosmic_ray_grid"])
             self.ph_grid = util.EnergyGrid(*config["photon_grid"])
         elif config["grid_scale"] == 'logE':
-            info(1,'initialising logEnergy grid')
+            info(1, 'initialising logEnergy grid')
             self.cr_grid = util.LogEnergyGrid(*config["cosmic_ray_grid"])
             self.ph_grid = util.LogEnergyGrid(*config["photon_grid"])
         else:
-            raise Exception("Unknown energy grid scale {:}, adjust config['grid_scale']".format(config['grid_scale']))
-        #: Dimension of energy grid
-
+            raise Exception(
+                "Unknown energy grid scale {:}, adjust config['grid_scale']".
+                format(config['grid_scale']))
+        # Dimension of energy grid
         self.ed = self.cr_grid.d
 
         # Cross section handler
@@ -44,34 +45,36 @@ class PriNCeRun(object):
             self.cross_sections = kwargs['cross_sections']
         else:
             self.cross_sections = cross_sections.CompositeCrossSection(
-                [(0., cross_sections.TabulatedCrossSection, ('CRP2_TALYS',)),
+                [(0., cross_sections.TabulatedCrossSection, ('CRP2_TALYS', )),
                  (0.14, cross_sections.SophiaSuperposition, ())])
             # self.cross_sections = cross_sections.CompositeCrossSection(
             #     [(0., cross_sections.TabulatedCrossSection, ('peanut_IAS',)),
             #      (0.14, cross_sections.SophiaSuperposition, ())])
+
         # Photon field handler
         if 'photon_field' in kwargs:
             self.photon_field = kwargs['photon_field']
         else:
             self.photon_field = photonfields.CombinedPhotonField(
-                [photonfields.CMBPhotonSpectrum, 
-                 photonfields.CIBGilmore2D])
+                [photonfields.CMBPhotonSpectrum, photonfields.CIBGilmore2D])
 
         # Store adv_set
         self.adv_set = config["adv_settings"]
 
         # Limit max nuclear mass of eqn system
         if "species_list" in kwargs:
-            system_species = list(set(kwargs["species_list"]) & set(self.cross_sections.known_species))
+            system_species = list(
+                set(kwargs["species_list"]) & set(
+                    self.cross_sections.known_species))
         else:
             system_species = [
                 s for s in self.cross_sections.known_species
                 if get_AZN(s)[0] <= config["max_mass"]
             ]
-
+        # If secondaries are disabled in config, delete them from system species
         if not config["secondaries"]:
             system_species = [s for s in system_species if s >= 100]
-        
+
         # Initialize species manager for all species for which cross sections are known
         self.spec_man = data.SpeciesManager(system_species, self.ed)
 
@@ -99,15 +102,18 @@ class PriNCeRun(object):
 
     @property
     def egrid(self):
-        """Energy grid used for species."""
+        """Energy grid used for single species state"""
         return self.cr_grid.grid
 
     @property
     def ebins(self):
-        """Energy grid used for species."""
+        """Energy bins used for single species state"""
         return self.cr_grid.bins
 
-    def compute_propagation(self, initial_z=1., final_z=0., ncoid = 101):
-        """computes a propagation with standard model input (see kwargs)"""
+    def compute_propagation(self, initial_z=1., final_z=0., ncoid=101):
+        """Computes a propagation with standard model input (see kwargs)
+            WARNING: Not yet fully implemented!
+        """
         from solvers import UHECRPropagationSolver
-        solver = UHECRPropagationSolver(initial_z=initial_z, final_z=final_z,prince_run=self)
+        solver = UHECRPropagationSolver(
+            initial_z=initial_z, final_z=final_z, prince_run=self)

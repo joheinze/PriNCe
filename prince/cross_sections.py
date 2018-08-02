@@ -9,7 +9,7 @@ from prince.util import *
 import prince.decays as decs
 from prince_config import config, spec_data
 
-# ToDo:
+# TODO:
 # - CompositeCrossSection._join_incl_diff() does currently not work properly for inclusive differential crossections
 #     - the class combines the channel indices from all models,
 #       however sophia does not provide these, and still introduces indices for lighter particles
@@ -19,6 +19,20 @@ class CrossSectionBase(object):
     """Base class for cross section interfaces to tabulated models.
 
     The class is abstract and it is not inteded to be instantiated.
+
+    Child Classes either define the tables:
+        self._egrid_tab
+        self._nonel_tab
+        self._incl_tab
+        self._incl_diff
+
+    Or directly reimplememnt the functions
+        nonel(self, mother, daughter)
+        incl(self, mother, daughter)
+        incl_diff(self, mother, daughter)
+
+    The flag self.supports_redistributions = True/False should be set
+    To tell the class to include/ignore incl_diff
     """
 
     __metaclass__ = ABCMeta
@@ -71,11 +85,12 @@ class CrossSectionBase(object):
             e_max = np.max(self._egrid_tab)
 
         info(2, "Setting range to {0:3.2e} - {1:3.2e}".format(e_min, e_max))
-        self._range = np.where((self._egrid_tab >= e_min) & (self._egrid_tab <=
-                                                             e_max))[0]
-        info(2, "Range set to {0:3.2e} - {1:3.2e}".format(
-            np.min(self._egrid_tab[self._range]),
-            np.max(self._egrid_tab[self._range])))
+        self._range = np.where((self._egrid_tab >= e_min) &
+                               (self._egrid_tab <= e_max))[0]
+        info(
+            2, "Range set to {0:3.2e} - {1:3.2e}".format(
+                np.min(self._egrid_tab[self._range]),
+                np.max(self._egrid_tab[self._range])))
 
     @property
     def egrid(self):
@@ -96,7 +111,7 @@ class CrossSectionBase(object):
         """
 
         return 0.5 * (self.xbins[1:] + self.xbins[:-1])
-    
+
     @property
     def xwidths(self):
         """Returns bin widths of the grid in x.
@@ -132,8 +147,8 @@ class CrossSectionBase(object):
         # if not self.supports_redistributions:
         #     info(10, mother, daughter, " model doesn't support redist")
         #     return False
-        if (daughter <= config["redist_threshold_ID"] or
-            (mother, daughter) in self.incl_diff_idcs):
+        if (daughter <= config["redist_threshold_ID"]
+                or (mother, daughter) in self.incl_diff_idcs):
             info(60, 'Daughter requires redistribution.', mother, daughter)
             return True
         info(60, 'Daughter conserves boost.', mother, daughter)
@@ -180,9 +195,8 @@ class CrossSectionBase(object):
             if self.is_differential(mo, da):
                 # Move the distributions which are expected to be differential
                 # to _incl_diff_tab
-                self._incl_diff_tab[(
-                    mo,
-                    da)] = self._arange_on_xgrid(self._incl_tab.pop((mo, da)))
+                self._incl_diff_tab[(mo, da)] = self._arange_on_xgrid(
+                    self._incl_tab.pop((mo, da)))
                 info(10, "Channel {0} -> {1} forced to be differential.")
             else:
                 self.known_bc_channels.append((mo, da))
@@ -265,10 +279,10 @@ class CrossSectionBase(object):
         # dec_grid = np.fromfunction(
         #     lambda j, i: 10**(np.log10(bc[1] / bc[0]) * (j - i)), (len(bc),
         #                                                            len(bc)))
-        
-        dec_grid = np.outer(bc,1/bc)
-        
-        dec_bins = np.outer(self.xbins,1/bc)
+
+        dec_grid = np.outer(bc, 1 / bc)
+
+        dec_bins = np.outer(self.xbins, 1 / bc)
         dec_bins_lower = dec_bins[:-1]
         dec_bins_upper = dec_bins[1:]
 
@@ -290,7 +304,7 @@ class CrossSectionBase(object):
             #     mother, daughter, dec_grid)
             dec_dist = int_scale * decs.get_decay_matrix_bin_average(
                 mother, daughter, dec_bins_lower, dec_bins_upper)
-                
+
             info(20, 'convolving with decay dist', mother, daughter)
             # Handle the case where table entry is (energy_grid, matrix)
             if not isinstance(diff_dist, tuple):
@@ -314,8 +328,7 @@ class CrossSectionBase(object):
 
             if da not in spec_data:
                 info(
-                    3,
-                    dbg_indent(reclev),
+                    3, dbg_indent(reclev),
                     'daughter {0} unknown, forcing beta decay. Not Implemented yet!!'.
                     format(da))
                 return
@@ -327,16 +340,15 @@ class CrossSectionBase(object):
                     # If the daughter is a meson or lepton, use the dictionary for
                     # differential channels
                     info(
-                        20,
-                        dbg_indent(reclev),
+                        20, dbg_indent(reclev),
                         'daughter {0} stable and differential. Adding to ({1}, {2})'.
                         format(da, first_mo, da))
                     dict_add(new_dec_diff_tab, (first_mo, da), csection)
                 else:
-                    info(20,
-                         dbg_indent(reclev),
-                         'daughter {0} stable. Adding to ({1}, {2})'.format(
-                             da, first_mo, da))
+                    info(
+                        20, dbg_indent(reclev),
+                        'daughter {0} stable. Adding to ({1}, {2})'.format(
+                            da, first_mo, da))
                     dict_add(new_incl_tab, (first_mo, da), csection)
                 return
 
@@ -344,8 +356,7 @@ class CrossSectionBase(object):
             # original mother particle (first_mo). The cross section (csection) is
             # reduced by the branching ratio (br) of this particular channel
             for br, daughters in spec_data[da]["branchings"]:
-                info(10,
-                     dbg_indent(reclev),
+                info(10, dbg_indent(reclev),
                      ("{3} -> {0:4d} -> {2:4.2f}: {1}").format(
                          da, ", ".join(map(str, daughters)), br, first_mo))
 
@@ -354,10 +365,11 @@ class CrossSectionBase(object):
                     if self.is_differential(None, chained_daughter):
                         info(10, 'daughter', chained_daughter, 'of', da,
                              'is differential')
-                        follow_chain(first_mo, chained_daughter,
-                                     convolve_with_decay_distribution(
-                                         self._arange_on_xgrid(csection), da,
-                                         chained_daughter, br), reclev + 1)
+                        follow_chain(
+                            first_mo, chained_daughter,
+                            convolve_with_decay_distribution(
+                                self._arange_on_xgrid(csection), da,
+                                chained_daughter, br), reclev + 1)
                     else:
                         follow_chain(first_mo, chained_daughter, br * csection,
                                      reclev + 1)
@@ -376,17 +388,18 @@ class CrossSectionBase(object):
         for (mother, daughter) in self.incl_idcs:
 
             if mother not in self.nonel_idcs:
-                info(30,
-                     "Removing {0}/{1} from incl, since mother not stable ".
-                     format(mother, daughter))
+                info(
+                    30, "Removing {0}/{1} from incl, since mother not stable ".
+                    format(mother, daughter))
                 _ = self._incl_tab.pop((mother, daughter))
 
             elif self.is_differential(mother, daughter):
                 # Move the distributions which are expected to be differential
                 # to _incl_diff_tab
-                self._incl_diff_tab[(
-                    mother, daughter)] = self._arange_on_xgrid(
-                        self._incl_tab.pop((mother, daughter)))
+                self._incl_diff_tab[(mother,
+                                     daughter)] = self._arange_on_xgrid(
+                                         self._incl_tab.pop((mother,
+                                                             daughter)))
 
         self._update_indices()
 
@@ -559,11 +572,15 @@ class CrossSectionBase(object):
 
         csec = np.zeros((nxbins, cs.shape[0]))
         # TODO: The factor 2 in the following line is a workarround to account for the latter linear interpolation
-        #       This is needed because linear spline integral will result in a trapz, 
-        #       which has half the area of the actual first bin 
-        corr_factor = 2 * self.xwidths[-1] / (self.xcenters[-1] - self.xcenters[-2])
+        #       This is needed because linear spline integral will result in a trapz,
+        #       which has half the area of the actual first bin
+        corr_factor = 2 * self.xwidths[-1] / (
+            self.xcenters[-1] - self.xcenters[-2])
         csec[-1, :] = cs / self.xwidths[-1] * corr_factor
-        info(4, 'Warning! Workaround to account for linear interpolation in x, factor 2 added!')
+        info(
+            4,
+            'Warning! Workaround to account for linear interpolation in x, factor 2 added!'
+        )
         if isinstance(incl_cs, tuple):
             return egr, csec
         return csec
@@ -571,7 +588,6 @@ class CrossSectionBase(object):
 
 class CompositeCrossSection(CrossSectionBase):
     """Joins and interpolates between cross section models.
-
     """
 
     def __init__(self, model_list):
@@ -688,8 +704,8 @@ class CompositeCrossSection(CrossSectionBase):
     def _join_incl(self, mother, daughter):
         """Returns joined incl cross sections."""
 
-        info(5, 'Joining inclusive cross sections for channel', (mother,
-                                                                 daughter))
+        info(5, 'Joining inclusive cross sections for channel',
+             (mother, daughter))
         egrid = []
         incl = []
         for model in self.model_refs:
@@ -739,9 +755,10 @@ class CompositeCrossSection(CrossSectionBase):
                 info(1, model.mname, mother, daughter,
                      'not differential, x=1.')
             else:
-                info(5, 'Model', model.mname, 'does not provide cross',
-                     'sections for channel {0}/{1}. Setting to zero.'.format(
-                         mother, daughter))
+                info(
+                    5, 'Model', model.mname, 'does not provide cross',
+                    'sections for channel {0}/{1}. Setting to zero.'.format(
+                        mother, daughter))
                 # Tried with reduced energy grids to save memory, but
                 # matrix addition in decay chains becomes untrasparent
                 # egr = np.array((model.egrid[0], model.egrid[-1]))
@@ -758,6 +775,11 @@ class CompositeCrossSection(CrossSectionBase):
 class SophiaSuperposition(CrossSectionBase):
     """ Cross sections generated using the Sophia event generator for protons and neutrons.
     Includes redistribution functions into secondaries
+
+    Cross section for Nuclei are build as a superposition:
+    csec_(Z,A) = Z * csec_P + (A - Z) * csec_N
+
+    WARNING: This will not check, if the requested nucleus is existent in nature!
     """
 
     def __init__(self, *args, **kwargs):
@@ -769,7 +791,7 @@ class SophiaSuperposition(CrossSectionBase):
 
     def _load(self):
         info(2, "Loading SOPHIA cross sections from file.")
-        info(5, "File used:",join(config["data_dir"], config["redist_fname"]))
+        info(5, "File used:", join(config["data_dir"], config["redist_fname"]))
         # load the crossection from file
         self._egrid_tab, self.cs_proton_grid, self.cs_neutron_grid = \
         load_or_convert_array(
@@ -912,10 +934,20 @@ class SophiaSuperposition(CrossSectionBase):
 
 
 class TabulatedCrossSection(CrossSectionBase):
-    """Tabulated disintegration cross sections from Peanut or TALYS.
-    Data available from 1 MeV to 1 GeV"""
+    """Interface class to read tabulated disintegration cross sections
+        Data is expected to be files with names:
+        (model_prefix)_egrid.data, (model_prefix)_nonel.data, (model_prefix)_incl_i_j.data 
+    
+        Data available for Peanut and TALYS with :
+        model_prefix = 'peanut_IAS' and model_prefix = 'CRP2_TALYS'
+        Data available from 1 MeV to 1 GeV
+    """
 
-    def __init__(self, model_prefix='peanut_IAS', max_mass=None, *args, **kwargs):
+    def __init__(self,
+                 model_prefix='peanut_IAS',
+                 max_mass=None,
+                 *args,
+                 **kwargs):
         self.supports_redistributions = False
         if max_mass is None:
             self.max_mass = config["max_mass"]
@@ -979,16 +1011,23 @@ class TabulatedCrossSection(CrossSectionBase):
         self.set_range()
         info(2, "Finished initialization")
 
+
 class NEUCOSMACrossSection(CrossSectionBase):
-    """Class to import cross sections from a NEUCOSMA file
+    """Interface Class to import cross sections from a NEUCOSMA file format
     """
-    def __init__(self, NEUCOSMA_filename = '160513_XDIS_PSB-SS_syst.dat', max_mass=None, *args, **kwargs):
+
+    def __init__(self,
+                 NEUCOSMA_filename='160513_XDIS_PSB-SS_syst.dat',
+                 max_mass=None,
+                 *args,
+                 **kwargs):
         if max_mass is None:
             self.max_mass = config["max_mass"]
         CrossSectionBase.__init__(self)
 
         import os.path as path
-        filepath = path.join(config['raw_data_dir'],'cross_sections_NeuCosmA',NEUCOSMA_filename)
+        filepath = path.join(config['raw_data_dir'], 'cross_sections_NeuCosmA',
+                             NEUCOSMA_filename)
         self._load_NEUCOSMA_file(filepath)
         self._optimize_and_generate_index()
 
@@ -999,7 +1038,9 @@ class NEUCOSMACrossSection(CrossSectionBase):
         Will only create the Response function once.
         """
         if not hasattr(self, '_resp_data'):
-            info(2, 'First Call, creating instance of ResponseFunctionLoaded now')
+            info(
+                2,
+                'First Call, creating instance of ResponseFunctionLoaded now')
             self._resp_data = ResponseFunctionLoaded(self)
         return self._resp_data
 
@@ -1027,7 +1068,6 @@ class NEUCOSMACrossSection(CrossSectionBase):
         # 6. M_ij(eps_r)
         # 7. f_i(y) [mubarn = 10^-30 cm^2]
         # 8. sigma_i(eps_r) [mubarn = 10^-30 cm^2]
-    
 
         with open(filename) as f:
             text_data = f.readlines()
@@ -1062,15 +1102,15 @@ class NEUCOSMACrossSection(CrossSectionBase):
                 da = d
                 if m != mo:
                     neucosma_data['f'][mo] = np.array(f)
-                    cs_nonel[mo] = np.array(cs) * 1e-30   # conversion to cm-2
+                    cs_nonel[mo] = np.array(cs) * 1e-30  # conversion to cm-2
                     mo = m
                 e, g, mu, f, cs = (float(e_k), ), (float(g_ijk), ), \
                                   (float(m_ijk), ), (float(f_ik), ),\
                                   (float(cs_ik), )
-        
+
         # Do not forget the last mother:
         neucosma_data['f'][mo] = np.array(f)
-        cs_nonel[mo] = np.array(cs) * 1e-30   # conversion to cm-2
+        cs_nonel[mo] = np.array(cs) * 1e-30  # conversion to cm-2
 
         neucosma_data['g'][mo, da] = np.array(g)  # stored in mubarn
         neucosma_data['m'][mo, da] = np.array(mu)
@@ -1095,8 +1135,11 @@ class NEUCOSMACrossSection(CrossSectionBase):
         self.set_range()
         # info(2, "Finished initialization")
 
+
 class ResponseFunction(object):
     """Redistribution Function based on Crossection model
+
+        The response function is the angular average crosssection
     """
 
     def __init__(self, cross_section):
@@ -1144,8 +1187,8 @@ class ResponseFunction(object):
             #    incl_diff_res = np.where(xgrid < 0.9, incl_diff_res, 0.)
             #res += incl_diff_res
             #if not(mother == daughter):
-                res += self.incl_diff_intp[(mother, daughter)].inteval(
-                    xgrid, ygrid, grid=False)
+            res += self.incl_diff_intp[(mother, daughter)].inteval(
+                xgrid, ygrid, grid=False)
 
         if mother == daughter and mother in self.nonel_intp:
             # nonel cross section leads to absorption, therefore the minus
@@ -1248,6 +1291,7 @@ class ResponseFunction(object):
             self.incl_diff_intp[(mother, daughter)] = get_2Dinterp_object(
                 self.xcenters, ygr, rfunc, self.cross_section.xbins)
 
+
 class ResponseFunctionLoaded(ResponseFunction):
     """Redistribution Function based on Crossection model.
     Operates on values of (f, g, h) loaded from  a NEAUCOSMA file
@@ -1279,13 +1323,15 @@ class ResponseFunctionLoaded(ResponseFunction):
             self.incl_intp[(mother, daughter)] = get_interp_object(
                 cs_model.egrid, cs_model._NEUCOSMA_data['g'][mother, daughter])
 
-        info(5, 'Inclusive (redistributed) response functions h(y): not implemented')
+        info(
+            5,
+            'Inclusive (redistributed) response functions h(y): not implemented'
+        )
         self.incl_diff_intp = {}
         # for mother, daughter in self.incl_diff_idcs:
         #     ygr, rfunc = self.get_channel(mother, daughter)
         #     self.incl_diff_intp[(mother, daughter)] = get_2Dinterp_object(
         #         self.xcenters, ygr, rfunc)
-
 
 
 if __name__ == "__main__":
