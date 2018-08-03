@@ -499,7 +499,13 @@ def nu_from_beta_decay(x_grid, mother, daughter, Gamma=200, angle=None):
     E = x_grid * Emo
 
     if angle is None:
-        ctheta = np.linspace(-1, 1, 1000)
+        # ctheta = np.linspace(-1, 1, 1000)
+        # we use here logspace, as high resolution is mainly needed at small energies
+        # otherwise the solution will oscillate at low energy
+        ctheta = np.unique(np.concatenate((
+                    np.logspace(-8,0,1000) - 1,
+                    1 - np.logspace(0,-8,1000),
+                )))
     else:
         ctheta = angle
 
@@ -544,6 +550,7 @@ def nu_from_beta_decay_old(x_grid, mother, daughter):
     Z_mo = spec_data[mother]['charge']
     Z_da = spec_data[daughter]['charge']
 
+    print mother, daughter
     if mother == 100 and daughter == 101:
         # for this channel the masses are already nucleon masses
         qval = mass_mo - mass_da - mass_el
