@@ -1,7 +1,5 @@
 '''
-Created on Feb 22, 2017
-
-@author: Anatoli Fedynitch
+Contains basic functions to handle standard cosmology
 '''
 
 from prince_config import config
@@ -10,6 +8,7 @@ import numpy as np
 H0 = config['H_0s']
 Omega_m = config['Omega_m']
 Omega_Lambda = config['Omega_Lambda']
+
 
 def H(z, H0=H0):
     """Expansion rate of the universe.
@@ -25,7 +24,7 @@ def H(z, H0=H0):
     return H0 * np.sqrt(Omega_m * (1 + z)**3 + Omega_Lambda)
 
 
-def star_formation_rate(z, z_inhomogeneous=0.):
+def star_formation_rate(z, z_inhom=0.):
     """Returns the star formation rate, per comoving volume, evaluated at the specified redshift.
 
     Ref:
@@ -34,19 +33,60 @@ def star_formation_rate(z, z_inhomogeneous=0.):
 
     Args:
       z (float): redshift
+      z_inhom (float): redshift where the universe becomes inhomogenous, return 0. below this values
 
     Returns:
-      float: star formation rate in :math:`{\\rm Mpc}}^{-3}`
+      float: star formation rate normalized to 1. at y = 0.
     """
 
-    if z < z_inhomogeneous:
+    if z < z_inhom:
         return 0.
     elif z <= 0.97:
         return (1. + z)**3.44
-    elif z > 0.97 and z <= 4.48:
+    elif 0.97 < z <= 4.48:
         return 10.**1.09 * (1. + z)**-0.26
     else:
         return 10.**6.66 * (1. + z)**-7.8
+
+
+def grb_rate(z, z_inhom=0.):
+    """Returns the rate of Gamma-Ray Burst, per comoving volume, evaluated at the specified redshift.
+
+    Ref:
+        TODO: Add reference
+
+    Args:
+      z (float): redshift
+      z_inhom (float): redshift where the universe becomes inhomogenous, return 0. below this values
+
+    Returns:
+      float: GRB rate normalized to 1. at y = 0.
+    """
+    return (1 + z)**1.4 * star_formation_rate(z, z_inhom=z_inhom)
+
+
+def agn_rate(z, z_inhom=0.):
+    """Returns the rate of Active Galactic Nuclei, per comoving volume, evaluated at the specified redshift.
+
+    Ref:
+        TODO: Add reference
+
+    Args:
+      z (float): redshift
+      z_inhom (float): redshift where the universe becomes inhomogenous, return 0. below this values
+
+    Returns:
+      float: AGN rate normalized to 1. at y = 0.
+    """
+    if z < z_inhom:
+        return 0.
+    elif z <= 1.7:
+        return (1 + z)**5
+    elif 1.7 < z <= 2.7:
+        return (1 + 1.7)**5
+    else:
+        return (1 + 1.7)**5 * 10**(2.7 - z)
+
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt

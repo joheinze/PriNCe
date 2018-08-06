@@ -6,6 +6,7 @@ from scipy.integrate import trapz
 from prince.util import get_AZN, info, PRINCE_UNITS
 from prince_config import config
 
+
 class PhotoNuclearInteractionRate(object):
     """Implementation of photo-hadronic/nuclear interaction rates.
     This Version directly writes the data into a CSC-matrix and only updates the data each time.
@@ -61,8 +62,9 @@ class PhotoNuclearInteractionRate(object):
 
         Return value from cache if redshift value didn't change since last call.
         """
-        photon_vector = np.zeros_like(self.e_photon.grid)
-        photon_vector = self.photon_field.get_photon_density(self.e_photon.grid, z)
+        # photon_vector = np.zeros_like(self.e_photon.grid)
+        photon_vector = self.photon_field.get_photon_density(
+            self.e_photon.grid, z)
 
         return photon_vector
 
@@ -108,10 +110,13 @@ class PhotoNuclearInteractionRate(object):
                 elif rtup in self.cross_sections.known_diff_channels:
                     # Only half of the elements can be non-zero (energy conservation)
                     batch_dim += int(dcr**2 / 2) + 1
-                    
+
+        batch_dim *= 2
         info(2, 'Batch matrix dimensions are {0}x{1}'.format(batch_dim, dph))
         self._batch_matrix = np.zeros((batch_dim, dph))
-        info(3, 'Memory usage: {0} MB'.format(self._batch_matrix.nbytes / 1024**2))
+        info(
+            3,
+            'Memory usage: {0} MB'.format(self._batch_matrix.nbytes / 1024**2))
         ibatch = 0
         self._batch_rows = []
         self._batch_cols = []
@@ -132,9 +137,16 @@ class PhotoNuclearInteractionRate(object):
         # Iterate over outer product of m_energy x d_energy x ph_energy
         it_diff = np.nditer(
             [emo_idcs, eda_idcs, p_idcs],
-            op_axes=[[0, -1, -1], [-1, 0, -1], [-1, -1, 0]])
+            op_axes=[[0, -1, -1], [-1, 0, -1], [-1, -1, 0]],
+            # flags=['buffered','external_loop']
+        )
 
+        # values for x and y to cut on:
         x_cut = config['x_cut']
+        y_cut = config['y_cut']
+        x_cut_proton = config['x_cut_proton']
+        # Xmin = 1e-8,1e-5,1e-2,1e-1.
+        # ymax = 1e1, 1e3, 1e5, 1e8.
 
         if config["bin_average"] == 'method1':
             info(1, 'Using bin central value for diff channel')
@@ -147,15 +159,19 @@ class PhotoNuclearInteractionRate(object):
 
             # Mass number of mother and daughter
             # (float) cast needed for exact ratio
-            mass_mo = float(get_AZN(moid)[0])
-            mass_da = float(get_AZN(daid)[0])
+            mass_mo = 1.  #float(get_AZN(moid)[0])
+            mass_da = 1.  #float(get_AZN(daid)[0])
+            # mass_mo = float(get_AZN(moid)[0])
+            # mass_da = float(get_AZN(daid)[0])
+            # if daid == 101:
+            #     mass_da = 2.
 
             if mass_mo < mass_da or moid < 100:
                 continue
             # TODO: workaround for missing injection into redist
-            if mass_mo > 1 and daid < 100:
-                print 'skip', moid, daid
-                continue
+            # if mass_mo > 1 and daid < 100:
+            #     print 'skip', moid, daid
+            #     continue
 
             if moid == daid:
                 intp_nonel = resp.nonel_intp[moid].antiderivative()
@@ -173,11 +189,11 @@ class PhotoNuclearInteractionRate(object):
                     has_incl = True
                 else:
                     has_incl = False
-                    info(1, 'Inclusive interpolator not found for', (moid,
-                                                                     daid))
+                    info(1, 'Inclusive interpolator not found for',
+                         (moid, daid))
                 if not (has_nonel or has_incl):
-                    raise Exception('Channel without interactions:', (moid,
-                                                                      daid))
+                    raise Exception('Channel without interactions:',
+                                    (moid, daid))
 
                 for m_eidx, d_eidx, ph_idx in it_bc:
                     m_eidx = m_eidx[0]
@@ -189,15 +205,19 @@ class PhotoNuclearInteractionRate(object):
                     # ------------------------------
                     if config["bin_average"] == 'method1':
                         center_y = eph[ph_idx] * emo / m_pr
-                        int_fac = (delta_ph[ph_idx] * mass_mo / mass_da)
+                        int_fac = (delta_ph[ph_idx])
+                        # int_fac = (delta_ph[ph_idx] *  mass_mo / mass_da)
                         if has_incl:
-                            self._batch_matrix[ibatch, :] = resp.incl_intp[(moid, daid)](center_y) * int_fac
+                            self._batch_matrix[ibatch, :] = resp.incl_intp[(
+                                moid, daid)](center_y) * int_fac
                         if has_nonel:
-                            self._batch_matrix[ibatch, :] -= resp.nonel_intp[moid](center_y) * int_fac
+                            self._batch_matrix[
+                                ibatch, :] -= resp.nonel_intp[moid](
+                                    center_y) * int_fac
                     # -----------------------------------
                     # method 2 average over e_ph only
                     # -----------------------------------
-                    if config["bin_average"] == 'method2':
+                    elif config["bin_average"] == 'method2':
                         xl = elims[0, d_eidx] / emo
                         xu = elims[1, d_eidx] / emo
                         delta_x = delta_ec[d_eidx] / emo
@@ -206,16 +226,23 @@ class PhotoNuclearInteractionRate(object):
                         yu = plims[1, ph_idx] * emo / m_pr
                         delta_y = delta_ph[ph_idx] * emo / m_pr
 
-                        int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
-                                mass_mo / mass_da)
+                        int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo)
+                        # int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
+                        #         mass_mo / mass_da)
                         diff_fac = 1. / delta_x / delta_y
                         if has_incl:
                             self._batch_matrix[ibatch, :] = (
                                 intp_bc(yu) - intp_bc(yl)) * int_fac * diff_fac
                         if has_nonel:
-                            self._batch_matrix[ibatch, :] -= (
-                            intp_nonel(yu) - intp_nonel(yl)
-                            ) * int_fac * diff_fac
+                            self._batch_matrix[ibatch, :] -= (intp_nonel(
+                                yu) - intp_nonel(yl)) * int_fac * diff_fac
+                    # -------------------------------------------------------------------
+                    # if method was not in list before, raise an Expection
+                    # -------------------------------------------------------------------
+                    else:
+                        raise Exception(
+                            'Unknown bin-average method ({:})'.format(
+                                config["bin_average"]))
 
                     # Try later to check for zero result to save more zeros.
                     ibatch += 1
@@ -236,7 +263,7 @@ class PhotoNuclearInteractionRate(object):
                     raise Exception('This should not occur.')
 
                 for m_eidx, d_eidx, ph_idx in it_diff:
-
+                    # print m_eidx, d_eidx, ph_idx
                     if d_eidx > m_eidx:
                         continue
 
@@ -249,10 +276,10 @@ class PhotoNuclearInteractionRate(object):
                     xu = elims[1, d_eidx] / emo
                     yl = plims[0, ph_idx] * emo / m_pr
                     yu = plims[1, ph_idx] * emo / m_pr
-                    #TODO: Thresholds set for testing
-                    if daid == 101 and xl < 0.1:
+                    # TODO: Thresholds set for testing
+                    if daid == 101 and xl < x_cut_proton:
                         continue
-                    if xl < 1e-6 or yu < ymin:
+                    if xl < x_cut or yu < ymin or yl > y_cut:
                         continue
 
                     # ------------------------------
@@ -263,16 +290,18 @@ class PhotoNuclearInteractionRate(object):
                         center_y = epho * emo / m_pr
 
                         int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
-                                mass_mo / mass_da)
-                        self._batch_matrix[ibatch, ph_idx] += intp_diff(center_x, center_y) * int_fac
+                                   mass_mo / mass_da)
+                        self._batch_matrix[ibatch, ph_idx] += intp_diff(
+                            center_x, center_y, grid=True) * int_fac
 
                         if has_nonel and m_eidx == d_eidx:
                             int_fac = delta_ph[ph_idx]
-                            self._batch_matrix[ibatch, ph_idx] -= intp_nonel(center_y) * int_fac
+                            self._batch_matrix[ibatch, ph_idx] -= intp_nonel(
+                                center_y) * int_fac
                     # -----------------------------------------
                     # method 2 average over e_ph and E_da only
                     # -----------------------------------------
-                    if config["bin_average"] == 'method2':
+                    elif config["bin_average"] == 'method2':
                         xl = elims[0, d_eidx] / emo
                         xu = elims[1, d_eidx] / emo
                         delta_x = delta_ec[d_eidx] / emo
@@ -282,16 +311,24 @@ class PhotoNuclearInteractionRate(object):
                         delta_y = delta_ph[ph_idx] * emo / m_pr
 
                         int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
-                                mass_mo / mass_da)
+                                   mass_mo / mass_da)
                         diff_fac = 1. / delta_x / delta_y
 
-                        self._batch_matrix[ibatch, ph_idx] = intp_diff.integral(
-                            xl, xu, yl, yu) * diff_fac * int_fac
+                        self._batch_matrix[
+                            ibatch, ph_idx] = intp_diff.integral(
+                                xl, xu, yl, yu) * diff_fac * int_fac
 
                         if has_nonel and m_eidx == d_eidx:
                             self._batch_matrix[ibatch, ph_idx] -= (
-                                intp_nonel_antid(yu) - intp_nonel_antid(yl)
-                            ) * diff_fac * int_fac
+                                intp_nonel_antid(yu) -
+                                intp_nonel_antid(yl)) * diff_fac * int_fac
+                    # -------------------------------------------------------------------
+                    # if method was not in list before, raise an Expection
+                    # -------------------------------------------------------------------
+                    else:
+                        raise Exception(
+                            'Unknown bin-average method ({:})'.format(
+                                config["bin_average"]))
 
                     if ph_idx == p_idcs[-1]:
                         ibatch += 1
@@ -300,15 +337,16 @@ class PhotoNuclearInteractionRate(object):
                         self._batch_cols.append(sp_id_ref[moid].lidx() +
                                                 m_eidx)
             else:
-                info(2, 'Species combination not supported', moid, daid)
+                info(20, 'Species combination not included in model', moid,
+                     daid)
 
         self._batch_matrix.resize((ibatch, dph))
         self._batch_rows = np.array(self._batch_rows)
         self._batch_cols = np.array(self._batch_cols)
         self._batch_vec = np.zeros(ibatch)
 
-        memory = (self._batch_matrix.nbytes + self._batch_rows.nbytes
-                  + self._batch_cols.nbytes  + self._batch_vec.nbytes)/1024**2
+        memory = (self._batch_matrix.nbytes + self._batch_rows.nbytes +
+                  self._batch_cols.nbytes + self._batch_vec.nbytes) / 1024**2
         info(3, "Memory usage after initialization: {:} MB".format(memory))
 
     def _init_coupling_mat(self, sp_format):
@@ -425,9 +463,11 @@ class PhotoNuclearInteractionRate(object):
     #     lidx, uidx = self._batch_vec_pointer[nco_ids]
     #     return self._batch_vec[lidx:uidx]
 
+
 class ContinuousAdiabaticLossRate(object):
     """Implementation of continuous pair production loss rates."""
-    def __init__(self, prince_run, *args, **kwargs):
+
+    def __init__(self, prince_run, energy='grid', *args, **kwargs):
         print 'New cont loss class init called'
         #: Reference to prince run
         self.prince_run = prince_run
@@ -435,9 +475,9 @@ class ContinuousAdiabaticLossRate(object):
         self.spec_man = prince_run.spec_man
 
         # Initialize grids
-        self.e_cosmicray = prince_run.cr_grid        
+        self.e_cosmicray = prince_run.cr_grid
         # Init adiabatic loss vector
-        self.energy_vector = self._init_energy_vec()
+        self.energy_vector = self._init_energy_vec(energy)
 
     def loss_vector(self, z, energy=None):
         """Returns all continuous losses on dim_states grid"""
@@ -448,21 +488,28 @@ class ContinuousAdiabaticLossRate(object):
         else:
             return H(z) * PRINCE_UNITS.cm2sec * energy
 
-    def _init_energy_vec(self):
+    def _init_energy_vec(self, energy):
         """Prepare vector for scaling with units, charge and mass."""
-
-        energy_vector = np.zeros(self.prince_run.dim_states)
-
-        for spec in self.spec_man.species_refs:
-            energy_vector[spec.lidx():
-                                  spec.uidx()] = self.e_cosmicray.grid
+        if energy == 'grid':
+            energy_vector = np.zeros(self.prince_run.dim_states)
+            for spec in self.spec_man.species_refs:
+                energy_vector[spec.lidx():spec.uidx()] = self.e_cosmicray.grid
+        elif energy == 'bins':
+            energy_vector = np.zeros(self.prince_run.dim_bins)
+            for spec in self.spec_man.species_refs:
+                energy_vector[spec.lbin():spec.ubin()] = self.e_cosmicray.bins
+        else:
+            raise Exception(
+                'Unexpected energy keyword ({:}), use either (grid) or (bins)',
+                format(energy))
 
         return energy_vector
+
 
 class ContinuousPairProductionLossRate(object):
     """Implementation of continuous pair production loss rates."""
 
-    def __init__(self, prince_run, *args, **kwargs):
+    def __init__(self, prince_run, energy='grid', *args, **kwargs):
         print 'New pair prod loss class init called'
         #: Reference to prince run
         self.prince_run = prince_run
@@ -473,21 +520,29 @@ class ContinuousPairProductionLossRate(object):
         self.photon_field = prince_run.photon_field
 
         # Initialize grids
-        self.e_cosmicray = prince_run.cr_grid       
+        self.e_cosmicray = prince_run.cr_grid
         self.e_photon = prince_run.ph_grid
 
         # xi is dimensionless (natural units) variable
-        xi_steps = 100 if 'xi_steps' not in kwargs else kwargs['xi_steps']
-        self.xi = np.logspace(np.log10(2 + 1e-8), 8., xi_steps)
+        xi_steps = 400 if 'xi_steps' not in kwargs else kwargs['xi_steps']
+        print 'using', xi_steps, 'steps in xi'
+        self.xi = np.logspace(np.log10(2 + 1e-8), 16., xi_steps)
 
         # weights for integration
         self.phi_xi2 = self._phi(self.xi) / (self.xi**2)
 
         # Scale vector containing the units and factors of Z**2 for nuclei
-        self.scale_vec = self._init_scale_vec()
+        self.scale_vec = self._init_scale_vec(energy)
 
         # Gamma factor of the cosmic ray
-        gamma = self.e_cosmicray.grid / PRINCE_UNITS.m_proton
+        if energy == 'grid':
+            gamma = self.e_cosmicray.grid / PRINCE_UNITS.m_proton
+        elif energy == 'bins':
+            gamma = self.e_cosmicray.bins / PRINCE_UNITS.m_proton
+        else:
+            raise Exception(
+                'Unexpected energy keyword ({:}), use either (grid) or (bins)',
+                format(energy))
         # Grid of photon energies for interpolation
         self.photon_grid = np.outer(1 / gamma,
                                     self.xi) * PRINCE_UNITS.m_electron / 2.
@@ -497,8 +552,10 @@ class ContinuousPairProductionLossRate(object):
     def loss_vector(self, z):
         """Returns all continuous losses on dim_states grid"""
 
-        rate_single = trapz(self.photon_vector(z) * self.phi_xi2, self.xi, axis=1)
-        pprod_loss_vector = self.scale_vec * np.tile(rate_single,self.spec_man.nspec)
+        rate_single = trapz(
+            self.photon_vector(z) * self.phi_xi2, self.xi, axis=1)
+        pprod_loss_vector = self.scale_vec * np.tile(rate_single,
+                                                     self.spec_man.nspec)
 
         return pprod_loss_vector
 
@@ -520,20 +577,32 @@ class ContinuousPairProductionLossRate(object):
 
         return photon_vector
 
-    def _init_scale_vec(self):
+    def _init_scale_vec(self, energy):
         """Prepare vector for scaling with units, charge and mass."""
-
-        scale_vec = np.zeros(self.prince_run.dim_states)
-        units = (PRINCE_UNITS.fine_structure * PRINCE_UNITS.r_electron**2 *
-                 PRINCE_UNITS.m_electron**2)
-
-        for spec in self.spec_man.species_refs:
-            if not spec.is_nucleus:
-                continue
-            scale_vec[spec.lidx():spec.uidx()] = units * abs(
-                spec.charge)**2 / float(spec.A) * np.ones(
-                    self.e_cosmicray.d, dtype='double')
-
+        if energy == 'grid':
+            scale_vec = np.zeros(self.prince_run.dim_states)
+            units = (PRINCE_UNITS.fine_structure * PRINCE_UNITS.r_electron**2 *
+                     PRINCE_UNITS.m_electron**2)
+            for spec in self.spec_man.species_refs:
+                if not spec.is_nucleus:
+                    continue
+                scale_vec[spec.lidx():spec.uidx()] = units * abs(
+                    spec.charge)**2 / float(spec.A) * np.ones_like(
+                        self.e_cosmicray.grid, dtype='double')
+        elif energy == 'bins':
+            scale_vec = np.zeros(self.prince_run.dim_bins)
+            units = (PRINCE_UNITS.fine_structure * PRINCE_UNITS.r_electron**2 *
+                     PRINCE_UNITS.m_electron**2)
+            for spec in self.spec_man.species_refs:
+                if not spec.is_nucleus:
+                    continue
+                scale_vec[spec.lbin():spec.ubin()] = units * abs(
+                    spec.charge)**2 / float(spec.A) * np.ones_like(
+                        self.e_cosmicray.bins, dtype='double')
+        else:
+            raise Exception(
+                'Unexpected energy keyword ({:}), use either (grid) or (bins)',
+                format(energy))
         return scale_vec
 
     def _phi(self, xi):
@@ -558,12 +627,11 @@ class ContinuousPairProductionLossRate(object):
         le = np.where(xi < 25.)
         he = np.where(xi >= 25.)
 
-        res[le] = np.pi / 12. * (xi[le] - 2)**4 / (c1 * (xi[le] - 2)**1 + c2 *
-                                                   (xi[le] - 2)**2 + c3 *
-                                                   (xi[le] - 2)**3 + c4 *
-                                                   (xi[le] - 2)**4)
+        res[le] = np.pi / 12. * (xi[le] - 2)**4 / (
+            c1 * (xi[le] - 2)**1 + c2 * (xi[le] - 2)**2 + c3 *
+            (xi[le] - 2)**3 + c4 * (xi[le] - 2)**4)
 
-        res[he] = phi_simple(xi[he]) / (
-            1 - f1 * xi[he]**-1 - f2 * xi[he]**-2 - f3 * xi[he]**-3)
+        res[he] = phi_simple(
+            xi[he]) / (1 - f1 * xi[he]**-1 - f2 * xi[he]**-2 - f3 * xi[he]**-3)
 
         return res
