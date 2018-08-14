@@ -737,8 +737,8 @@ class CompositeCrossSection(CrossSectionBase):
             egrid.append(e)
             nonel.append(csec)
 
-        return np.concatenate(nonel)
-        #return np.concatenate(egrid), np.concatenate(nonel)
+        #return np.concatenate(nonel)
+        return np.concatenate(egrid), np.concatenate(nonel)
 
     def _join_incl(self, mother, daughter):
         """Returns joined incl cross sections."""
@@ -749,21 +749,13 @@ class CompositeCrossSection(CrossSectionBase):
         incl = []
 
         for model in self.model_refs:
-            if (mother, daughter) in model.incl_idcs:
-                e, csec = model.incl(mother, daughter)
-            else:
-                info(
-                    5, 'Model', model.mname, 'does not provide cross',
-                    'sections for channel {0}/{1}. Setting to zero.'.format(
-                        mother, daughter))
-                e = model.egrid
-                csec = np.zeros(model.egrid.size)
+            e, csec = model.incl(mother, daughter)
             egrid.append(e)
             incl.append(csec)
         #print np.concatenate(egrid), np.concatenate(incl)
         #print '---'*30
-        return np.concatenate(incl)
-        #return np.concatenate(egrid), np.concatenate(incl)
+        #return np.concatenate(incl)
+        return np.concatenate(egrid), np.concatenate(incl)
 
     def _join_incl_diff(self, mother, daughter):
         """Returns joined incl diff cross sections.
@@ -819,8 +811,8 @@ class CompositeCrossSection(CrossSectionBase):
             egrid.append(egr)
             incl_diff.append(csec)
 
-        return np.concatenate(incl_diff, axis=1)
-        #return np.concatenate(egrid), np.concatenate(incl_diff, axis=1)
+        #return np.concatenate(incl_diff, axis=1)
+        return np.concatenate(egrid), np.concatenate(incl_diff, axis=1)
 
 
 class SophiaSuperposition(CrossSectionBase):
@@ -901,9 +893,12 @@ class SophiaSuperposition(CrossSectionBase):
             for da in sorted(self.redist_neutron):
                 incl_channels.append((idx, da))
             # add residual nucleus to channel lists
-            for da in [idx - 101, idx - 100]:
-                if da > 199:
-                    incl_channels.append((idx, da))
+            # NOTE: Including residual nuclei that are not in the disintegration model
+            #       Caused some problems, therefore we ignore them here. The effect is
+            #       minor though, as photo-meson is subdominant
+            # for da in [idx - 101, idx - 100]:
+            #    if da > 199:
+            #        incl_channels.append((idx, da))
 
         return incl_channels
 
