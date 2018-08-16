@@ -162,6 +162,23 @@ class CrossSectionBase(object):
         self.incl_idcs = sorted(self._incl_tab.keys())
         self.incl_diff_idcs = sorted(self._incl_diff_tab.keys())
 
+    def generate_incl_channels(self, mo_indices):
+        """Generates indices for all allowed channels given mo_indices
+            Note: By default this returns an empty list,
+                  meant to be overwritten in cases where 
+                  the child class needs to dynamically generate indices
+        
+        Args:
+            mo_indices (list of ints): list of indices for mother nuclei
+
+        Returns:
+           Returns:
+            list of tuples: list of allowed channels given as (mo_idx, da_idx)
+        """
+        incl_channels = []
+
+        return incl_channels
+
     def _optimize_and_generate_index(self):
         """Construct a list of mothers and (mother, daughter) indices.
 
@@ -416,9 +433,13 @@ class CrossSectionBase(object):
 
         # Launch the reduction for each inclusive channel
         for (mo, da), value in self._incl_tab.items():
+            #print mo, da, value
+            #print '---'*30
             follow_chain(mo, da, value, 0)
 
         for (mo, da), value in self._incl_diff_tab.items():
+            #print mo, da, value
+            #print '---'*30
             follow_chain(mo, da, value, 0)
 
         # Overwrite the old incl dictionary
@@ -509,6 +530,7 @@ class CrossSectionBase(object):
 
         if (mother, daughter) not in self._incl_tab:
             raise Exception(
+                self.__class__.__name__ + '::'
                 '({0},{1}) combination not in inclusive cross sections'.format(
                     mother, daughter))
 
@@ -638,11 +660,12 @@ class CompositeCrossSection(CrossSectionBase):
 
             # Save reference
             self.model_refs.append(csm_inst)
+        #print self.model_refs[1].incl_diff_idcs
+
         # Create a unique list of nonel cross sections from
         # the combination of all models
         self.nonel_idcs = sorted(
             list(set(sum([m.nonel_idcs for m in self.model_refs], []))))
-
         # For each ID interpolate the cross sections over entire energy range
         self._nonel_tab = {}
         for mo in self.nonel_idcs:
@@ -655,6 +678,17 @@ class CompositeCrossSection(CrossSectionBase):
             list(set(sum([m.incl_idcs for m in self.model_refs], []))))
         self.incl_idcs_all += sorted(
             list(set(sum([m.incl_diff_idcs for m in self.model_refs], []))))
+
+        # Add dynamically generated incides to each model
+        newincl = sorted(
+            list(
+                set(
+                    sum([
+                        m.generate_incl_channels(self.nonel_idcs)
+                        for m in self.model_refs
+                    ], []))))
+        self.incl_idcs_all = sorted(
+            list(set(sum([newincl, self.incl_idcs_all], []))))
 
         # Collect the channels, that need redistribution functions in a
         # separate list. Put channels that conserve boost into the normal
@@ -670,6 +704,10 @@ class CompositeCrossSection(CrossSectionBase):
                 info(10, 'Mother and daughter conserve boost', mother,
                      daughter)
                 self.incl_idcs.append((mother, daughter))
+
+        # Join the Egrid
+        self._egrid_tab = np.concatenate([m.egrid for m in self.model_refs])
+        self.set_range()
 
         # Join the boost conserving channels
         self._incl_tab = {}
@@ -699,6 +737,7 @@ class CompositeCrossSection(CrossSectionBase):
             egrid.append(e)
             nonel.append(csec)
 
+        #return np.concatenate(nonel)
         return np.concatenate(egrid), np.concatenate(nonel)
 
     def _join_incl(self, mother, daughter):
@@ -708,11 +747,14 @@ class CompositeCrossSection(CrossSectionBase):
              (mother, daughter))
         egrid = []
         incl = []
+
         for model in self.model_refs:
             e, csec = model.incl(mother, daughter)
             egrid.append(e)
             incl.append(csec)
-
+        #print np.concatenate(egrid), np.concatenate(incl)
+        #print '---'*30
+        #return np.concatenate(incl)
         return np.concatenate(egrid), np.concatenate(incl)
 
     def _join_incl_diff(self, mother, daughter):
@@ -769,6 +811,7 @@ class CompositeCrossSection(CrossSectionBase):
             egrid.append(egr)
             incl_diff.append(csec)
 
+        #return np.concatenate(incl_diff, axis=1)
         return np.concatenate(egrid), np.concatenate(incl_diff, axis=1)
 
 
@@ -826,8 +869,38 @@ class SophiaSuperposition(CrossSectionBase):
 
         # For more convenient generation of trivial redistribution matrices when joining
         self.redist_shape = (self.xbins.shape[0], self._egrid_tab.shape[0])
-
         self.set_range()
+
+    def generate_incl_channels(self, mo_indices):
+        """Generates indices for all allowed channels given mo_indices
+        
+        Args:
+            mo_indices (list of ints): list of indices for mother nuclei
+
+        Returns:
+           Returns:
+            list of tuples: list of allowed channels given as (mo_idx, da_idx)
+        """
+        incl_channels = []
+        #return incl_channels
+
+        # This model is a Superposition of protons and neutrons, so we need all respective daughters
+        for idx in mo_indices:
+            # add all daughters that are allowed for protons
+            for da in sorted(self.redist_proton):
+                incl_channels.append((idx, da))
+            # add all daughters that are allowed for neutrons
+            for da in sorted(self.redist_neutron):
+                incl_channels.append((idx, da))
+            # add residual nucleus to channel lists
+            # NOTE: Including residual nuclei that are not in the disintegration model
+            #       Caused some problems, therefore we ignore them here. The effect is
+            #       minor though, as photo-meson is subdominant
+            # for da in [idx - 101, idx - 100]:
+            #    if da > 199:
+            #        incl_channels.append((idx, da))
+
+        return incl_channels
 
     def nonel(self, mother):
         r"""Returns non-elastic cross section.
