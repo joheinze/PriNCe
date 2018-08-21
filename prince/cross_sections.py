@@ -593,7 +593,7 @@ class CrossSectionBase(object):
             return cs
 
         csec = np.zeros((nxbins, cs.shape[0]))
-        # TODO: The factor 2 in the following line is a workarround to account for the latter linear interpolation
+        # NOTE: The factor 2 in the following line is a workarround to account for the latter linear interpolation
         #       This is needed because linear spline integral will result in a trapz,
         #       which has half the area of the actual first bin
         corr_factor = 2 * self.xwidths[-1] / (
@@ -886,6 +886,8 @@ class SophiaSuperposition(CrossSectionBase):
 
         # This model is a Superposition of protons and neutrons, so we need all respective daughters
         for idx in mo_indices:
+            if idx > 200:
+                continue
             # add all daughters that are allowed for protons
             for da in sorted(self.redist_proton):
                 incl_channels.append((idx, da))
@@ -899,6 +901,8 @@ class SophiaSuperposition(CrossSectionBase):
             # for da in [idx - 101, idx - 100]:
             #    if da > 199:
             #        incl_channels.append((idx, da))
+
+        self.incl_diff_idcs = sorted(list(set(self.incl_diff_idcs + incl_channels)))
 
         return incl_channels
 
@@ -954,14 +958,14 @@ class SophiaSuperposition(CrossSectionBase):
         if daughter in [mother - 101]:
             cgrid = Z * self.cs_proton_grid
             # created incl. diff. index for all particle created in p-gamma
-            for da in self.redist_proton:
-                self.incl_diff_idcs.append((mother, da))
+            # for da in self.redist_proton:
+            #     self.incl_diff_idcs.append((mother, da))
             return self.egrid, cgrid[self._range]
         elif daughter in [mother - 100]:
             cgrid = N * self.cs_neutron_grid
             # created incl. diff. channel index for all particle created in n-gamma
-            for da in self.redist_neutron:
-                self.incl_diff_idcs.append((mother, da))
+            # for da in self.redist_neutron:
+            #     self.incl_diff_idcs.append((mother, da))
             return self.egrid, cgrid[self._range]
         else:
             raise Exception(

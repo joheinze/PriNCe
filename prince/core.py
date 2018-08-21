@@ -74,6 +74,9 @@ class PriNCeRun(object):
         # If secondaries are disabled in config, delete them from system species
         if not config["secondaries"]:
             system_species = [s for s in system_species if s >= 100]
+        # Remove particles that are explicitly excluded
+        for pid in config["ignore_particles"]:
+            system_species.remove(pid)
 
         # Initialize species manager for all species for which cross sections are known
         self.spec_man = data.SpeciesManager(system_species, self.ed)

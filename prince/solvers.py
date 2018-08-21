@@ -372,22 +372,29 @@ class UHECRPropagationSolver(object):
 
         self.ncallsf += 1
 
+        # print 'state', state.shape
         # Update rates/cross sections only if solver requests to do so
         if abs(z - self.current_z_rates) > self.recomp_z_threshold:
             self._update_jacobian(z)
             self.current_z_rates = z
 
         r = self.jacobian.dot(state)
+        # print 'deriv', r.shape
+
         if self.enable_injection_jacobian:
-            r += self.injection(1., z)
+            # print 'inj', self.injection(1., z).shape
+            r += self.injection(1., z)[:,np.newaxis]
         if self.enable_partial_diff_jacobian:
             conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
             if self.enable_adiabatic_losses:
                 conloss += self.adia_loss_rates_grid.loss_vector(z)
             if self.enable_pairprod_losses:
                 conloss += self.pair_loss_rates_grid.loss_vector(z)
+            # print 'conloss', conloss.shape
+            # print 'state',state.shape
             partial_deriv = self.dldz(z) * self.diff_operator.operator.dot(
-                conloss * state)
+                conloss[:,np.newaxis] * state)
+            # print 'pderiv', partial_deriv.shape
             r += partial_deriv
 
         return r
@@ -707,10 +714,8 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
 
 class UHECRPropagationSolverBDF(UHECRPropagationSolver):
     def __init__(self, *args, **kwargs):
-        if 'atol' in kwargs:
-            self.atol = kwargs.pop('atol')
-        else:
-            self.atol = 1e40
+        self.atol = kwargs.pop('atol',1e40)
+        self.rtol = kwargs.pop('rtol',1e-10)
         super(UHECRPropagationSolverBDF, self).__init__(*args, **kwargs)
         # UHECRPropagationSolver.__init__(self,*args,**kwargs)
 
@@ -731,10 +736,10 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
             self.final_z,
             max_step=np.abs(dz),
             atol=self.atol,
-            rtol=1e-10,
+            rtol=self.rtol,
             #  jac = self.eqn_jac,
             jac_sparsity=self.eqn_jac(self.initial_z, initial_state),
-            vectorized=False)
+            vectorized=True)
 
     def solve(self,
               dz=1e-3,
@@ -779,6 +784,9 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
             # Some last checks and resets
             # --------------------------------------------
             if verbose:
+                print 'last step:', self.r.step_size
+                print 'LU decomp:', self.r.nlu
+                print 'current order:', self.r.dense_output().order
                 print '---' * 20
 
             stepcount += 1
@@ -792,12 +800,22 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
                 format(self.r.t))
         if verbose:
             print 'Integrator finished with t = {:}, last step was dt = {:}'.format(
-                r.t, r.last_step)
+                self.r.t, self.r.step_size)
 
         # after each run we delete the solver to save memory
         self.state = self.r.y.copy()
+
+        print 'Summary:'
+        print '---------------------'
+        print 'status:   ', self.r.status
+        print 'time:     ', self.r.t
+        print 'last step:', self.r.step_size
+        print 'RHS eval: ', self.r.nfev
+        print 'Jac eval: ', self.r.njev
+        print 'LU decomp:', self.r.nlu
+        print '---------------------'
+
         del self.r
-        # self.state = self.r.y
 
         end_time = time()
         info(2, 'Integration completed in {0} s'.format(end_time - start_time))
