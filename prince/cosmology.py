@@ -64,6 +64,26 @@ def grb_rate(z, z_inhom=0.):
     """
     return (1 + z)**1.4 * star_formation_rate(z, z_inhom=z_inhom)
 
+def grb_rate_wp(z, z_inhom=0.):
+    """Returns the rate of Gamma-Ray Burst, per comoving volume, evaluated at the specified redshift.
+
+    Ref:
+        Wanderman, Piran: Mon.Not.Roy.Astron.Soc.406:1944-1958,2010
+
+    Args:
+      z (float): redshift
+      z_inhom (float): redshift where the universe becomes inhomogenous, return 0. below this values
+
+    Returns:
+      float: GRB rate normalized to 1. at y = 0.
+    """
+    if z < z_inhom:
+        return 0.
+    elif z <= 3:
+        return (1 + z)**2.1
+    else:
+        return (1 + 3)**(2.1 + 1.4) * (1 + z)**-1.4
+
 
 def agn_rate(z, z_inhom=0.):
     """Returns the rate of Active Galactic Nuclei, per comoving volume, evaluated at the specified redshift.

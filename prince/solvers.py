@@ -92,7 +92,7 @@ class UHECRPropagationResult(object):
             nco_ids = [s for s in self.known_species if s >= 100]
         elif nco_ids == 'nu':
             nco_ids = [
-                s for s in self.known_species if s in [12, 13, 14, 15, 16]
+                s for s in self.known_species if s in [11, 12, 13, 14, 15, 16]
             ]
         elif nco_ids == 'all':
             nco_ids = self.known_species
@@ -744,6 +744,7 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
     def solve(self,
               dz=1e-3,
               verbose=True,
+              summary=False,
               extended_output=False,
               full_reset=False,
               progressbar=False):
@@ -785,6 +786,7 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
             # --------------------------------------------
             if verbose:
                 print 'last step:', self.r.step_size
+                print 'h_abs:', self.r.h_abs
                 print 'LU decomp:', self.r.nlu
                 print 'current order:', self.r.dense_output().order
                 print '---' * 20
@@ -804,16 +806,17 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
 
         # after each run we delete the solver to save memory
         self.state = self.r.y.copy()
-
-        print 'Summary:'
-        print '---------------------'
-        print 'status:   ', self.r.status
-        print 'time:     ', self.r.t
-        print 'last step:', self.r.step_size
-        print 'RHS eval: ', self.r.nfev
-        print 'Jac eval: ', self.r.njev
-        print 'LU decomp:', self.r.nlu
-        print '---------------------'
+        
+        if summary or verbose:
+            print 'Summary:'
+            print '---------------------'
+            print 'status:   ', self.r.status
+            print 'time:     ', self.r.t
+            print 'last step:', self.r.step_size
+            print 'RHS eval: ', self.r.nfev
+            print 'Jac eval: ', self.r.njev
+            print 'LU decomp:', self.r.nlu
+            print '---------------------'
 
         del self.r
 
