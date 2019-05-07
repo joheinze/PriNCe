@@ -713,6 +713,7 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
 
 
 class UHECRPropagationSolverBDF(UHECRPropagationSolver):
+
     def __init__(self, *args, **kwargs):
         self.atol = kwargs.pop('atol',1e40)
         self.rtol = kwargs.pop('rtol',1e-10)
@@ -759,6 +760,8 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
         self._init_solver(dz)
         info(2, 'Solver initialized in {0} s'.format(time() - start_time))
 
+
+        info(2, 'Starting integration.')
         if progressbar:
             if progressbar == 'notebook':
                 from tqdm import tqdm_notebook as tqdm
@@ -769,7 +772,6 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
         else:
             pbar = None
 
-        info(2, 'Starting integration.')
         while self.r.status == 'running':
             # print '------ at', self.r.t, '------'
             if verbose:
@@ -795,7 +797,8 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
             reset_counter += 1
             if pbar is not None:
                 pbar.update()
-
+        if pbar is not None:
+            pbar.close()
         if self.r.status == 'failed':
             raise Exception(
                 'Integrator failed at t = {:}, try adjusting the tolerances'.
