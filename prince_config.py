@@ -121,6 +121,8 @@ config = {
 
     # Include secondaries like photons and neutrinos
     "secondaries": True,
+    # List of specific particles to ignore
+    "ignore_particles": [20,21], #(we ignore photons and electrons, as their physics is not fully implemented)
 
     #===========================================================================
     # Parameters of numerical integration

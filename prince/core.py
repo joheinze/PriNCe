@@ -74,6 +74,9 @@ class PriNCeRun(object):
         # If secondaries are disabled in config, delete them from system species
         if not config["secondaries"]:
             system_species = [s for s in system_species if s >= 100]
+        # Remove particles that are explicitly excluded
+        for pid in config["ignore_particles"]:
+            system_species.remove(pid)
 
         # Initialize species manager for all species for which cross sections are known
         self.spec_man = data.SpeciesManager(system_species, self.ed)
@@ -117,3 +120,11 @@ class PriNCeRun(object):
         from solvers import UHECRPropagationSolver
         solver = UHECRPropagationSolver(
             initial_z=initial_z, final_z=final_z, prince_run=self)
+
+    def set_photon_field(self, pfield):
+        self.photon_field = pfield
+        self.adia_loss_rates_grid.photon_field = pfield
+        self.pair_loss_rates_grid.photon_field = pfield
+        self.adia_loss_rates_bins.photon_field = pfield
+        self.pair_loss_rates_bins.photon_field = pfield
+        self.int_rates.photon_field = pfield

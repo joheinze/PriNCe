@@ -127,7 +127,7 @@ class CosmicRaySource(object):
         Return:
             float: Relative source evolution, typically normalized to 1 at z=0
         """
-        from cosmology import star_formation_rate, grb_rate, agn_rate
+        from cosmology import star_formation_rate, grb_rate_wp, agn_rate
 
         # Check if negative z is called
         if z < 0:
@@ -147,9 +147,11 @@ class CosmicRaySource(object):
             if mkwd == 'SFR':
                 return (1 + z)**mval * star_formation_rate(z)
             elif mkwd == 'GRB':
-                return (1 + z)**mval * grb_rate(z)
+                return (1 + z)**mval * grb_rate_wp(z)
             elif mkwd == 'AGN':
                 return (1 + z)**mval * agn_rate(z)
+            elif mkwd == 'TDE':
+                return (1 + z)**mval * tde_rate(z)
             elif mkwd == 'simple':
                 return (1 + z)**mval
             # local evolution as (1+z)**m and flat beyond z = 1

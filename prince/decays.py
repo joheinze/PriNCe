@@ -482,6 +482,9 @@ def nu_from_beta_decay(x_grid, mother, daughter, Gamma=200, angle=None):
     Z_mo = spec_data[mother]['charge']
     Z_da = spec_data[daughter]['charge']
 
+    from util import get_AZN
+    A_mo, _, _ = get_AZN(mother)
+
     if mother == 100 and daughter == 101:
         # for this channel the masses are already nucleon masses
         qval = mass_mo - mass_da - mass_el
@@ -495,8 +498,15 @@ def nu_from_beta_decay(x_grid, mother, daughter, Gamma=200, angle=None):
 
     # substitute this to the energy grid
     E0 = qval + mass_el
-    Emo = Gamma * mass_mo
+    # NOTE: we subsitute into energy per nucleon here
+    Emo = Gamma * mass_mo / A_mo
     E = x_grid * Emo
+
+    # print '------','beta decay','------'
+    # print mother
+    # print E0
+    # print A_mo
+    # print Emo
 
     if angle is None:
         # ctheta = np.linspace(-1, 1, 1000)

@@ -436,6 +436,23 @@ class PhotoNuclearInteractionRate(object):
         else:
             return False
 
+    def single_interaction_length(self, pid, z, pfield = None):
+        """Returns energy loss length in cm
+        (convenience function for plotting)
+        """
+        if pfield is not None:
+            mem_pfield = self.photon_field
+            self.photon_field = pfield
+
+        species = self.prince_run.spec_man.ncoid2sref[pid]
+        egrid = self.e_cosmicray.grid * species.A
+        rate = -1 * self.get_dense_hadr_jacobian(force_update=True,z=z)[species.sl,species.sl].diagonal()
+
+        length = 1 / rate
+
+        self.photon_field = mem_pfield
+        return egrid, length
+
     # def interaction_rate(self, nco_ids, z):
     #     """Compute interaction rates using batch matrix convolution.
 
@@ -505,6 +522,16 @@ class ContinuousAdiabaticLossRate(object):
 
         return energy_vector
 
+    def single_loss_length(self, pid, z):
+        """Returns energy loss length in cm
+        (convenience function for plotting)
+        """
+        species = self.prince_run.spec_man.ncoid2sref[pid]
+
+        egrid = self.energy_vector[species.sl] * species.A
+        rate = self.loss_vector(z)[species.sl] * species.A
+        length = egrid / rate
+        return egrid, length
 
 class ContinuousPairProductionLossRate(object):
     """Implementation of continuous pair production loss rates."""
@@ -605,6 +632,23 @@ class ContinuousPairProductionLossRate(object):
                 format(energy))
         return scale_vec
 
+    def single_loss_length(self, pid, z, pfield = None):
+        """Returns energy loss length in cm
+        (convenience function for plotting)
+        """
+        if pfield is not None:
+            mem_pfield = self.photon_field
+            self.photon_field = pfield
+
+        species = self.prince_run.spec_man.ncoid2sref[pid]
+
+        egrid = self.e_cosmicray.grid * species.A
+        rate = self.loss_vector(z)[species.sl] * species.A
+        length = egrid / rate
+
+        self.photon_field = mem_pfield
+        return egrid, length
+    
     def _phi(self, xi):
         """Phi function as in Blumental 1970"""
 
