@@ -120,3 +120,11 @@ class PriNCeRun(object):
         from solvers import UHECRPropagationSolver
         solver = UHECRPropagationSolver(
             initial_z=initial_z, final_z=final_z, prince_run=self)
+
+    def set_photon_field(self, pfield):
+        self.photon_field = pfield
+        self.adia_loss_rates_grid.photon_field = pfield
+        self.pair_loss_rates_grid.photon_field = pfield
+        self.adia_loss_rates_bins.photon_field = pfield
+        self.pair_loss_rates_bins.photon_field = pfield
+        self.int_rates.photon_field = pfield

@@ -886,8 +886,8 @@ class SophiaSuperposition(CrossSectionBase):
 
         # This model is a Superposition of protons and neutrons, so we need all respective daughters
         for idx in mo_indices:
-            if idx > 200:
-                continue
+            # if idx > 200:
+            #     continue
             # add all daughters that are allowed for protons
             for da in sorted(self.redist_proton):
                 incl_channels.append((idx, da))
@@ -958,14 +958,14 @@ class SophiaSuperposition(CrossSectionBase):
         if daughter in [mother - 101]:
             cgrid = Z * self.cs_proton_grid
             # created incl. diff. index for all particle created in p-gamma
-            # for da in self.redist_proton:
-            #     self.incl_diff_idcs.append((mother, da))
+            for da in self.redist_proton:
+                self.incl_diff_idcs.append((mother, da))
             return self.egrid, cgrid[self._range]
         elif daughter in [mother - 100]:
             cgrid = N * self.cs_neutron_grid
             # created incl. diff. channel index for all particle created in n-gamma
-            # for da in self.redist_neutron:
-            #     self.incl_diff_idcs.append((mother, da))
+            for da in self.redist_neutron:
+                self.incl_diff_idcs.append((mother, da))
             return self.egrid, cgrid[self._range]
         else:
             raise Exception(
@@ -1009,6 +1009,110 @@ class SophiaSuperposition(CrossSectionBase):
 
         return self.egrid, csec_diff[:, self._range]
 
+class EmptyCrossSection(SophiaSuperposition):
+    
+    def nonel(self, mother):
+        r"""Returns non-elastic cross section.
+
+        Absorption cross section of `mother`, which is
+        the total minus elastic, or in other words, the inelastic
+        cross section.
+
+        Args:
+            mother (int): Mother nucleus(on)
+
+        Returns:
+           Returns:
+            (numpy.array, numpy.array): self._egrid_tab (:math:`\epsilon_r`),
+            nonelastic (total) cross section in :math:`cm^{-2}`
+        """
+
+        # now interpolate these as Spline
+        _, Z, N = get_AZN(mother)
+
+        # the nonelastic crosssection is just a superposition of
+        # the proton/neutron number
+        cgrid = Z * self.cs_proton_grid + N * self.cs_neutron_grid
+        return self.egrid, np.zeros_like(cgrid[self._range])
+
+    def incl(self, mother, daughter):
+        r"""Returns inclusive cross section.
+
+        Inclusive cross section for daughter in photo-nuclear
+        interactions of `mother`.
+
+        Args:
+            mother (int): Mother nucleus(on)
+            daughter (int): Daughter nucleus(on)
+
+        Returns:
+            (numpy.array, numpy.array): self._egrid_tab (:math:`\epsilon_r`),
+            inclusive cross section in :math:`cm^{-2}`
+        """
+
+        _, Z, N = get_AZN(mother)
+
+        if daughter <= 101:
+            raise Exception('Boost conserving cross section called ' +
+                            'for redistributed particle')
+
+        elif daughter >= 200 and daughter not in [mother - 101, mother - 100]:
+            info(10, 'mother, daughter', mother, daughter, 'out of range')
+            return self.egrid[[0, -1]], np.array([0., 0.])
+
+        if daughter in [mother - 101]:
+            cgrid = Z * self.cs_proton_grid
+            # created incl. diff. index for all particle created in p-gamma
+            # for da in self.redist_proton:
+            #     self.incl_diff_idcs.append((mother, da))
+            return self.egrid, np.zeros_like(cgrid[self._range])
+        elif daughter in [mother - 100]:
+            cgrid = N * self.cs_neutron_grid
+            # created incl. diff. channel index for all particle created in n-gamma
+            # for da in self.redist_neutron:
+            #     self.incl_diff_idcs.append((mother, da))
+            return self.egrid, np.zeros_like(cgrid[self._range])
+        else:
+            raise Exception(
+                'Channel {:} to {:} not allowed in this superposition model'.
+                format(mother, daughter))
+    
+    def incl_diff(self, mother, daughter):
+        r"""Returns inclusive differential cross section.
+
+        Inclusive differential cross section for daughter in photo-nuclear
+        interactions of `mother`. Only defined, if the daughter is distributed
+        in :math:`x_{\rm L} = E_{da} / E_{mo}`
+
+        Args:
+            mother (int): Mother nucleus(on)
+            daughter (int): Daughter nucleus(on)
+
+        Returns:
+            (numpy.array, numpy.array, numpy.array): :math:`\epsilon_r` grid,
+            :math:`x` grid, differential cross section in :math:`{\rm cm}^{-2}`
+        """
+
+        _, Z, N = get_AZN(mother)
+
+        if daughter > 101:
+            raise Exception(
+                'Redistribution function requested for boost conserving particle'
+            )
+        csec_diff = None
+        # TODO: File shall contain the functions in .T directly
+        if daughter in self.redist_proton:
+            cgrid = Z * self.cs_proton_grid
+            csec_diff = self.redist_proton[daughter].T * cgrid
+
+        if daughter in self.redist_neutron:
+            cgrid = N * self.cs_neutron_grid
+            if np.any(csec_diff):
+                csec_diff += self.redist_neutron[daughter].T * cgrid
+            else:
+                csec_diff = self.redist_neutron[daughter].T * cgrid
+
+        return self.egrid, np.zeros_like(csec_diff[:, self._range])
 
 class TabulatedCrossSection(CrossSectionBase):
     """Interface class to read tabulated disintegration cross sections
