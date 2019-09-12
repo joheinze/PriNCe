@@ -11,7 +11,7 @@ from prince_config import config
 def convert_to_namedtuple(dictionary, name='GenericNamedTuple'):
     """Converts a dictionary to a named tuple."""
     from collections import namedtuple
-    return namedtuple(name, dictionary.keys())(**dictionary)
+    return namedtuple(name, list(dictionary.keys()))(**dictionary)
 
 
 # Default units in Prince are ***cm, s, GeV***
@@ -241,7 +241,7 @@ def info(min_dbg_level, *message):
 
     if min_dbg_level <= config["debug_level"]:
         message = [str(m) for m in message]
-        print caller_name() + " ".join(message)
+        print(caller_name() + " ".join(message))
 
 
 def load_or_convert_array(fname, **kwargs):

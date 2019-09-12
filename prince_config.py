@@ -4,7 +4,7 @@ import os
 import os.path as path
 import platform
 import sys
-import cPickle as pickle
+import pickle as pickle
 import numpy as np
 
 base = path.dirname(path.abspath(__file__))

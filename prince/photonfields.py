@@ -9,7 +9,7 @@ from os.path import join
 import numpy as np
 from scipy.interpolate import UnivariateSpline
 from scipy.integrate import trapz
-import cosmology as cosm
+from . import cosmology as cosm
 from prince_config import config
 
 
@@ -133,7 +133,7 @@ class CIBFranceschini2D(PhotonField):
     """
 
     def __init__(self, simple_scaling=False):
-        import cPickle as pickle
+        import pickle as pickle
         self.simple_scaling = simple_scaling
         self.int2d = pickle.load(
             open(join(config['data_dir'], 'CIB_franceschini_int2D.ppo'), 'rb'))
@@ -155,7 +155,7 @@ class CIBFranceschini2D(PhotonField):
             nlocal = self.int2d(Ered, 0., assume_sorted=True)
             nz = self.int2d(Ered, z, assume_sorted=True)
             scale = trapz(nz,Ered) / trapz(nlocal,Ered) / (1+z)**3
-            print scale
+            print(scale)
             return (1. + z)**2 * nlocal * scale
         else:
             return self.int2d(E, z, assume_sorted=True)
@@ -174,7 +174,7 @@ class CIBInoue2D(PhotonField):
     """
 
     def __init__(self, model='base', simple_scaling=False):
-        import cPickle as pickle
+        import pickle as pickle
         self.simple_scaling = simple_scaling
         self.int2d_base, self.int2d_min, self.int2d_max = pickle.load(
             open(join(config['data_dir'], 'CIB_inoue_int2D.ppo'), 'rb'))
@@ -224,7 +224,7 @@ class CIBGilmore2D(PhotonField):
     """
 
     def __init__(self, simple_scaling=False, model='fiducial'):
-        import cPickle as pickle
+        import pickle as pickle
         self.simple_scaling = simple_scaling
         self.int2d_fixed, self.int2d_fiducial = pickle.load(
             open(join(config['data_dir'], 'CIB_gilmore_int2D.ppo'), 'rb'))
@@ -271,7 +271,7 @@ class CIBDominguez2D(PhotonField):
     """
 
     def __init__(self, simple_scaling=False):
-        import cPickle as pickle
+        import pickle as pickle
         self.simple_scaling = simple_scaling
         self.int2d, self.int2d_lower, self.int2d_upper = pickle.load(
             open(join(config['data_dir'], 'CIB_dominguez_int2D.ppo'), 'rb'))
