@@ -528,7 +528,23 @@ class CrossSectionBase(object):
                            on self._egrid_tab
         """
 
-        if (mother, daughter) not in self._incl_tab:
+        from scipy.integrate import trapz
+
+        if (mother, daughter) in self._incl_diff_tab:
+            # Return the integral of the differential for the inclusive
+            egr_incl, cs_diff = self.incl_diff(mother, daughter)
+            # diff_mat = diff_mat.transpose()
+            # print bin_widths(self.xbins).shape, diff_mat.shape
+            cs_incl = trapz(cs_diff, x=self.xcenters, 
+                dx=bin_widths(self.xbins), axis=0)
+
+            if isinstance(self._incl_diff_tab[(mother, daughter)], tuple):
+                return egr_incl, cs_incl
+
+            return self.egrid, cs_incl[self._range]
+
+
+        elif (mother, daughter) not in self._incl_tab:
             raise Exception(
                 self.__class__.__name__ + '::'
                 '({0},{1}) combination not in inclusive cross sections'.format(
@@ -607,6 +623,20 @@ class CrossSectionBase(object):
             return egr, csec
         return csec
 
+    def multiplicities(self, mother, daughter):
+        '''Return the multiplicities from either the inclusive channels, or the
+        differential ones integrated by x, as a function of Energy.
+        '''
+        egrid_incl, cs_incl = self.incl(mother, daughter)
+        egrid_nonel, cs_nonel = self.nonel(mother)
+
+        if egrid_incl.shape != egrid_nonel.shape:
+            raise Exception('Problem with different grid shapes')
+        
+        multiplicities = cs_incl / np.where(cs_nonel == 0, np.inf, cs_nonel)
+
+        return egrid_nonel, multiplicities
+
 
 class CompositeCrossSection(CrossSectionBase):
     """Joins and interpolates between cross section models.
@@ -679,7 +709,7 @@ class CompositeCrossSection(CrossSectionBase):
         self.incl_idcs_all += sorted(
             list(set(sum([m.incl_diff_idcs for m in self.model_refs], []))))
 
-        # Add dynamically generated incides to each model
+        # Add dynamically generated indices to each model
         newincl = sorted(
             list(
                 set(
@@ -819,7 +849,7 @@ class SophiaSuperposition(CrossSectionBase):
     """ Cross sections generated using the Sophia event generator for protons and neutrons.
     Includes redistribution functions into secondaries
 
-    Cross section for Nuclei are build as a superposition:
+    Cross section for Nuclei are built as a superposition:
     csec_(Z,A) = Z * csec_P + (A - Z) * csec_N
 
     WARNING: This will not check, if the requested nucleus is existent in nature!
@@ -948,8 +978,14 @@ class SophiaSuperposition(CrossSectionBase):
         _, Z, N = get_AZN(mother)
 
         if daughter <= 101:
-            raise Exception('Boost conserving cross section called ' +
-                            'for redistributed particle')
+            # raise Exception('Boost conserving cross section called ' +
+            #                 'for redistributed particle')
+            from scipy.integrate import trapz
+
+            egr_incl, cs_diff = self.incl_diff(mother, daughter)
+            cs_incl = trapz(cs_diff, x=self.xcenters,
+                            dx=bin_widths(self.xbins), axis=0)
+            return self.egrid, cs_incl[self._range]
 
         elif daughter >= 200 and daughter not in [mother - 101, mother - 100]:
             info(10, 'mother, daughter', mother, daughter, 'out of range')
@@ -1004,10 +1040,10 @@ class SophiaSuperposition(CrossSectionBase):
             cgrid = N * self.cs_neutron_grid
             if np.any(csec_diff):
                 csec_diff += self.redist_neutron[daughter].T * cgrid
-            else:
                 csec_diff = self.redist_neutron[daughter].T * cgrid
 
         return self.egrid, csec_diff[:, self._range]
+
 
 class EmptyCrossSection(SophiaSuperposition):
     
@@ -1113,6 +1149,7 @@ class EmptyCrossSection(SophiaSuperposition):
                 csec_diff = self.redist_neutron[daughter].T * cgrid
 
         return self.egrid, np.zeros_like(csec_diff[:, self._range])
+
 
 class TabulatedCrossSection(CrossSectionBase):
     """Interface class to read tabulated disintegration cross sections
