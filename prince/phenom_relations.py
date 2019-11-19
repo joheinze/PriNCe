@@ -116,7 +116,6 @@ def residual_multiplicities():
 # species_by_mass = list_species_by_mass(56, config['tau_dec_threshold'])
 species_by_mass = list_species_by_mass(56, 0.)
 # resmul = residual_multiplicities()
-# with open('/afs/ifh.de/group/that/work-lm/NEUCOS/Leonel/small_frags_relative_yields.pkl', 'r') as f:
 small_frags_relative_yields_filename = join(config['data_dir'], 'small_frags_relative_yields.pkl')
 with open(small_frags_relative_yields_filename, 'r') as f:
 	# it's faster to pickle.load a precomputed resmul
