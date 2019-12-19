@@ -1570,7 +1570,7 @@ class EmpiricalModel(SophiaSuperposition):
 
         self._fill_multiplicity()
 
-        self._optimize_and_generate_index()
+        # self._optimize_and_generate_index() # without this works!!
 
     def A_eff(self, A, x):
         """Returns the effective A using precomputed scaling coefficients based on
@@ -1670,8 +1670,11 @@ class EmpiricalModel(SophiaSuperposition):
                 self._incl_diff_tab[mom, dau] = ()
                 
         new_multiplicity = {}
-        for mom in sorted(spec_data.keys()):
-            if (mom < 101) or isinstance(mom, str) or (spec_data[mom]['lifetime'] < config['tau_dec_threshold']):
+        nuclides = [k for k in sorted(spec_data.keys()) if isinstance(k, int)]
+        for mom in nuclides:
+            A, _, _ = get_AZN(mom)
+            if (mom < 101) or (A > config['max_mass']) or \
+                isinstance(mom, str) or (spec_data[mom]['lifetime'] < config['tau_dec_threshold']):
                 continue
             mults = multiplicity_table(mom)
             dau_list, csincl_list = zip(*((k, v) for k, v in mults.iteritems()))
