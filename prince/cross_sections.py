@@ -839,7 +839,7 @@ class SophiaSuperposition(CrossSectionBase):
             'sophia_crosssec', delimiter=',', unpack=True)
 
         epsr_grid, self.xbins, self.redist_proton, self.redist_neutron = np.load(
-            join(config["data_dir"], config["redist_fname"]))
+            join(config["data_dir"], config["redist_fname"]),allow_pickle=True)
 
         # check if crosssection and redistribution are defined on the same grid,
         # other wise interpolate crosssection
