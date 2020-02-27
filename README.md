@@ -1,4 +1,4 @@
-PriNCe - PRopagation Including Nuclear Cascade equations
+PriNCe - **Pr**opagation **i**ncluding **N**uclear **C**ascade **e**quations
 ========================================================
 
 This code is written to solve the transport equation for ultra-high energy cosmic rays on cosmological scales.  
@@ -7,6 +7,7 @@ The development is part of the [NEUCOS project](https://astro.desy.de/theory/neu
 Status
 ------
 
+Code stable and tested for UHECR propagation. Used in [Heinze et al., Astrophys.J. 873 (2019)](https://doi.org/10.3847/1538-4357/ab05ce)
 
 Documentation
 -------------
@@ -39,7 +40,7 @@ Dependencies (list might be incomplete):
 - tqdm
 - jupyter notebook or jupyter lab (optional, but needed for examples)
 
-__It might be worth to wait for the python 3 port__ (since official Python 2 support is discontinued after 2019)
+**It might be worth to wait for the python 3 port** (since official Python 2 support is discontinued after 2019)
 
 Installation
 ------------
@@ -82,7 +83,23 @@ Anaconda offers MKL-linked numpy binaries free for academic use. It is necessary
     conda install mkl
     ```
 
-6. (**Optional**) The computation above redshift 1 can be significantly accelerated with some minor modifications to `scipy`. See `../work-jh/git/scipy` (DESY/THAT internal work folder)
+6. (**Optional**) The computation above redshift 1 can be significantly accelerated with some minor modifications to `scipy`. See `/afs/ifh.de/group/that/work-jh/git/scipy` (DESY/THAT internal work folder). The relevant modification is in `scipy/integrate/_ivp/bdf.py`:
+
+    from l. 423 in `_step_impl(self)`:  
+
+    ```python
+        # Avoid step size oscillation around maximal step size
+        if self.h_abs * factor > self.max_step:
+            if not self.h_abs == self.max_step:
+                change_D(D, order, max_step / self.h_abs)
+                self.h_abs = self.max_step
+                self.n_equal_steps = 0
+                self.LU = None
+            self.n_equal_steps = 0
+            return True, None
+    ```
+
+    This workaround avoids some unnecessary recomputation of the step size. You can add it to any self-compiled version of `scipy`. **Be carefull, since this is only tested qualitatively for UHECR propagation**.
 
 7. Run some example
 
@@ -92,14 +109,18 @@ Anaconda offers MKL-linked numpy binaries free for academic use. It is necessary
 
     click on the examples directory and start with `create_kernel.ipynb`. Click through the blocks and see what happens.
 
+Examples
+--------
+
 Citation
 --------
 
 If you are using this code in your work, please cite:
 
-_A new view on Auger data and cosmogenic neutrinos in light of different nuclear disintegration and air-shower models_  
+*A new view on Auger data and cosmogenic neutrinos in light of different nuclear disintegration and air-shower models*  
 J. Heinze, A. Fedynitch, D. Boncioli and W. Winter  
-Astrophys.J. 873 (2019) no.1, 88
+Astrophys.J. 873 (2019) no.1, 88  
+https://doi.org/10.3847/1538-4357/ab05ce
 
 Contributors
 ------------
