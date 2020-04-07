@@ -528,7 +528,10 @@ def nu_from_beta_decay(x_grid, mother, daughter, Gamma=200, angle=None):
     res[E_mesh > Emax] = 0.
     res = np.nan_to_num(res)
 
-    if angle is None:
+    if np.all(res == 0):
+        info(10, 'Differential distribution is all zeros for', mother, daughter, 
+             'No angle averaging performed!')
+    elif angle is None:
         # now average over angle
         res = trapz(res, x=ctheta, axis=1)
         res = res / trapz(res, x=x_grid)

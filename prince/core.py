@@ -76,7 +76,8 @@ class PriNCeRun(object):
             system_species = [s for s in system_species if s >= 100]
         # Remove particles that are explicitly excluded
         for pid in config["ignore_particles"]:
-            system_species.remove(pid)
+            if pid in system_species:
+                system_species.remove(pid)
 
         # Initialize species manager for all species for which cross sections are known
         self.spec_man = data.SpeciesManager(system_species, self.ed)

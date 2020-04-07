@@ -383,7 +383,7 @@ class UHECRPropagationSolver(object):
 
         if self.enable_injection_jacobian:
             # print 'inj', self.injection(1., z).shape
-            r += self.injection(1., z)[:,np.newaxis]
+            r += self.injection(1., z)[:,np.newaxis] 
         if self.enable_partial_diff_jacobian:
             conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
             if self.enable_adiabatic_losses:
@@ -394,6 +394,38 @@ class UHECRPropagationSolver(object):
             # print 'state',state.shape
             partial_deriv = self.dldz(z) * self.diff_operator.operator.dot(
                 conloss[:,np.newaxis] * state)
+            # print 'pderiv', partial_deriv.shape
+            r += partial_deriv
+
+        return r
+
+    def eqn_deriv_euler(self, z, state, *args):
+        z = z - self.z_offset
+
+        self.ncallsf += 1
+
+        # print 'state', state.shape
+        # Update rates/cross sections only if solver requests to do so
+        if abs(z - self.current_z_rates) > self.recomp_z_threshold:
+            self._update_jacobian(z)
+            self.current_z_rates = z
+
+        r = self.jacobian.dot(state)
+        # print 'deriv', r.shape
+
+        if self.enable_injection_jacobian:
+            # print 'inj', self.injection(1., z).shape
+            r += self.injection(1., z)
+        if self.enable_partial_diff_jacobian:
+            conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
+            if self.enable_adiabatic_losses:
+                conloss += self.adia_loss_rates_grid.loss_vector(z)
+            if self.enable_pairprod_losses:
+                conloss += self.pair_loss_rates_grid.loss_vector(z)
+            # print 'conloss', conloss.shape
+            # print 'state',state.shape
+            partial_deriv = self.dldz(z) * self.diff_operator.operator.dot(
+                conloss * state)
             # print 'pderiv', partial_deriv.shape
             r += partial_deriv
 
@@ -650,19 +682,24 @@ class UHECRPropagationSolverLSODES(UHECRPropagationSolver):
 
 
 class UHECRPropagationSolverEULER(UHECRPropagationSolver):
-    def __init__(*args, **kwargs):
+    def __init__(self,*args, **kwargs):
         super(UHECRPropagationSolverEULER, self).__init__(*args, **kwargs)
-        # UHECRPropagationSolver.__init__(self,*args,**kwargs)
 
-    def solve(self, dz=1e-3, verbose=True, extended_output=False):
+    def solve(self, dz=1e-3, verbose=True, extended_output=False, initial_inj = False, disable_inj = False):
         from time import time
+        self._update_jacobian(self.initial_z)
+        self.current_z_rates = self.initial_z
 
         # stepcount = 0
         dz = -1 * dz
         start_time = time()
         curr_z = self.initial_z
-        state = np.zeros(self.dim_states)
-
+        if initial_inj:
+            initial_state = self.injection(dz, self.initial_z)
+            print initial_state
+        else:
+            initial_state = np.zeros(self.dim_states)
+        state = initial_state
         info(2, 'Starting integration.')
 
         while curr_z + dz >= self.final_z:
@@ -674,18 +711,19 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
             # Solve for hadronic interactions
             # --------------------------------------------
             if verbose:
-                print('Solving hadr losses at t =', self.r.t)
+                print('Solving hadr losses at t =', curr_z)
             self._update_jacobian(curr_z)
 
-            state += self.eqn_deriv(curr_z, state) * dz
+            state += self.eqn_deriv_euler(curr_z, state) * dz
 
             # --------------------------------------------
             # Apply the injection
             # --------------------------------------------
-            if not self.enable_injection_jacobian and not self.enable_partial_diff_jacobian:
-                if verbose:
-                    print('applying injection at t =', self.r.t)
-                state += self.injection(dz, curr_z)
+            if not disable_inj:
+                if not self.enable_injection_jacobian and not self.enable_partial_diff_jacobian:
+                    if verbose:
+                        print('applying injection at t =', curr_z)
+                    state += self.injection(dz, curr_z)
 
             # --------------------------------------------
             # Apply the semi lagrangian
@@ -693,16 +731,15 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
             if not self.enable_partial_diff_jacobian:
                 if self.enable_adiabatic_losses or self.enable_pairprod_losses:
                     if verbose:
-                        print('applying semi lagrangian at t =', self.r.t)
+                        print('applying semi lagrangian at t =', curr_z)
                     state = self.semi_lagrangian(dz, curr_z, state)
 
             # --------------------------------------------
             # Some last checks and resets
             # --------------------------------------------
             if curr_z < -1 * dz:
-                print('break at z =', self.r.t)
+                print('break at z =', curr_z)
                 break
-
             curr_z += dz
 
         # self.r.integrate(self.final_z)
