@@ -696,7 +696,7 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
         curr_z = self.initial_z
         if initial_inj:
             initial_state = self.injection(dz, self.initial_z)
-            print initial_state
+            print(initial_state)
         else:
             initial_state = np.zeros(self.dim_states)
         state = initial_state

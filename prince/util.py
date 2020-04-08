@@ -302,7 +302,7 @@ class EnergyGrid(object):
     """
 
     def __init__(self, lower, upper, bins_dec):
-        self.bins = np.logspace(lower, upper, (upper - lower) * bins_dec + 1)
+        self.bins = np.logspace(lower, upper, int((upper - lower) * bins_dec + 1))
         self.grid = 0.5 * (self.bins[1:] + self.bins[:-1])
         self.widths = self.bins[1:] - self.bins[:-1]
         self.d = self.grid.size
