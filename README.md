@@ -9,6 +9,15 @@ Status
 
 Code stable and tested for UHECR propagation. Used in [Heinze et al., Astrophys.J. 873 (2019)](https://doi.org/10.3847/1538-4357/ab05ce)
 
+Data and other requirements
+-------------------
+
+The required data files are currently **not** contained in this repository:
+
+If you have access to the old `SVN` repository, copy the `PriNCe/data` subfolder, otherwise ask the authors
+
+The old `SVN` repository also contains utility and test notebooks that have not yet been migrated to `git`
+
 Documentation
 -------------
 
