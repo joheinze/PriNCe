@@ -15,7 +15,7 @@ from prince_config import config, spec_data
 #       however sophia does not provide these, and still introduces indices for lighter particles
 
 
-class CrossSectionBase(object):
+class CrossSectionBase(object, metaclass=ABCMeta):
     """Base class for cross section interfaces to tabulated models.
 
     The class is abstract and it is not inteded to be instantiated.
@@ -34,8 +34,6 @@ class CrossSectionBase(object):
     The flag self.supports_redistributions = True/False should be set
     To tell the class to include/ignore incl_diff
     """
-
-    __metaclass__ = ABCMeta
 
     def __init__(self):
         # Tuple, defining min and max energy cuts on the grid
@@ -219,7 +217,7 @@ class CrossSectionBase(object):
                 self.known_bc_channels.append((mo, da))
                 self.known_species.append(da)
 
-        for mo, da in self._incl_diff_tab.keys():
+        for mo, da in list(self._incl_diff_tab.keys()):
             if da >= 100 and get_AZN(da)[0] > get_AZN(mo)[0]:
                 raise Exception(
                     'Daughter {0} heavier than mother {1}. Physics??'.format(
@@ -432,12 +430,12 @@ class CrossSectionBase(object):
         self._update_indices()
 
         # Launch the reduction for each inclusive channel
-        for (mo, da), value in self._incl_tab.items():
+        for (mo, da), value in list(self._incl_tab.items()):
             #print mo, da, value
             #print '---'*30
             follow_chain(mo, da, value, 0)
 
-        for (mo, da), value in self._incl_diff_tab.items():
+        for (mo, da), value in list(self._incl_diff_tab.items()):
             #print mo, da, value
             #print '---'*30
             follow_chain(mo, da, value, 0)
@@ -821,7 +819,7 @@ class CompositeCrossSection(CrossSectionBase):
             elif (mother, daughter) in model.incl_idcs:
                 # try to use incl and extend by zeros
                 egr, csec_1d = model.incl(mother, daughter)
-                print mother, daughter, csec_1d.shape
+                print(mother, daughter, csec_1d.shape)
                 # no x-distribution given, so x = 1
                 csec = self._arange_on_xgrid(csec_1d)
                 info(1, model.mname, mother, daughter,
@@ -871,7 +869,7 @@ class SophiaSuperposition(CrossSectionBase):
             'sophia_crosssec', delimiter=',', unpack=True)
 
         epsr_grid, self.xbins, self.redist_proton, self.redist_neutron = np.load(
-            join(config["data_dir"], config["redist_fname"]))
+            join(config["data_dir"], config["redist_fname"]),allow_pickle=True)
 
         # check if crosssection and redistribution are defined on the same grid,
         # other wise interpolate crosssection
@@ -1342,8 +1340,8 @@ class NEUCOSMACrossSection(CrossSectionBase):
             if pid not in cs_nonel:
                 cs_nonel[pid] = np.zeros_like(e)
 
-        print 'known species after loading NeuCosmA file:'
-        print np.sort(cs_nonel.keys())
+        print('known species after loading NeuCosmA file:')
+        print(np.sort(list(cs_nonel.keys())))
 
         # storing f,g,m data from NEUCOSMA file
         self._NEUCOSMA_data = neucosma_data

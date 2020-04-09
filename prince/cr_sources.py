@@ -12,9 +12,7 @@ from prince_config import config
 from prince.util import info
 
 
-class CosmicRaySource(object):
-    __metaclass__ = ABCMeta
-
+class CosmicRaySource(object, metaclass=ABCMeta):
     def __init__(self,
                  prince_run,
                  ncoids=None,
@@ -32,7 +30,7 @@ class CosmicRaySource(object):
         # read out the input parameters, this is a dictionary with particle ids as key
         # the parameters are interpreted by each child class.
         self.params = params
-        self.ncoids = np.array(ncoids if ncoids is not None else params.keys())
+        self.ncoids = np.array(ncoids if ncoids is not None else list(params.keys()))
         self.ncoids.sort()
         self.source_evo_m = m
         self._compute_injection_grid()
@@ -127,7 +125,7 @@ class CosmicRaySource(object):
         Return:
             float: Relative source evolution, typically normalized to 1 at z=0
         """
-        from cosmology import star_formation_rate, grb_rate_wp, agn_rate
+        from .cosmology import star_formation_rate, grb_rate_wp, agn_rate
 
         # Check if negative z is called
         if z < 0:

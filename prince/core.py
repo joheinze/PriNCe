@@ -1,6 +1,6 @@
 '''Provides user interface and runtime management.'''
 
-import cPickle as pickle
+import pickle as pickle
 from os import path
 from prince import photonfields, cross_sections, interaction_rates, data, util, solvers
 from prince.util import info, get_AZN
@@ -118,7 +118,7 @@ class PriNCeRun(object):
         """Computes a propagation with standard model input (see kwargs)
             WARNING: Not yet fully implemented!
         """
-        from solvers import UHECRPropagationSolver
+        from .solvers import UHECRPropagationSolver
         solver = UHECRPropagationSolver(
             initial_z=initial_z, final_z=final_z, prince_run=self)
 

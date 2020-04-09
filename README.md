@@ -33,7 +33,7 @@ The majority of the code consists of pure Python modules.
 
 Dependencies (list might be incomplete):
 
-- python-2.7 (Python 3 not compatible yet, port coming soon)
+- python-3.7 or later (The legacy python 2.7 version is retained as a branches/Py2_legacy)
 - numpy
 - scipy
 - matplotlib

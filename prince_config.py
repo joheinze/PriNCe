@@ -4,7 +4,7 @@ import os
 import os.path as path
 import platform
 import sys
-import cPickle as pickle
+import pickle as pickle
 import numpy as np
 
 base = path.dirname(path.abspath(__file__))
@@ -40,7 +40,7 @@ config = {
     # Directory where the data files for the calculation are stored
     "data_dir": path.join(base, 'data'),
     # Directory for raw files if conversion of some sort is needed
-    "raw_data_dir": path.join(base, 'utils'),
+    "raw_data_dir": path.join(base, 'data/raw'),
     # # nuclear cross sections
     # "data_dir": '/data',
     # Model file for redistribution functions (from SOPHIA or similar)

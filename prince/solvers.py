@@ -31,7 +31,7 @@ class UHECRPropagationResult(object):
         state = dic['state']
         known_spec = dic['known_spec']
 
-        from data import SpeciesManager
+        from .data import SpeciesManager
         spec_man = SpeciesManager(known_spec, edim)
 
         return cls(state, egrid, spec_man)
@@ -559,7 +559,7 @@ class UHECRPropagationSolverLSODES(UHECRPropagationSolver):
             # Solve for hadronic interactions
             # --------------------------------------------
             if verbose:
-                print 'Solving hadr losses at t =', self.r.t
+                print('Solving hadr losses at t =', self.r.t)
 
             self.r.integrate(self.r.t + dz, relax=False, step=False)
             if verbose:
@@ -573,9 +573,9 @@ class UHECRPropagationSolverLSODES(UHECRPropagationSolver):
             # Apply the injection
             # --------------------------------------------
             if not self.enable_injection_jacobian and not self.enable_partial_diff_jacobian:
-                print 'injection incoming'
+                print('injection incoming')
                 if verbose:
-                    print 'applying injection at t =', self.r.t
+                    print('applying injection at t =', self.r.t)
                 if full_reset:
                     if type(full_reset) is int and reset_counter == full_reset:
                         # self.r.set_initial_value(
@@ -583,7 +583,7 @@ class UHECRPropagationSolverLSODES(UHECRPropagationSolver):
                         self.r._integrator.call_args[3] = 1
                         self.r._y += self.injection(dz, self.r.t)
                         reset_counter = 0
-                        print 'resetting solver inj'
+                        print('resetting solver inj')
                     if type(full_reset) is bool:
                         self.r.set_initial_value(
                             self.r.y + self.injection(dz, self.r.t), self.r.t)
@@ -598,19 +598,19 @@ class UHECRPropagationSolverLSODES(UHECRPropagationSolver):
             # Apply the semi lagrangian
             # --------------------------------------------
             if not self.enable_partial_diff_jacobian:
-                print 'semi lag incoming'
+                print('semi lag incoming')
                 if self.enable_adiabatic_losses or self.enable_pairprod_losses:
                     if verbose:
-                        print 'applying semi lagrangian at t =', self.r.t
+                        print('applying semi lagrangian at t =', self.r.t)
                     if full_reset:
                         if type(full_reset
                                 ) is int and reset_counter == full_reset:
                             self.r.set_initial_value(
                                 self.semi_lagrangian(dz, self.r.t, self.r.y),
                                 self.r.t)
-                            print reset_counter
+                            print(reset_counter)
                             reset_counter = 0
-                            print 'resetting solver lag'
+                            print('resetting solver lag')
                         if type(full_reset) is bool:
                             self.r.set_initial_value(
                                 self.semi_lagrangian(dz, self.r.t, self.r.y),
@@ -627,20 +627,20 @@ class UHECRPropagationSolverLSODES(UHECRPropagationSolver):
             # Some last checks and resets
             # --------------------------------------------
             if self.r.t < -1 * dz:
-                print 'break at z =', self.r.t
+                print('break at z =', self.r.t)
                 break
 
-            print 'time', self.r.t, self.r._integrator.rwork[12]
-            print 'last_step', self.r._integrator.rwork[10]
-            print 'next_step', self.r._integrator.rwork[11]
-            print 'tolerance_scale', self.r._integrator.rwork[13]
+            print('time', self.r.t, self.r._integrator.rwork[12])
+            print('last_step', self.r._integrator.rwork[10])
+            print('next_step', self.r._integrator.rwork[11])
+            print('tolerance_scale', self.r._integrator.rwork[13])
             # print 'nsteps', self.r._integrator.iwork[10]
             # print 'nderiv', self.r._integrator.iwork[11]
-            print 'last_order', self.r._integrator.iwork[13]
-            print 'next_order', self.r._integrator.iwork[13]
-            print '---' * 20
+            print('last_order', self.r._integrator.iwork[13])
+            print('next_order', self.r._integrator.iwork[13])
+            print('---' * 20)
             if verbose:
-                print '---' * 20
+                print('---' * 20)
 
             stepcount += 1
             reset_counter += 1
@@ -662,10 +662,10 @@ class UHECRPropagationSolverLSODES(UHECRPropagationSolver):
     def print_step_info(self, step_start, extended_output=False):
         from time import time
 
-        print 'step took', time() - step_start
-        print 'At t = ', self.r.t
-        print 'jacobian calls', self.ncallsj
-        print 'function calls', self.ncallsf
+        print('step took', time() - step_start)
+        print('At t = ', self.r.t)
+        print('jacobian calls', self.ncallsj)
+        print('function calls', self.ncallsf)
         if extended_output:
             NST = self.r._integrator.iwork[10]
             NFE = self.r._integrator.iwork[11]
@@ -673,12 +673,12 @@ class UHECRPropagationSolverLSODES(UHECRPropagationSolver):
             NLU = self.r._integrator.iwork[20]
             NNZ = self.r._integrator.iwork[19]
             NNZLU = self.r._integrator.iwork[24] + self.r._integrator.iwork[26] + 12
-            print 'NST', NST
-            print 'NFE', NFE
-            print 'NJE', NJE
-            print 'NLU', NLU
-            print 'NNZLU', NNZLU
-            print 'LAST STEP {0:4.3e}'.format(self.r._integrator.rwork[10])
+            print('NST', NST)
+            print('NFE', NFE)
+            print('NJE', NJE)
+            print('NLU', NLU)
+            print('NNZLU', NNZLU)
+            print('LAST STEP {0:4.3e}'.format(self.r._integrator.rwork[10]))
 
 
 class UHECRPropagationSolverEULER(UHECRPropagationSolver):
@@ -696,7 +696,7 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
         curr_z = self.initial_z
         if initial_inj:
             initial_state = self.injection(dz, self.initial_z)
-            print initial_state
+            print(initial_state)
         else:
             initial_state = np.zeros(self.dim_states)
         state = initial_state
@@ -711,7 +711,7 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
             # Solve for hadronic interactions
             # --------------------------------------------
             if verbose:
-                print 'Solving hadr losses at t =', curr_z
+                print('Solving hadr losses at t =', curr_z)
             self._update_jacobian(curr_z)
 
             state += self.eqn_deriv_euler(curr_z, state) * dz
@@ -722,7 +722,7 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
             if not disable_inj:
                 if not self.enable_injection_jacobian and not self.enable_partial_diff_jacobian:
                     if verbose:
-                        print 'applying injection at t =', curr_z
+                        print('applying injection at t =', curr_z)
                     state += self.injection(dz, curr_z)
 
             # --------------------------------------------
@@ -731,14 +731,14 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
             if not self.enable_partial_diff_jacobian:
                 if self.enable_adiabatic_losses or self.enable_pairprod_losses:
                     if verbose:
-                        print 'applying semi lagrangian at t =', curr_z
+                        print('applying semi lagrangian at t =', curr_z)
                     state = self.semi_lagrangian(dz, curr_z, state)
 
             # --------------------------------------------
             # Some last checks and resets
             # --------------------------------------------
             if curr_z < -1 * dz:
-                print 'break at z =', curr_z
+                print('break at z =', curr_z)
                 break
             curr_z += dz
 
@@ -818,17 +818,17 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
             # Solve for hadronic interactions
             # --------------------------------------------
             if verbose:
-                print 'Solving hadr losses at t =', self.r.t
+                print('Solving hadr losses at t =', self.r.t)
             self.r.step()
             # --------------------------------------------
             # Some last checks and resets
             # --------------------------------------------
             if verbose:
-                print 'last step:', self.r.step_size
-                print 'h_abs:', self.r.h_abs
-                print 'LU decomp:', self.r.nlu
-                print 'current order:', self.r.dense_output().order
-                print '---' * 20
+                print('last step:', self.r.step_size)
+                print('h_abs:', self.r.h_abs)
+                print('LU decomp:', self.r.nlu)
+                print('current order:', self.r.dense_output().order)
+                print('---' * 20)
 
             stepcount += 1
             reset_counter += 1
@@ -841,22 +841,22 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
                 'Integrator failed at t = {:}, try adjusting the tolerances'.
                 format(self.r.t))
         if verbose:
-            print 'Integrator finished with t = {:}, last step was dt = {:}'.format(
-                self.r.t, self.r.step_size)
+            print('Integrator finished with t = {:}, last step was dt = {:}'.format(
+                self.r.t, self.r.step_size))
 
         # after each run we delete the solver to save memory
         self.state = self.r.y.copy()
         
         if summary or verbose:
-            print 'Summary:'
-            print '---------------------'
-            print 'status:   ', self.r.status
-            print 'time:     ', self.r.t
-            print 'last step:', self.r.step_size
-            print 'RHS eval: ', self.r.nfev
-            print 'Jac eval: ', self.r.njev
-            print 'LU decomp:', self.r.nlu
-            print '---------------------'
+            print('Summary:')
+            print('---------------------')
+            print('status:   ', self.r.status)
+            print('time:     ', self.r.t)
+            print('last step:', self.r.step_size)
+            print('RHS eval: ', self.r.nfev)
+            print('Jac eval: ', self.r.njev)
+            print('LU decomp:', self.r.nlu)
+            print('---------------------')
 
         del self.r
 
