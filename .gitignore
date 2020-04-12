@@ -1,0 +1,7 @@
+# ignore the data folder 
+/data
+
+# ignore subfolders used for programm settings and caches
+.vscode
+examples/.ipynb_checkpoints
+__pycache__
