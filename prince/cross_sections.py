@@ -1194,8 +1194,6 @@ class TabulatedCrossSection(CrossSectionBase):
         # Now write the raw data into a dict structure
         _nonel_tab = {}
         for pid, csgrid in zip(pid_nonel, nonel_raw):
-            # TODO: dirty workarround, pass max mass to config
-            # to delete heavier particle from crosssection
             if get_AZN(pid)[0] > self.max_mass:
                 continue
             _nonel_tab[pid] = csgrid
@@ -1209,8 +1207,6 @@ class TabulatedCrossSection(CrossSectionBase):
         # mo = mother, da = daughter
         _incl_tab = {}
         for (mo, da), csgrid in zip(pids_incl, incl_raw):
-            # TODO: dirty workarround, pass max mass to config
-            # to delete heavier particle from crosssection
             if get_AZN(mo)[0] > self.max_mass:
                 continue
             _incl_tab[mo, da] = csgrid

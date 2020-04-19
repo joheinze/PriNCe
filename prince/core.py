@@ -21,8 +21,6 @@ class PriNCeRun(object):
 
     def __init__(self, *args, **kwargs):
 
-        # TODO: dirty workarround, pass max mass to config
-        # to delete heavier particle from crosssection
         if "max_mass" in kwargs:
             config["max_mass"] = kwargs["max_mass"]
 

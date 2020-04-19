@@ -168,10 +168,6 @@ class PhotoNuclearInteractionRate(object):
 
             if mass_mo < mass_da or moid < 100:
                 continue
-            # TODO: workaround for missing injection into redist
-            # if mass_mo > 1 and daid < 100:
-            #     print 'skip', moid, daid
-            #     continue
 
             if moid == daid:
                 intp_nonel = resp.nonel_intp[moid].antiderivative()
@@ -276,7 +272,7 @@ class PhotoNuclearInteractionRate(object):
                     xu = elims[1, d_eidx] / emo
                     yl = plims[0, ph_idx] * emo / m_pr
                     yu = plims[1, ph_idx] * emo / m_pr
-                    # TODO: Thresholds set for testing
+
                     if daid == 101 and xl < x_cut_proton:
                         continue
                     if xl < x_cut or yu < ymin or yl > y_cut:
