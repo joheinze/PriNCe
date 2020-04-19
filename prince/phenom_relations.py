@@ -93,18 +93,18 @@ def residual_multiplicities():
 	residual_list = {}
 	count = 0
 	last = 0
-	print 'Completed.... ', 0
+	print('Completed.... ', 0)
 	cant = float(len(set(spalled_nucleons)))
 	for tot in set(spalled_nucleons):
 		count+=1
 		# print '--', tot, '--', '{:3.3f}'.format(count/cant)
 		if int(100 * count / cant) >= last + 5:
-			print 'Completed.... ', int(100 * count / cant)
+			print('Completed.... ', int(100 * count / cant))
 			last += 5
 		_, x, y = get_AZN(tot)
 		counts = Counter([e for elem in combinations(x, y) for e in elem])
 		suma = 0
-		for k, v in counts.iteritems():
+		for k, v in counts.items():
 			suma += k * v
 		for k in counts:
 			counts[k] *= tot/float(suma)
@@ -494,12 +494,12 @@ def cs_Rincl(Z, A, yields):
 				nuclist.append(100 * (A - nn - nz) + Z - nz)
 				if sub_frags:
 					suma = 0
-					for nuc, val in sub_frags.iteritems():
+					for nuc, val in sub_frags.items():
 						Af, _, _ = get_AZN(nuc)
 						suma += Af * val
 					norm = Ared / suma
 
-					for nuc, val in sub_frags.iteritems():
+					for nuc, val in sub_frags.items():
 						if nuc in nuclist:
 							csilist[nuclist.index(nuc)] += val * norm * cs_incl
 						else:
@@ -531,13 +531,13 @@ def multiplicity_table(mother):
 					  mother - 100: 1.*csn/cs_tot,
 					  mother - 101: 1.*csp/cs_tot,}
 
-	for dau, mult in gxn_mult.iteritems():
+	for dau, mult in gxn_mult.items():
 		if dau in multiplicities:
 			multiplicities[dau] += mult * csxn / cs_tot
 		else:
 			multiplicities[dau] = mult * csxn / cs_tot
 
-	for dau, mult in sp_mult.iteritems():
+	for dau, mult in sp_mult.items():
 		if dau in multiplicities:
 			multiplicities[dau] += mult * csSp / cs_tot
 		else:
@@ -549,7 +549,7 @@ def multiplicity_table(mother):
 def main():
 	pass
 	# resmul = residual_multiplicities()
-	print resmul.keys()
+	print(list(resmul.keys()))
 
 if __name__ == '__main__':
 	main()
