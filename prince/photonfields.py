@@ -7,9 +7,9 @@ from abc import abstractmethod
 from os.path import join
 
 import numpy as np
-from scipy.interpolate import UnivariateSpline
 from scipy.integrate import trapz
-from . import cosmology as cosm
+from scipy.interpolate import UnivariateSpline
+
 from prince_config import config
 
 

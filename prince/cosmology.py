@@ -2,8 +2,9 @@
 Contains basic functions to handle standard cosmology
 '''
 
-from prince_config import config
 import numpy as np
+
+from prince_config import config
 
 H0 = config['H_0s']
 Omega_m = config['Omega_m']

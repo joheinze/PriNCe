@@ -5,14 +5,10 @@ from os.path import isfile, join
 
 import numpy as np
 
-from prince.util import *
 import prince.decays as decs
+from prince.util import (bin_widths, dict_add, get_2Dinterp_object, get_AZN,
+                         get_interp_object, info, load_or_convert_array)
 from prince_config import config, spec_data
-
-# TODO:
-# - CompositeCrossSection._join_incl_diff() does currently not work properly for inclusive differential crossections
-#     - the class combines the channel indices from all models,
-#       however sophia does not provide these, and still introduces indices for lighter particles
 
 
 class CrossSectionBase(object, metaclass=ABCMeta):
@@ -295,7 +291,7 @@ class CrossSectionBase(object, metaclass=ABCMeta):
         #     lambda j, i: 10**(np.log10(bc[1] / bc[0]) * (j - i)), (len(bc),
         #                                                            len(bc)))
 
-        dec_grid = np.outer(bc, 1 / bc)
+        # dec_grid = np.outer(bc, 1 / bc)
 
         dec_bins = np.outer(self.xbins, 1 / bc)
         dec_bins_lower = dec_bins[:-1]
@@ -980,7 +976,7 @@ class SophiaSuperposition(CrossSectionBase):
             #                 'for redistributed particle')
             from scipy.integrate import trapz
 
-            egr_incl, cs_diff = self.incl_diff(mother, daughter)
+            _, cs_diff = self.incl_diff(mother, daughter)
             cs_incl = trapz(cs_diff, x=self.xcenters,
                             dx=bin_widths(self.xbins), axis=0)
             return self.egrid, cs_incl[self._range]
@@ -1173,8 +1169,6 @@ class TabulatedCrossSection(CrossSectionBase):
         self._optimize_and_generate_index()
 
     def _load(self, model_prefix):
-
-        cspath = config['data_dir']
 
         info(2, "Load tabulated cross sections")
         # The energy grid is given in MeV, so we convert to GeV
@@ -1598,9 +1592,9 @@ class EmpiricalModel(SophiaSuperposition):
         nsc = np.load(mass_scaling_file, allow_pickle=True)
 
         # defining the transistion smoothing function s 
-        emid = np.array(range(600, 630, 10) + range(680, 720, 10))
-        ymid = np.where(emid < 650, np.interp(emid, nsc[0], nsc[1]), .66)
-        s = interp1d(emid, ymid, 'slinear')
+        # emid = np.array(range(600, 630, 10) + range(680, 720, 10))
+        # ymid = np.where(emid < 650, np.interp(emid, nsc[0], nsc[1]), .66)
+        # s = interp1d(emid, ymid, 'slinear')
 
         y = []
         for xi in x:
@@ -1675,13 +1669,13 @@ class EmpiricalModel(SophiaSuperposition):
                 isinstance(mom, str) or (spec_data[mom]['lifetime'] < config['tau_dec_threshold']):
                 continue
             mults = multiplicity_table(mom)
-            dau_list, csincl_list = zip(*((k, v) for k, v in mults.iteritems()))
+            # dau_list, csincl_list = zip(*((k, v) for k, v in mults.iteritems()))
             
             self._nonel_tab[mom] = ()
             for dau in [2, 3, 4, 100, 101]:
                 self._incl_diff_tab[mom, dau] = SophiaSuperposition.incl_diff(self, mom, dau)[1]
             
-            for dau, mult in mults.iteritems():
+            for dau, mult in mults.items():
                 new_multiplicity[mom, dau] = mult
                 self._incl_tab[mom, dau] = np.array([])
             
@@ -1708,7 +1702,7 @@ class EmpiricalModel(SophiaSuperposition):
         from scipy.integrate import trapz
 
         if daughter <= config["redist_threshold_ID"]:
-            egr_incl, cs_diff = self.incl_diff(mother, daughter)
+            _, cs_diff = self.incl_diff(mother, daughter)
             cs_incl = trapz(cs_diff, x=self.xcenters,
                             dx=bin_widths(self.xbins), axis=0)
             return self.egrid, cs_incl[self._range]
@@ -1760,24 +1754,24 @@ class EmpiricalModel(SophiaSuperposition):
             cs_diff_renormed = self.fade(cs_diff, cs_diff_renormed, range(32)) # hardcoded index, found manually
             cs_diff = self.fade(cs_diff_renormed, cs_diff, range(55, 95)) # hardcoded index, found manually
 
-            # additional correction to pion scaling high energies, after paper was corrected
-            def sigm(x, shift=0., gap=1, speed=1, base=0., rising=False):
-                """Models a general sigmoid with multiple parameters.
+            # # additional correction to pion scaling high energies, after paper was corrected
+            # def sigm(x, shift=0., gap=1, speed=1, base=0., rising=False):
+            #     """Models a general sigmoid with multiple parameters.
 
-                Parameters:
-                -----------
-                x: x values, argument
-                shift: middle point, inflection point
-                gap: maximal value - minimal value
-                speed: controls the speed of the change, 
-                base: minimal value
-                """
-                sigmoid = 1. /(1 + np.exp(- speed * (x - shift)))
+            #     Parameters:
+            #     -----------
+            #     x: x values, argument
+            #     shift: middle point, inflection point
+            #     gap: maximal value - minimal value
+            #     speed: controls the speed of the change, 
+            #     base: minimal value
+            #     """
+            #     sigmoid = 1. /(1 + np.exp(- speed * (x - shift)))
                 
-                if rising:
-                    return gap * sigmoid + base
-                else:
-                    return gap*( 1. - sigmoid) + base
+            #     if rising:
+            #         return gap * sigmoid + base
+            #     else:
+            #         return gap*( 1. - sigmoid) + base
 
             alpha_plus = np.where(egrid <= 1., 2./3, 1 - np.exp( -4./7*(egrid - 1)**.5)/3)
             cs_diff *= Am**(alpha_plus - 2./3)

@@ -3,7 +3,7 @@
 import numpy as np
 from scipy.integrate import trapz
 
-from prince.util import get_AZN, info, PRINCE_UNITS
+from prince.util import PRINCE_UNITS, get_AZN, info
 from prince_config import config
 
 

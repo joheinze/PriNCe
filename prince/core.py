@@ -2,10 +2,12 @@
 
 import pickle as pickle
 from os import path
-from prince import photonfields, cross_sections, interaction_rates, data, util, solvers
-from prince.util import info, get_AZN
-from prince_config import config, spec_data
+
 import numpy as np
+
+from prince import cross_sections, data, interaction_rates
+from prince.util import EnergyGrid, LogEnergyGrid, get_AZN, info
+from prince_config import config
 
 
 class PriNCeRun(object):
@@ -27,12 +29,12 @@ class PriNCeRun(object):
         # Initialize energy grid
         if config["grid_scale"] == 'E':
             info(1, 'initialising Energy grid')
-            self.cr_grid = util.EnergyGrid(*config["cosmic_ray_grid"])
-            self.ph_grid = util.EnergyGrid(*config["photon_grid"])
+            self.cr_grid = EnergyGrid(*config["cosmic_ray_grid"])
+            self.ph_grid = EnergyGrid(*config["photon_grid"])
         elif config["grid_scale"] == 'logE':
             info(1, 'initialising logEnergy grid')
-            self.cr_grid = util.LogEnergyGrid(*config["cosmic_ray_grid"])
-            self.ph_grid = util.LogEnergyGrid(*config["photon_grid"])
+            self.cr_grid = LogEnergyGrid(*config["cosmic_ray_grid"])
+            self.ph_grid = LogEnergyGrid(*config["photon_grid"])
         else:
             raise Exception(
                 "Unknown energy grid scale {:}, adjust config['grid_scale']".
@@ -47,16 +49,14 @@ class PriNCeRun(object):
             self.cross_sections = cross_sections.CompositeCrossSection(
                 [(0., cross_sections.TabulatedCrossSection, ('CRP2_TALYS', )),
                  (0.14, cross_sections.SophiaSuperposition, ())])
-            # self.cross_sections = cross_sections.CompositeCrossSection(
-            #     [(0., cross_sections.TabulatedCrossSection, ('peanut_IAS',)),
-            #      (0.14, cross_sections.SophiaSuperposition, ())])
 
         # Photon field handler
         if 'photon_field' in kwargs:
             self.photon_field = kwargs['photon_field']
         else:
-            self.photon_field = photonfields.CombinedPhotonField(
-                [photonfields.CMBPhotonSpectrum, photonfields.CIBGilmore2D])
+            import photonfields as pf
+            self.photon_field = pf.CombinedPhotonField(
+                [pf.CMBPhotonSpectrum, pf.CIBGilmore2D])
 
         # Store adv_set
         self.adv_set = config["adv_settings"]
@@ -113,14 +113,6 @@ class PriNCeRun(object):
     def ebins(self):
         """Energy bins used for single species state"""
         return self.cr_grid.bins
-
-    def compute_propagation(self, initial_z=1., final_z=0., ncoid=101):
-        """Computes a propagation with standard model input (see kwargs)
-            WARNING: Not yet fully implemented!
-        """
-        from .solvers import UHECRPropagationSolver
-        solver = UHECRPropagationSolver(
-            initial_z=initial_z, final_z=final_z, prince_run=self)
 
     def set_photon_field(self, pfield):
         self.photon_field = pfield

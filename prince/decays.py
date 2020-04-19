@@ -4,12 +4,7 @@ import numpy as np
 from scipy.integrate import trapz
 
 from prince.util import info
-from prince_config import config, spec_data
-
-# JH: I am still not sure, how this class should look like.
-# maybe we do not even need a class and can just use the decay distributions
-# as functions on an x-grid, where the management is done bei another class
-
+from prince_config import spec_data
 
 def get_particle_channels(mo, mo_energy, da_energy):
     """
@@ -24,7 +19,7 @@ def get_particle_channels(mo, mo_energy, da_energy):
     Returns:
       list of np.array: list of redistribution functions on on xgrid 
     """
-    info(10, 'Generating decay redistribution for', mo, da)
+    info(10, 'Generating decay redistribution for', mo)
     dbentry = spec_data[mo]
     x_grid = np.outer(da_energy, (1 / mo_energy))
 

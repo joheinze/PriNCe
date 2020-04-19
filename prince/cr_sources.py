@@ -8,7 +8,6 @@ from abc import ABCMeta, abstractmethod
 
 import numpy as np
 
-from prince_config import config
 from prince.util import info
 
 
@@ -149,7 +148,7 @@ class CosmicRaySource(object, metaclass=ABCMeta):
             elif mkwd == 'AGN':
                 return (1 + z)**mval * agn_rate(z)
             elif mkwd == 'TDE':
-                return (1 + z)**mval * tde_rate(z)
+                return (1 + z)**(mval-3.)
             elif mkwd == 'simple':
                 return (1 + z)**mval
             # local evolution as (1+z)**m and flat beyond z = 1

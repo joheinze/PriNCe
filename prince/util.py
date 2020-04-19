@@ -2,9 +2,11 @@
 in different modules of this project."""
 
 import inspect
-from scipy.interpolate import InterpolatedUnivariateSpline, RectBivariateSpline
-import scipy.constants as spc
+
 import numpy as np
+import scipy.constants as spc
+from scipy.interpolate import InterpolatedUnivariateSpline, RectBivariateSpline
+
 from prince_config import config
 
 
@@ -447,7 +449,7 @@ class TheInterpolator(object):
                              self.n_window * self.dim_ext))
         sum_mat = np.zeros((self.dim_ext, self.n_window * self.dim_ext))
 
-        nex = self.n_ext
+        # nex = self.n_ext
         nwi = self.n_window
         nwi2 = (self.n_window - 1) / 2
         # print self.dim_ext

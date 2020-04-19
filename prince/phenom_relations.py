@@ -5,14 +5,16 @@ http://stacks.iop.org/1402-4896/49/i=3/a=004
 and others, to construct the inclusive cross
 sections.
 """
-from pickle import load
-from os.path import join
-from numpy import inf, exp, sum, array, inf, linspace
 import itertools
 import sys
-from prince_config import spec_data, config
-from prince.util import get_AZN
 from collections import Counter
+from os.path import join
+from pickle import load
+
+from numpy import array, exp, inf, linspace, sum
+
+from prince.util import get_AZN
+from prince_config import config, spec_data
 
 # class mydict(dict):
 #     def __getitem__(self, key):

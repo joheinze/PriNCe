@@ -184,7 +184,7 @@ class SemiLagrangianSolver(object):
         i2 = slice(2,-3)
         i3 = slice(3,-2)
         i4 = slice(4,-1)
-        i5 = slice(5,None)
+        # i5 = slice(5,None)
 
         # calculate backward weights from old and new grid
         weight_b0 = ((self.grid_log[i2] - newgrid_log[i1]) / (newgrid_log[i0] - newgrid_log[i1])
@@ -213,31 +213,31 @@ class SemiLagrangianSolver(object):
                     *(self.grid_log[i2] - newgrid_log[i3]) / (newgrid_log[i4] - newgrid_log[i3])
                     )
 
-        weight_f1 = ((self.grid_log[i2] - newgrid_log[i2]) / (newgrid_log[i1] - newgrid_log[i2])
-                    *(self.grid_log[i2] - newgrid_log[i3]) / (newgrid_log[i1] - newgrid_log[i3])
-                    *(self.grid_log[i2] - newgrid_log[i4]) / (newgrid_log[i1] - newgrid_log[i4])
-                    *(self.grid_log[i2] - newgrid_log[i5]) / (newgrid_log[i1] - newgrid_log[i5])
-                    )
-        weight_f2 = ((self.grid_log[i2] - newgrid_log[i1]) / (newgrid_log[i2] - newgrid_log[i1])
-                    *(self.grid_log[i2] - newgrid_log[i3]) / (newgrid_log[i2] - newgrid_log[i3])
-                    *(self.grid_log[i2] - newgrid_log[i4]) / (newgrid_log[i2] - newgrid_log[i4])
-                    *(self.grid_log[i2] - newgrid_log[i5]) / (newgrid_log[i2] - newgrid_log[i5])
-                    )
-        weight_f3 = ((self.grid_log[i2] - newgrid_log[i1]) / (newgrid_log[i3] - newgrid_log[i1])
-                    *(self.grid_log[i2] - newgrid_log[i2]) / (newgrid_log[i3] - newgrid_log[i2])
-                    *(self.grid_log[i2] - newgrid_log[i4]) / (newgrid_log[i3] - newgrid_log[i4])
-                    *(self.grid_log[i2] - newgrid_log[i5]) / (newgrid_log[i3] - newgrid_log[i5])
-                    )
-        weight_f4 = ((self.grid_log[i2] - newgrid_log[i1]) / (newgrid_log[i4] - newgrid_log[i1])
-                    *(self.grid_log[i2] - newgrid_log[i2]) / (newgrid_log[i4] - newgrid_log[i2])
-                    *(self.grid_log[i2] - newgrid_log[i3]) / (newgrid_log[i4] - newgrid_log[i3])
-                    *(self.grid_log[i2] - newgrid_log[i5]) / (newgrid_log[i4] - newgrid_log[i5])
-                    )
-        weight_f5 = ((self.grid_log[i2] - newgrid_log[i1]) / (newgrid_log[i5] - newgrid_log[i1])
-                    *(self.grid_log[i2] - newgrid_log[i2]) / (newgrid_log[i5] - newgrid_log[i2])
-                    *(self.grid_log[i2] - newgrid_log[i3]) / (newgrid_log[i5] - newgrid_log[i3])
-                    *(self.grid_log[i2] - newgrid_log[i4]) / (newgrid_log[i5] - newgrid_log[i4])
-                    )
+        # weight_f1 = ((self.grid_log[i2] - newgrid_log[i2]) / (newgrid_log[i1] - newgrid_log[i2])
+        #             *(self.grid_log[i2] - newgrid_log[i3]) / (newgrid_log[i1] - newgrid_log[i3])
+        #             *(self.grid_log[i2] - newgrid_log[i4]) / (newgrid_log[i1] - newgrid_log[i4])
+        #             *(self.grid_log[i2] - newgrid_log[i5]) / (newgrid_log[i1] - newgrid_log[i5])
+        #             )
+        # weight_f2 = ((self.grid_log[i2] - newgrid_log[i1]) / (newgrid_log[i2] - newgrid_log[i1])
+        #             *(self.grid_log[i2] - newgrid_log[i3]) / (newgrid_log[i2] - newgrid_log[i3])
+        #             *(self.grid_log[i2] - newgrid_log[i4]) / (newgrid_log[i2] - newgrid_log[i4])
+        #             *(self.grid_log[i2] - newgrid_log[i5]) / (newgrid_log[i2] - newgrid_log[i5])
+        #             )
+        # weight_f3 = ((self.grid_log[i2] - newgrid_log[i1]) / (newgrid_log[i3] - newgrid_log[i1])
+        #             *(self.grid_log[i2] - newgrid_log[i2]) / (newgrid_log[i3] - newgrid_log[i2])
+        #             *(self.grid_log[i2] - newgrid_log[i4]) / (newgrid_log[i3] - newgrid_log[i4])
+        #             *(self.grid_log[i2] - newgrid_log[i5]) / (newgrid_log[i3] - newgrid_log[i5])
+        #             )
+        # weight_f4 = ((self.grid_log[i2] - newgrid_log[i1]) / (newgrid_log[i4] - newgrid_log[i1])
+        #             *(self.grid_log[i2] - newgrid_log[i2]) / (newgrid_log[i4] - newgrid_log[i2])
+        #             *(self.grid_log[i2] - newgrid_log[i3]) / (newgrid_log[i4] - newgrid_log[i3])
+        #             *(self.grid_log[i2] - newgrid_log[i5]) / (newgrid_log[i4] - newgrid_log[i5])
+        #             )
+        # weight_f5 = ((self.grid_log[i2] - newgrid_log[i1]) / (newgrid_log[i5] - newgrid_log[i1])
+        #             *(self.grid_log[i2] - newgrid_log[i2]) / (newgrid_log[i5] - newgrid_log[i2])
+        #             *(self.grid_log[i2] - newgrid_log[i3]) / (newgrid_log[i5] - newgrid_log[i3])
+        #             *(self.grid_log[i2] - newgrid_log[i4]) / (newgrid_log[i5] - newgrid_log[i4])
+        #             )
 
         # calculate state by interpolating with weights
         state = np.zeros_like(self.grid_log)
@@ -484,9 +484,6 @@ class DifferentialOperator(object):
         """
         if len(stencils) < degree + 1:
             raise Exception('Not enough stencils to solve for dervative of degree {:}, stencils given: {}'.format(degree,stencils))
-        # input parameters
-        degree = degree
-        stencils = stencils
 
         # setup of equation system
         exponents = np.arange(len(stencils))

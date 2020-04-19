@@ -1,8 +1,9 @@
 """Module inteded to contain some prince-specific data structures."""
 
-from prince.util import info, get_AZN, convert_to_namedtuple
-from prince_config import config, spec_data
 import numpy as np
+
+from prince.util import get_AZN, info
+from prince_config import config, spec_data
 
 
 class PrinceSpecies(object):

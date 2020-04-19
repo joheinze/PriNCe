@@ -1,10 +1,11 @@
 """Contains solvers, i.e. integrators, kernels, steppers, for PriNCe."""
 
 import numpy as np
+
 from prince.cosmology import H
-from prince.util import info, PRINCE_UNITS, get_AZN, EnergyGrid
-from prince_config import config
 from prince.solvers_energy import DifferentialOperator, SemiLagrangianSolver
+from prince.util import PRINCE_UNITS, EnergyGrid, get_AZN, info
+from prince_config import config
 
 
 class UHECRPropagationResult(object):
@@ -505,7 +506,6 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
         while curr_z + dz >= self.final_z:
             if verbose:
                 info(3, "Integrating at z={0}".format(curr_z))
-            step_start = time()
 
             # --------------------------------------------
             # Solve for hadronic interactions
