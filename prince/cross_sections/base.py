@@ -30,7 +30,6 @@ class CrossSectionBase(object, metaclass=ABCMeta):
     The flag self.supports_redistributions = True/False should be set
     To tell the class to include/ignore incl_diff
     """
-
     def __init__(self):
         # Tuple, defining min and max energy cuts on the grid
         self._range = None
@@ -79,8 +78,8 @@ class CrossSectionBase(object, metaclass=ABCMeta):
             e_max = np.max(self._egrid_tab)
 
         info(2, "Setting range to {0:3.2e} - {1:3.2e}".format(e_min, e_max))
-        self._range = np.where((self._egrid_tab >= e_min) &
-                               (self._egrid_tab <= e_max))[0]
+        self._range = np.where((self._egrid_tab >= e_min)
+                               & (self._egrid_tab <= e_max))[0]
         info(
             2, "Range set to {0:3.2e} - {1:3.2e}".format(
                 np.min(self._egrid_tab[self._range]),
@@ -123,6 +122,7 @@ class CrossSectionBase(object, metaclass=ABCMeta):
         """
         if not hasattr(self, '_resp'):
             info(2, 'First Call, creating instance of ResponseFunction now')
+            from .response import ResponseFunction
             self._resp = ResponseFunction(self)
         return self._resp
 
@@ -272,16 +272,17 @@ class CrossSectionBase(object, metaclass=ABCMeta):
 
         info(2, "Integrating out species with lifetime smaller than",
              threshold)
-        info(3,
-             ("Before optimization, the number of known primaries is {0} with "
-              + "in total {1} inclusive channels").format(
-                  len(self._nonel_tab), len(self._incl_tab)))
+        info(3, (
+            "Before optimization, the number of known primaries is {0} with " +
+            "in total {1} inclusive channels").format(len(self._nonel_tab),
+                                                      len(self._incl_tab)))
 
         if self.xbins is None:
             info(
                 4,
                 'Model does not provide a native xbins. Assuming JH special sophia',
                 'binning.')
+            from .photo_meson import SophiaSuperposition
             self.xbins = SophiaSuperposition().xbins
 
         bc = self.xcenters
@@ -340,8 +341,8 @@ class CrossSectionBase(object, metaclass=ABCMeta):
             if da not in spec_data:
                 info(
                     3, dbg_indent(reclev),
-                    'daughter {0} unknown, forcing beta decay. Not Implemented yet!!'.
-                    format(da))
+                    'daughter {0} unknown, forcing beta decay. Not Implemented yet!!'
+                    .format(da))
                 return
 
             # Daughter is stable. Add it to the new dictionary and terminate
@@ -352,8 +353,8 @@ class CrossSectionBase(object, metaclass=ABCMeta):
                     # differential channels
                     info(
                         20, dbg_indent(reclev),
-                        'daughter {0} stable and differential. Adding to ({1}, {2})'.
-                        format(da, first_mo, da))
+                        'daughter {0} stable and differential. Adding to ({1}, {2})'
+                        .format(da, first_mo, da))
                     dict_add(new_dec_diff_tab, (first_mo, da), csection)
                 else:
                     info(
@@ -387,7 +388,8 @@ class CrossSectionBase(object, metaclass=ABCMeta):
 
         # Remove all unstable particles from the dictionaries
         for mother in sorted(self._nonel_tab.keys()):
-            if mother not in spec_data or spec_data[mother]["lifetime"] < threshold:
+            if mother not in spec_data or spec_data[mother][
+                    "lifetime"] < threshold:
                 info(
                     20,
                     "Primary species {0} does not fulfill stability criteria.".
@@ -409,8 +411,8 @@ class CrossSectionBase(object, metaclass=ABCMeta):
                 # to _incl_diff_tab
                 self._incl_diff_tab[(mother,
                                      daughter)] = self._arange_on_xgrid(
-                                         self._incl_tab.pop((mother,
-                                                             daughter)))
+                                         self._incl_tab.pop(
+                                             (mother, daughter)))
 
         self._update_indices()
 
@@ -419,8 +421,8 @@ class CrossSectionBase(object, metaclass=ABCMeta):
             if mother not in self.nonel_idcs:
                 info(
                     30,
-                    "Removing {0}/{1} from diff incl, since mother not stable ".
-                    format(mother, daughter))
+                    "Removing {0}/{1} from diff incl, since mother not stable "
+                    .format(mother, daughter))
                 _ = self._incl_diff_tab.pop((mother, daughter))
 
         self._update_indices()
@@ -442,11 +444,12 @@ class CrossSectionBase(object, metaclass=ABCMeta):
         self._incl_diff_tab = new_dec_diff_tab
         # Reduce also the incl_diff_tab by removing the unknown mothers. At this stage
         # of the code, the particles with redistributions are
-        info(3,
-             ("After optimization, the number of known primaries is {0} with "
-              + "in total {1} inclusive channels").format(
-                  len(self._nonel_tab),
-                  len(self._incl_tab) + len(self._incl_diff_tab)))
+        info(
+            3,
+            ("After optimization, the number of known primaries is {0} with " +
+             "in total {1} inclusive channels").format(
+                 len(self._nonel_tab),
+                 len(self._incl_tab) + len(self._incl_diff_tab)))
 
     def nonel_scale(self, mother, scale='A'):
         """Returns the nonel cross section scaled by `scale`.
@@ -529,14 +532,15 @@ class CrossSectionBase(object, metaclass=ABCMeta):
             egr_incl, cs_diff = self.incl_diff(mother, daughter)
             # diff_mat = diff_mat.transpose()
             # print bin_widths(self.xbins).shape, diff_mat.shape
-            cs_incl = trapz(cs_diff, x=self.xcenters, 
-                dx=bin_widths(self.xbins), axis=0)
+            cs_incl = trapz(cs_diff,
+                            x=self.xcenters,
+                            dx=bin_widths(self.xbins),
+                            axis=0)
 
             if isinstance(self._incl_diff_tab[(mother, daughter)], tuple):
                 return egr_incl, cs_incl
 
             return self.egrid, cs_incl[self._range]
-
 
         elif (mother, daughter) not in self._incl_tab:
             raise Exception(
@@ -570,8 +574,8 @@ class CrossSectionBase(object, metaclass=ABCMeta):
         if (mother, daughter) not in self._incl_diff_tab:
             raise Exception(
                 self.__class__.__name__ +
-                '({0},{1}) combination not in inclusive differential cross sections'.
-                format(mother, daughter))
+                '({0},{1}) combination not in inclusive differential cross sections'
+                .format(mother, daughter))
 
         # If _nonel_tab contains tuples of (egrid, cs) return tuple
         # otherwise return (egrid, cs) in range defined by self.range
@@ -606,8 +610,8 @@ class CrossSectionBase(object, metaclass=ABCMeta):
         # NOTE: The factor 2 in the following line is a workarround to account for the latter linear interpolation
         #       This is needed because linear spline integral will result in a trapz,
         #       which has half the area of the actual first bin
-        corr_factor = 2 * self.xwidths[-1] / (
-            self.xcenters[-1] - self.xcenters[-2])
+        corr_factor = 2 * self.xwidths[-1] / (self.xcenters[-1] -
+                                              self.xcenters[-2])
         csec[-1, :] = cs / self.xwidths[-1] * corr_factor
         info(
             4,
@@ -626,1153 +630,10 @@ class CrossSectionBase(object, metaclass=ABCMeta):
 
         if egrid_incl.shape != egrid_nonel.shape:
             raise Exception('Problem with different grid shapes')
-        
+
         multiplicities = cs_incl / np.where(cs_nonel == 0, np.inf, cs_nonel)
 
         return egrid_nonel, multiplicities
-
-
-class CompositeCrossSection(CrossSectionBase):
-    """Joins and interpolates between cross section models.
-    """
-
-    def __init__(self, model_list):
-        """The constructor takes a list of models in the following format::
-
-            $ model_list = [(e_threshold, m_class, m_args),
-                            (e_threshold, m_class, m_args)]
-
-        The arguments m1 or m2 are classes derived from
-        :class:`CrossSectionBase`. `e_threshold_` is the
-        minimal energy for above which a model is used. The maximum
-        energy until which a model class is used, is the threshold of the
-        next one. m_args are optional arguments passed to the
-        constructor of `m_class`.
-
-        Args:
-            model_list (list): format as specified above
-        """
-        CrossSectionBase.__init__(self)
-        # References to model instances to be joined
-        self.model_refs = None
-        self._join_models(model_list)
-
-    def _join_models(self, model_list):
-
-        info(1, "Attempt to join", len(model_list), "models.")
-
-        # Number of modls to join
-        nmodels = len(model_list)
-        self.model_refs = []
-        # Construct instances of models and set ranges where they are valid
-        for imo, (e_thr, mclass, margs) in enumerate(model_list):
-
-            # Create instance of a model, passing the provided args
-            csm_inst = mclass(*margs)
-
-            if imo < nmodels - 1:
-                # If not the highest energy model set both energy limits
-                csm_inst.set_range(e_thr, model_list[imo + 1][0])
-            else:
-                # For the highest energy model, use only minimal energy
-                csm_inst.set_range(e_thr)
-
-            # If at least one of the models support redistributions, construct the
-            # Interpolator class with redistributions
-            if not self.supports_redistributions:
-                self.supports_redistributions = csm_inst.supports_redistributions
-
-            # Save reference
-            self.model_refs.append(csm_inst)
-        #print self.model_refs[1].incl_diff_idcs
-
-        # Create a unique list of nonel cross sections from
-        # the combination of all models
-        self.nonel_idcs = sorted(
-            list(set(sum([m.nonel_idcs for m in self.model_refs], []))))
-        # For each ID interpolate the cross sections over entire energy range
-        self._nonel_tab = {}
-        for mo in self.nonel_idcs:
-            self._nonel_tab[mo] = self._join_nonel(mo)
-
-        # Create a unique list of inclusive channels from the combination
-        # of all models, no matter if diff or not. The rearrangement
-        # is performed in the next steps
-        self.incl_idcs_all = sorted(
-            list(set(sum([m.incl_idcs for m in self.model_refs], []))))
-        self.incl_idcs_all += sorted(
-            list(set(sum([m.incl_diff_idcs for m in self.model_refs], []))))
-
-        # Add dynamically generated indices to each model
-        newincl = sorted(
-            list(
-                set(
-                    sum([
-                        m.generate_incl_channels(self.nonel_idcs)
-                        for m in self.model_refs
-                    ], []))))
-        self.incl_idcs_all = sorted(
-            list(set(sum([newincl, self.incl_idcs_all], []))))
-
-        # Collect the channels, that need redistribution functions in a
-        # separate list. Put channels that conserve boost into the normal
-        # incl_idcs.
-        self.incl_diff_idcs = []
-        self.incl_idcs = []
-        for mother, daughter in self.incl_idcs_all:
-            if self.is_differential(mother, daughter):
-                info(10, 'Daughter has redistribution function', mother,
-                     daughter)
-                self.incl_diff_idcs.append((mother, daughter))
-            else:
-                info(10, 'Mother and daughter conserve boost', mother,
-                     daughter)
-                self.incl_idcs.append((mother, daughter))
-
-        # Join the Egrid
-        self._egrid_tab = np.concatenate([m.egrid for m in self.model_refs])
-        self.set_range()
-
-        # Join the boost conserving channels
-        self._incl_tab = {}
-        for mother, daughter in self.incl_idcs:
-            self._incl_tab[(mother, daughter)] = self._join_incl(
-                mother, daughter)
-
-        # Join the redistribution channels
-        self._incl_diff_tab = {}
-        for mother, daughter in self.incl_diff_idcs:
-            self._incl_diff_tab[(mother, daughter)] = self._join_incl_diff(
-                mother, daughter)
-
-        self._update_indices()
-        self._optimize_and_generate_index()
-
-    def _join_nonel(self, mother):
-        """Returns the non-elastic cross section of the joined models.
-        """
-
-        info(5, 'Joining nonelastic cross sections for', mother)
-
-        egrid = []
-        nonel = []
-        for model in self.model_refs:
-            e, csec = model.nonel(mother)
-            egrid.append(e)
-            nonel.append(csec)
-
-        #return np.concatenate(nonel)
-        return np.concatenate(egrid), np.concatenate(nonel)
-
-    def _join_incl(self, mother, daughter):
-        """Returns joined incl cross sections."""
-
-        info(5, 'Joining inclusive cross sections for channel',
-             (mother, daughter))
-        egrid = []
-        incl = []
-
-        for model in self.model_refs:
-            e, csec = model.incl(mother, daughter)
-            egrid.append(e)
-            incl.append(csec)
-        #print np.concatenate(egrid), np.concatenate(incl)
-        #print '---'*30
-        #return np.concatenate(incl)
-        return np.concatenate(egrid), np.concatenate(incl)
-
-    def _join_incl_diff(self, mother, daughter):
-        """Returns joined incl diff cross sections.
-
-        The function assumes the same `x` bins for all models.
-        """
-
-        info(5, 'Joining inclusive differential cross sections for channel',
-             (mother, daughter))
-
-        egrid = []
-        incl_diff = []
-
-        # Get an x grid from a model which supports it
-        for model in self.model_refs:
-            if model.supports_redistributions:
-                self.xbins = model.xbins
-                break
-        if self.xbins is None:
-            raise Exception('Redistributions requested but none of the ' +
-                            'models supports it')
-
-        for model in self.model_refs:
-            egr, csec = None, None
-            if config["debug_level"] > 1:
-                if not np.allclose(self.xbins, model.xbins):
-                    raise Exception('Unequal x bins. Aborting...',
-                                    self.xbins.shape, model.xbins)
-            if (mother, daughter) in model.incl_diff_idcs:
-                egr, csec = model.incl_diff(mother, daughter)
-                info(10, model.mname, mother, daughter, 'is differential.')
-
-            elif (mother, daughter) in model.incl_idcs:
-                # try to use incl and extend by zeros
-                egr, csec_1d = model.incl(mother, daughter)
-                print(mother, daughter, csec_1d.shape)
-                # no x-distribution given, so x = 1
-                csec = self._arange_on_xgrid(csec_1d)
-                info(1, model.mname, mother, daughter,
-                     'not differential, x=1.')
-            else:
-                info(
-                    5, 'Model', model.mname, 'does not provide cross',
-                    'sections for channel {0}/{1}. Setting to zero.'.format(
-                        mother, daughter))
-                # Tried with reduced energy grids to save memory, but
-                # matrix addition in decay chains becomes untrasparent
-                # egr = np.array((model.egrid[0], model.egrid[-1]))
-                # csec = np.zeros((len(self.xbins) - 1, 2))
-                egr = model.egrid
-                csec = np.zeros((len(self.xbins) - 1, model.egrid.size))
-
-            egrid.append(egr)
-            incl_diff.append(csec)
-
-        #return np.concatenate(incl_diff, axis=1)
-        return np.concatenate(egrid), np.concatenate(incl_diff, axis=1)
-
-
-class SophiaSuperposition(CrossSectionBase):
-    """ Cross sections generated using the Sophia event generator for protons and neutrons.
-    Includes redistribution functions into secondaries
-
-    Cross section for Nuclei are built as a superposition:
-    csec_(Z,A) = Z * csec_P + (A - Z) * csec_N
-
-    WARNING: This will not check, if the requested nucleus is existent in nature!
-    """
-
-    def __init__(self, *args, **kwargs):
-        # Tell the interpolator that this model contains the necessary features
-        # for energy redistribution functions
-        self.supports_redistributions = True
-        CrossSectionBase.__init__(self)
-        self._load()
-
-    def _load(self):
-        info(2, "Loading SOPHIA cross sections from file.")
-        info(5, "File used:", join(config["data_dir"], config["redist_fname"]))
-        # load the crossection from file
-        self._egrid_tab, self.cs_proton_grid, self.cs_neutron_grid = \
-        load_or_convert_array(
-            'sophia_crosssec', delimiter=',', unpack=True)
-
-        epsr_grid, self.xbins, self.redist_proton, self.redist_neutron = np.load(
-            join(config["data_dir"], config["redist_fname"]),allow_pickle=True)
-
-        # check if crosssection and redistribution are defined on the same grid,
-        # other wise interpolate crosssection
-        if epsr_grid.shape != self._egrid_tab.shape or np.any(
-                epsr_grid != self._egrid_tab):
-            info(1, "Adjusting cross section by interpolation.")
-            self.cs_proton_grid = np.interp(epsr_grid, self._egrid_tab,
-                                            self.cs_proton_grid)
-            self.cs_neutron_grid = np.interp(epsr_grid, self._egrid_tab,
-                                             self.cs_neutron_grid)
-            self._egrid_tab = epsr_grid
-
-        # sophia crossections are in mubarn; convert here to cm^2
-        self.cs_proton_grid *= 1e-30
-        self.cs_neutron_grid *= 1e-30
-
-        # set up inclusive differential channels for protons and neutron
-        # The model can return both, integrated over x and redistributed.
-        for da in sorted(self.redist_proton):
-            self.incl_diff_idcs.append((101, da))
-            #self.incl_idcs.append((101, da))
-        for da in sorted(self.redist_neutron):
-            self.incl_diff_idcs.append((100, da))
-            #self.incl_idcs.append((100, da))
-
-        # For more convenient generation of trivial redistribution matrices when joining
-        self.redist_shape = (self.xbins.shape[0], self._egrid_tab.shape[0])
-        self.set_range()
-
-    def generate_incl_channels(self, mo_indices):
-        """Generates indices for all allowed channels given mo_indices
-        
-        Args:
-            mo_indices (list of ints): list of indices for mother nuclei
-
-        Returns:
-           Returns:
-            list of tuples: list of allowed channels given as (mo_idx, da_idx)
-        """
-        incl_channels = []
-        #return incl_channels
-
-        # This model is a Superposition of protons and neutrons, so we need all respective daughters
-        for idx in mo_indices:
-            # if idx > 200:
-            #     continue
-            # add all daughters that are allowed for protons
-            for da in sorted(self.redist_proton):
-                incl_channels.append((idx, da))
-            # add all daughters that are allowed for neutrons
-            for da in sorted(self.redist_neutron):
-                incl_channels.append((idx, da))
-            # add residual nucleus to channel lists
-            # NOTE: Including residual nuclei that are not in the disintegration model
-            #       Caused some problems, therefore we ignore them here. The effect is
-            #       minor though, as photo-meson is subdominant
-            # for da in [idx - 101, idx - 100]:
-            #    if da > 199:
-            #        incl_channels.append((idx, da))
-
-        self.incl_diff_idcs = sorted(list(set(self.incl_diff_idcs + incl_channels)))
-
-        return incl_channels
-
-    def nonel(self, mother):
-        r"""Returns non-elastic cross section.
-
-        Absorption cross section of `mother`, which is
-        the total minus elastic, or in other words, the inelastic
-        cross section.
-
-        Args:
-            mother (int): Mother nucleus(on)
-
-        Returns:
-           Returns:
-            (numpy.array, numpy.array): self._egrid_tab (:math:`\epsilon_r`),
-            nonelastic (total) cross section in :math:`cm^{-2}`
-        """
-
-        # now interpolate these as Spline
-        _, Z, N = get_AZN(mother)
-
-        # the nonelastic crosssection is just a superposition of
-        # the proton/neutron number
-        cgrid = Z * self.cs_proton_grid + N * self.cs_neutron_grid
-        return self.egrid, cgrid[self._range]
-
-    def incl(self, mother, daughter):
-        r"""Returns inclusive cross section.
-
-        Inclusive cross section for daughter in photo-nuclear
-        interactions of `mother`.
-
-        Args:
-            mother (int): Mother nucleus(on)
-            daughter (int): Daughter nucleus(on)
-
-        Returns:
-            (numpy.array, numpy.array): self._egrid_tab (:math:`\epsilon_r`),
-            inclusive cross section in :math:`cm^{-2}`
-        """
-
-        _, Z, N = get_AZN(mother)
-
-        if daughter <= 101:
-            # raise Exception('Boost conserving cross section called ' +
-            #                 'for redistributed particle')
-            from scipy.integrate import trapz
-
-            _, cs_diff = self.incl_diff(mother, daughter)
-            cs_incl = trapz(cs_diff, x=self.xcenters,
-                            dx=bin_widths(self.xbins), axis=0)
-            return self.egrid, cs_incl[self._range]
-
-        elif daughter >= 200 and daughter not in [mother - 101, mother - 100]:
-            info(10, 'mother, daughter', mother, daughter, 'out of range')
-            return self.egrid[[0, -1]], np.array([0., 0.])
-
-        if daughter in [mother - 101]:
-            cgrid = Z * self.cs_proton_grid
-            # created incl. diff. index for all particle created in p-gamma
-            for da in self.redist_proton:
-                self.incl_diff_idcs.append((mother, da))
-            return self.egrid, cgrid[self._range]
-        elif daughter in [mother - 100]:
-            cgrid = N * self.cs_neutron_grid
-            # created incl. diff. channel index for all particle created in n-gamma
-            for da in self.redist_neutron:
-                self.incl_diff_idcs.append((mother, da))
-            return self.egrid, cgrid[self._range]
-        else:
-            raise Exception(
-                'Channel {:} to {:} not allowed in this superposition model'.
-                format(mother, daughter))
-
-    def incl_diff(self, mother, daughter):
-        r"""Returns inclusive differential cross section.
-
-        Inclusive differential cross section for daughter in photo-nuclear
-        interactions of `mother`. Only defined, if the daughter is distributed
-        in :math:`x_{\rm L} = E_{da} / E_{mo}`
-
-        Args:
-            mother (int): Mother nucleus(on)
-            daughter (int): Daughter nucleus(on)
-
-        Returns:
-            (numpy.array, numpy.array, numpy.array): :math:`\epsilon_r` grid,
-            :math:`x` grid, differential cross section in :math:`{\rm cm}^{-2}`
-        """
-
-        _, Z, N = get_AZN(mother)
-
-        if daughter > 101:
-            raise Exception(
-                'Redistribution function requested for boost conserving particle'
-            )
-        csec_diff = None
-        # TODO: File shall contain the functions in .T directly
-        if daughter in self.redist_proton:
-            cgrid = Z * self.cs_proton_grid
-            csec_diff = self.redist_proton[daughter].T * cgrid
-
-        if daughter in self.redist_neutron:
-            cgrid = N * self.cs_neutron_grid
-            if np.any(csec_diff):
-                csec_diff += self.redist_neutron[daughter].T * cgrid
-            else:
-                csec_diff = self.redist_neutron[daughter].T * cgrid
-
-        return self.egrid, csec_diff[:, self._range]
-
-
-class EmptyCrossSection(SophiaSuperposition):
-    
-    def nonel(self, mother):
-        r"""Returns non-elastic cross section.
-
-        Absorption cross section of `mother`, which is
-        the total minus elastic, or in other words, the inelastic
-        cross section.
-
-        Args:
-            mother (int): Mother nucleus(on)
-
-        Returns:
-           Returns:
-            (numpy.array, numpy.array): self._egrid_tab (:math:`\epsilon_r`),
-            nonelastic (total) cross section in :math:`cm^{-2}`
-        """
-
-        # now interpolate these as Spline
-        _, Z, N = get_AZN(mother)
-
-        # the nonelastic crosssection is just a superposition of
-        # the proton/neutron number
-        cgrid = Z * self.cs_proton_grid + N * self.cs_neutron_grid
-        return self.egrid, np.zeros_like(cgrid[self._range])
-
-    def incl(self, mother, daughter):
-        r"""Returns inclusive cross section.
-
-        Inclusive cross section for daughter in photo-nuclear
-        interactions of `mother`.
-
-        Args:
-            mother (int): Mother nucleus(on)
-            daughter (int): Daughter nucleus(on)
-
-        Returns:
-            (numpy.array, numpy.array): self._egrid_tab (:math:`\epsilon_r`),
-            inclusive cross section in :math:`cm^{-2}`
-        """
-
-        _, Z, N = get_AZN(mother)
-
-        if daughter <= 101:
-            raise Exception('Boost conserving cross section called ' +
-                            'for redistributed particle')
-
-        elif daughter >= 200 and daughter not in [mother - 101, mother - 100]:
-            info(10, 'mother, daughter', mother, daughter, 'out of range')
-            return self.egrid[[0, -1]], np.array([0., 0.])
-
-        if daughter in [mother - 101]:
-            cgrid = Z * self.cs_proton_grid
-            # created incl. diff. index for all particle created in p-gamma
-            # for da in self.redist_proton:
-            #     self.incl_diff_idcs.append((mother, da))
-            return self.egrid, np.zeros_like(cgrid[self._range])
-        elif daughter in [mother - 100]:
-            cgrid = N * self.cs_neutron_grid
-            # created incl. diff. channel index for all particle created in n-gamma
-            # for da in self.redist_neutron:
-            #     self.incl_diff_idcs.append((mother, da))
-            return self.egrid, np.zeros_like(cgrid[self._range])
-        else:
-            raise Exception(
-                'Channel {:} to {:} not allowed in this superposition model'.
-                format(mother, daughter))
-    
-    def incl_diff(self, mother, daughter):
-        r"""Returns inclusive differential cross section.
-
-        Inclusive differential cross section for daughter in photo-nuclear
-        interactions of `mother`. Only defined, if the daughter is distributed
-        in :math:`x_{\rm L} = E_{da} / E_{mo}`
-
-        Args:
-            mother (int): Mother nucleus(on)
-            daughter (int): Daughter nucleus(on)
-
-        Returns:
-            (numpy.array, numpy.array, numpy.array): :math:`\epsilon_r` grid,
-            :math:`x` grid, differential cross section in :math:`{\rm cm}^{-2}`
-        """
-
-        _, Z, N = get_AZN(mother)
-
-        if daughter > 101:
-            raise Exception(
-                'Redistribution function requested for boost conserving particle'
-            )
-        csec_diff = None
-        # TODO: File shall contain the functions in .T directly
-        if daughter in self.redist_proton:
-            cgrid = Z * self.cs_proton_grid
-            csec_diff = self.redist_proton[daughter].T * cgrid
-
-        if daughter in self.redist_neutron:
-            cgrid = N * self.cs_neutron_grid
-            if np.any(csec_diff):
-                csec_diff += self.redist_neutron[daughter].T * cgrid
-            else:
-                csec_diff = self.redist_neutron[daughter].T * cgrid
-
-        return self.egrid, np.zeros_like(csec_diff[:, self._range])
-
-
-class TabulatedCrossSection(CrossSectionBase):
-    """Interface class to read tabulated disintegration cross sections
-        Data is expected to be files with names:
-        (model_prefix)_egrid.data, (model_prefix)_nonel.data, (model_prefix)_incl_i_j.data 
-    
-        Data available for Peanut and TALYS with :
-        model_prefix = 'peanut_IAS' and model_prefix = 'CRP2_TALYS'
-        Data available from 1 MeV to 1 GeV
-    """
-
-    def __init__(self,
-                 model_prefix='peanut_IAS',
-                 max_mass=None,
-                 *args,
-                 **kwargs):
-        self.supports_redistributions = False
-        if max_mass is None:
-            self.max_mass = config["max_mass"]
-        CrossSectionBase.__init__(self)
-        self._load(model_prefix)
-        self._optimize_and_generate_index()
-
-    def _load(self, model_prefix):
-
-        info(2, "Load tabulated cross sections")
-        # The energy grid is given in MeV, so we convert to GeV
-        egrid = load_or_convert_array(
-            model_prefix + "_egrid.dat", dtype='float') * 1e-3
-        info(2, "Egrid loading finished")
-
-        # Load tables from files
-        _nonel_tab = load_or_convert_array(model_prefix + "_nonel.dat")
-        _incl_tab = load_or_convert_array(model_prefix + "_incl_i_j.dat")
-
-        # Integer idices of mothers and inclusive channels are stored
-        # in first column(s)
-        pid_nonel = _nonel_tab[:, 0].astype('int')
-        pids_incl = _incl_tab[:, 0:2].astype('int')
-
-        # the rest of the line denotes the crosssection on the egrid in mbarn,
-        # which is converted here to cm^2
-        nonel_raw = _nonel_tab[:, 1:] * 1e-27
-        incl_raw = _incl_tab[:, 2:] * 1e-27
-        info(2, "Data file loading finished")
-
-        # Now write the raw data into a dict structure
-        _nonel_tab = {}
-        for pid, csgrid in zip(pid_nonel, nonel_raw):
-            if get_AZN(pid)[0] > self.max_mass:
-                continue
-            _nonel_tab[pid] = csgrid
-
-        # If proton and neutron cross sections are not in contained
-        # in the files, set them to 0. Needed for TALYS and CRPropa2
-        for pid in [101, 100]:
-            if pid not in _nonel_tab:
-                _nonel_tab[pid] = np.zeros_like(egrid)
-
-        # mo = mother, da = daughter
-        _incl_tab = {}
-        for (mo, da), csgrid in zip(pids_incl, incl_raw):
-            if get_AZN(mo)[0] > self.max_mass:
-                continue
-            _incl_tab[mo, da] = csgrid
-
-        self._egrid_tab = egrid
-        self._nonel_tab = _nonel_tab
-        self._incl_tab = _incl_tab
-        # Set initial range to whole egrid
-        self.set_range()
-        info(2, "Finished initialization")
-
-
-class NEUCOSMACrossSection(CrossSectionBase):
-    """Interface Class to import cross sections from a NEUCOSMA file format
-    """
-
-    def __init__(self,
-                 NEUCOSMA_filename='160513_XDIS_PSB-SS_syst.dat',
-                 max_mass=None,
-                 *args,
-                 **kwargs):
-        if max_mass is None:
-            self.max_mass = config["max_mass"]
-        CrossSectionBase.__init__(self)
-
-        import os.path as path
-        filepath = path.join(config['raw_data_dir'], 'cross_sections_NeuCosmA',
-                             NEUCOSMA_filename)
-        self._load_NEUCOSMA_file(filepath)
-        self._optimize_and_generate_index()
-
-    @property
-    def resp_data(self):
-        """Return ResponseFunction corresponding to this cross section
-        but based on data loaded from NEUCOSMA file
-        Will only create the Response function once.
-        """
-        if not hasattr(self, '_resp_data'):
-            info(
-                2,
-                'First Call, creating instance of ResponseFunctionLoaded now')
-            self._resp_data = ResponseFunctionLoaded(self)
-        return self._resp_data
-
-    def _load_NEUCOSMA_file(self, filename):
-        """Loads a txt file with format as define in the internal note.
-
-        Args:
-            filename (string): name of the ile including path
-
-        Returns:
-            (filename1, filename2) Two pickled dictionaries saved on the
-            same directory as `filename` which contain:
-            filename1: a dictionary indexed (mother, daughter) where the
-            the g function and the multiplicity are stored.
-            filename2: a dictionary indexed (mother) where the f function
-            and the total inelasticcross section are stored.
-        """
-
-        # The file format is as following (by column):
-        # 1. parent id
-        # 2. daughter id
-        # 3. systematic flag (currently ignored)
-        # 4. log10(E [GeV]) (E or eps_r or y depending on corresp. column)
-        # 5. g_ij(y) [mubarn = 10^-30 cm^2]
-        # 6. M_ij(eps_r)
-        # 7. f_i(y) [mubarn = 10^-30 cm^2]
-        # 8. sigma_i(eps_r) [mubarn = 10^-30 cm^2]
-
-        with open(filename) as f:
-            text_data = f.readlines()
-
-        # We need the following: sigma_i, sigma_ij = M_ij * sigma_i
-
-        mo, da = (int(l) for l in text_data[0].split()[:2])
-        cs_nonel, cs_incl = {}, {}
-        e, g, mu, f, cs = (), (), (), (), ()
-
-        neucosma_data = {}
-        neucosma_data['f'] = {}
-        neucosma_data['g'] = {}
-        neucosma_data['m'] = {}
-
-        for line in text_data:
-            m, d, _, e_k, g_ijk, m_ijk, f_ik, cs_ik = line.split()
-
-            m, d = int(m), int(d)
-            if d == da:
-                e += (float(e_k), )
-                g += (float(g_ijk), )
-                mu += (float(m_ijk), )
-                f += (float(f_ik), )
-                cs += (float(cs_ik), )
-            else:
-                neucosma_data['g'][mo, da] = np.array(g)  # stored in mubarn
-                neucosma_data['m'][mo, da] = np.array(mu)
-                # Factor 1e30 below, for conversion to cm-2
-                cs_incl[mo, da] = np.array(mu) * np.array(cs) * 1e-30
-                # reset values of lists
-                da = d
-                if m != mo:
-                    neucosma_data['f'][mo] = np.array(f)
-                    cs_nonel[mo] = np.array(cs) * 1e-30  # conversion to cm-2
-                    mo = m
-                e, g, mu, f, cs = (float(e_k), ), (float(g_ijk), ), \
-                                  (float(m_ijk), ), (float(f_ik), ),\
-                                  (float(cs_ik), )
-
-        # Do not forget the last mother:
-        neucosma_data['f'][mo] = np.array(f)
-        cs_nonel[mo] = np.array(cs) * 1e-30  # conversion to cm-2
-
-        neucosma_data['g'][mo, da] = np.array(g)  # stored in mubarn
-        neucosma_data['m'][mo, da] = np.array(mu)
-        # Factor 1e30 below, for conversion to cm-2
-        cs_incl[mo, da] = np.array(mu) * np.array(cs) * 1e-30
-
-        # If proton and neutron cross sections are not in contained
-        # in the files, set them to 0. Needed for TALYS and CRPropa2 and PSB
-        for pid in [101, 100]:
-            if pid not in cs_nonel:
-                cs_nonel[pid] = np.zeros_like(e)
-
-        print('known species after loading NeuCosmA file:')
-        print(np.sort(list(cs_nonel.keys())))
-
-        # storing f,g,m data from NEUCOSMA file
-        self._NEUCOSMA_data = neucosma_data
-        self._egrid_tab = 10**np.array(e)
-        self._nonel_tab = cs_nonel
-        self._incl_tab = cs_incl
-        # Set initial range to whole egrid
-        self.set_range()
-        # info(2, "Finished initialization")
-
-
-class ResponseFunction(object):
-    """Redistribution Function based on Crossection model
-
-        The response function is the angular average crosssection
-    """
-
-    def __init__(self, cross_section):
-        self.cross_section = cross_section
-
-        self.xcenters = cross_section.xcenters
-
-        # Copy indices from CrossSection Model
-        self.nonel_idcs = cross_section.nonel_idcs
-        self.incl_idcs = cross_section.incl_idcs
-        self.incl_diff_idcs = cross_section.incl_diff_idcs
-
-        # Dictionary of reponse function interpolators
-        self.nonel_intp = {}
-        self.incl_intp = {}
-        self.incl_diff_intp = {}
-
-        self._precompute_interpolators()
-
-    # forward is_differential() to CrossSectionBase
-    # that might break in the future...
-    def is_differential(self, mother, daughter):
-        return CrossSectionBase.is_differential(self, mother, daughter)
-
-    def get_full(self, mother, daughter, ygrid, xgrid=None):
-        """Return the full response function :math:`f(y) + g(y) + h(x,y)`
-        on the grid that is provided. xgrid is ignored if `h(x,y)` not in the channel.
-        """
-        if xgrid is not None and ygrid.shape != xgrid.shape:
-            raise Exception('ygrid and xgrid do not have the same shape!!')
-        if get_AZN(mother)[0] < get_AZN(daughter)[0]:
-            info(
-                3,
-                'WARNING: channel {:} -> {:} with daughter heavier than mother!'.
-                format(mother, daughter))
-
-        res = np.zeros(ygrid.shape)
-
-        if (mother, daughter) in self.incl_intp:
-            res += self.incl_intp[(mother, daughter)](ygrid)
-        elif (mother, daughter) in self.incl_diff_intp:
-            #incl_diff_res = self.incl_diff_intp[(mother, daughter)](
-            #    xgrid, ygrid, grid=False)
-            #if mother == 101:
-            #    incl_diff_res = np.where(xgrid < 0.9, incl_diff_res, 0.)
-            #res += incl_diff_res
-            #if not(mother == daughter):
-            res += self.incl_diff_intp[(mother, daughter)].inteval(
-                xgrid, ygrid, grid=False)
-
-        if mother == daughter and mother in self.nonel_intp:
-            # nonel cross section leads to absorption, therefore the minus
-            if xgrid is None:
-                res -= self.nonel_intp[mother](ygrid)
-            else:
-                diagonal = xgrid == 1.
-                res[diagonal] -= self.nonel_intp[mother](ygrid[diagonal])
-
-        return res
-
-    def get_channel(self, mother, daughter=None):
-        """Reponse function :math:`f(y)` or :math:`g(y)` as
-        defined in the note.
-
-        Returns :math:`f(y)` or :math:`g(y)` if a daughter
-        index is provided. If the inclusive channel has a redistribution,
-        :math:`h(x,y)` will be returned
-
-        Args:
-            mother (int): mother nucleus(on)
-            daughter (int, optional): daughter nucleus(on)
-
-        Returns:
-            (numpy.array) Reponse function on self._ygrid_tab
-        """
-        from scipy import integrate
-
-        cs_model = self.cross_section
-        egrid, cross_section = None, None
-
-        if daughter is not None:
-            if (mother, daughter) in self.incl_diff_idcs:
-                egrid, cross_section = cs_model.incl_diff(mother, daughter)
-            elif (mother, daughter) in self.incl_idcs:
-                egrid, cross_section = cs_model.incl(mother, daughter)
-            else:
-                raise Exception(
-                    'Unknown inclusive channel {:} -> {:} for this model'.
-                    format(mother, daughter))
-        else:
-            egrid, cross_section = cs_model.nonel(mother)
-
-    # note that cumtrapz works also for 2d-arrays and will integrate along axis = 1
-        integral = integrate.cumtrapz(egrid * cross_section, x=egrid)
-        ygrid = egrid[1:] / 2.
-
-        return ygrid, integral / (2 * ygrid**2)
-
-    def get_channel_scale(self, mother, daughter=None, scale='A'):
-        """Returns the reponse function scaled by `scale`.
-
-        Convenience funtion for plotting, where it is important to
-        compare the cross section/response function per nucleon.
-
-        Args:
-            mother (int): Mother nucleus(on)
-            scale (float): If `A` then nonel/A is returned, otherwise
-                           scale can be any float.
-
-        Returns:
-            (numpy.array, numpy.array): Tuple of Energy grid in GeV,
-                                        scale * inclusive cross section
-                                        in :math:`cm^{-2}`
-        """
-
-        ygr, cs = self.get_channel(mother, daughter)
-
-        if scale == 'A':
-            scale = 1. / get_AZN(mother)[0]
-
-        return ygr, scale * cs
-
-    def _precompute_interpolators(self):
-        """Interpolate each response function and store interpolators.
-
-        Uses :func:`prince.util.get_interp_object` as interpolator.
-        This might result in too many knots and can be subject to
-        future optimization.
-        """
-
-        info(2, 'Computing interpolators for response functions')
-
-        info(5, 'Nonelastic response functions f(y)')
-        self.nonel_intp = {}
-        for mother in self.nonel_idcs:
-            self.nonel_intp[mother] = get_interp_object(
-                *self.get_channel(mother))
-
-        info(5, 'Inclusive (boost conserving) response functions g(y)')
-        self.incl_intp = {}
-        for mother, daughter in self.incl_idcs:
-            self.incl_intp[(mother, daughter)] = get_interp_object(
-                *self.get_channel(mother, daughter))
-
-        info(5, 'Inclusive (redistributed) response functions h(y)')
-        self.incl_diff_intp = {}
-        for mother, daughter in self.incl_diff_idcs:
-            ygr, rfunc = self.get_channel(mother, daughter)
-            self.incl_diff_intp[(mother, daughter)] = get_2Dinterp_object(
-                self.xcenters, ygr, rfunc, self.cross_section.xbins)
-
-
-class ResponseFunctionLoaded(ResponseFunction):
-    """Redistribution Function based on Crossection model.
-    Operates on values of (f, g, h) loaded from  a NEAUCOSMA file
-    """
-
-    def __init__(self, cross_section):
-        ResponseFunction.__init__(self, cross_section)
-
-    def _precompute_interpolators(self):
-        """Interpolate each response function and store interpolators.
-
-        Uses :func:`prince.util.get_interp_object` as interpolator.
-        This might result in too many knots and can be subject to
-        future optimization.
-        """
-        cs_model = self.cross_section
-
-        info(2, 'Computing interpolators for response functions')
-
-        info(5, 'Nonelastic response functions f(y)')
-        self.nonel_intp = {}
-        for mother in self.nonel_idcs:
-            self.nonel_intp[mother] = get_interp_object(
-                cs_model.egrid, cs_model._NEUCOSMA_data['f'][mother])
-
-        info(5, 'Inclusive (boost conserving) response functions g(y)')
-        self.incl_intp = {}
-        for mother, daughter in self.incl_idcs:
-            self.incl_intp[(mother, daughter)] = get_interp_object(
-                cs_model.egrid, cs_model._NEUCOSMA_data['g'][mother, daughter])
-
-        info(
-            5,
-            'Inclusive (redistributed) response functions h(y): not implemented'
-        )
-        self.incl_diff_intp = {}
-        # for mother, daughter in self.incl_diff_idcs:
-        #     ygr, rfunc = self.get_channel(mother, daughter)
-        #     self.incl_diff_intp[(mother, daughter)] = get_2Dinterp_object(
-        #         self.xcenters, ygr, rfunc)
-
-
-class EmpiricalModel(SophiaSuperposition):
-    """Photomeson model based on empirical relations and experimental data.
-    More info:  L. Morejon et al JCAP11(2019)007
-    """
-
-    def __init__(self, *args, **kwargs):
-        """Initialize object based on a universal function, and a 
-        scaling function.
-        """
-        SophiaSuperposition.__init__(self)
-
-        self._load_universal_function()
-
-        self._load_pion_function()
-
-        self._fill_multiplicity()
-
-        # self._optimize_and_generate_index() # without this works!!
-
-    def A_eff(self, A, x):
-        """Returns the effective A using precomputed scaling coefficients based on
-        experimental data.
-        """
-        from scipy.interpolate import interp1d
-
-        def sigm(x, shift=0., gap=1, speed=1, base=0., rising=False):
-            """Models a general sigmoid with multiple parameters.
-
-            Parameters:
-            -----------
-            x: x values, argument
-            shift: middle point, inflection point
-            gap: maximal value - minimal value
-            speed: controls the speed of the change, 
-            base: minimal value
-            """
-            sigmoid = 1. /(1 + np.exp(- speed * (x - shift)))
-            
-            if rising:
-                return gap * sigmoid + base
-            else:
-                return gap*( 1. - sigmoid) + base
-
-        mass_scaling_file = join(config['data_dir'], 'scaling_lines')
-        nsc = np.load(mass_scaling_file, allow_pickle=True)
-
-        # defining the transistion smoothing function s 
-        # emid = np.array(range(600, 630, 10) + range(680, 720, 10))
-        # ymid = np.where(emid < 650, np.interp(emid, nsc[0], nsc[1]), .66)
-        # s = interp1d(emid, ymid, 'slinear')
-
-        y = []
-        for xi in x:
-            if xi < 7:
-                y.append(sigm(xi, .7, .099, .7, .942))
-            elif xi < 300:
-                y.append(np.interp(xi, nsc[0], nsc[1]))
-            else:
-                y.append(sigm(xi, 430, .2, .01, .66))
-
-        return A**np.array(y)
-
-    def fade(self, cs1, cs2, indices=None):
-        """Smoothes the transition from cs1 to cs2
-        Uses a sigmoid to smothen the transition between differential 
-        cross sections cs1 and cs2 in the energy range defined by the
-        indices.
-        """
-        if indices is None:
-            return cs1
-            
-        x = -100 * np.ones_like(cs1)
-        x[..., indices[-1]:] = 100
-        x[..., indices] = np.linspace(-5, 5, len(indices))
-        
-        def sigmoid(x):
-            return 1./(1 + np.exp(-x))
-
-        return cs1[..., :]*(1 - sigmoid(x)) + cs2[..., :]*sigmoid(x)
-
-    def _load_universal_function(self):
-        """Returns the universal function on a fixed energy range
-        """
-        from pickle import load as pickle_load
-        from scipy.interpolate import UnivariateSpline
-
-        uf_file = join(config['data_dir'], 'universal-spline.pkl')
-        with open(uf_file, 'r') as f:
-            tck = pickle_load(f)
-
-        self.univ_spl = UnivariateSpline._from_tck(tck)
-
-    def _load_pion_function(self):
-        """Returns the universal function on a fixed energy range
-        """
-        from pickle import load as pickle_load
-        from scipy.interpolate import UnivariateSpline
-
-        uf_file = join(config['data_dir'], 'pion_spline.pkl')
-        with open(uf_file, 'r') as f:
-            tck = pickle_load(f)
-
-        self.pion_spl = UnivariateSpline._from_tck(tck)
-
-    def _fill_multiplicity(self, *args, **kwargs):
-        """Populates all tabs (_nonel_tab, _incl_tab, _incl_diff_tab) so they can work
-        with the _optimize_indices() method of the base class (CrossSectionBase).
-        """
-        from phenom_relations import multiplicity_table
-
-        self._nonel_tab = {100:(), 101:()}
-        
-        for mom in self._nonel_tab:
-            for dau in [2, 3, 4, 100, 101]:
-                self._incl_diff_tab[mom, dau] = ()
-                
-        new_multiplicity = {}
-        nuclides = [k for k in sorted(spec_data.keys()) if isinstance(k, int)]
-        for mom in nuclides:
-            A, _, _ = get_AZN(mom)
-            if (mom < 101) or (A > config['max_mass']) or \
-                isinstance(mom, str) or (spec_data[mom]['lifetime'] < config['tau_dec_threshold']):
-                continue
-            mults = multiplicity_table(mom)
-            # dau_list, csincl_list = zip(*((k, v) for k, v in mults.iteritems()))
-            
-            self._nonel_tab[mom] = ()
-            for dau in [2, 3, 4, 100, 101]:
-                self._incl_diff_tab[mom, dau] = SophiaSuperposition.incl_diff(self, mom, dau)[1]
-            
-            for dau, mult in mults.items():
-                new_multiplicity[mom, dau] = mult
-                self._incl_tab[mom, dau] = np.array([])
-            
-        self.multiplicity = new_multiplicity
-
-    def nonel(self, mother):
-        """Computes nonelasatic as A * universal_funtion below 1.9GeV
-        and as SophiaSuperposition with given scaling betond 1.9GeV
-        """
-        e_max = 1.2  # prefixed based on data
-        e_scale = .3  # prefixed based on data
-        A, _, _ = get_AZN(mother)
-        egrid, csnonel = SophiaSuperposition.nonel(self, mother)
-
-        csnonel[egrid <= e_max] = A * self.univ_spl(egrid[egrid <= e_max])
-        csnonel[egrid > e_scale] = (csnonel * self.A_eff(A, egrid)/A)[egrid > e_scale]
-
-        return egrid, csnonel
-
-    def incl(self, mother, daughter):
-        """Computes inclusive from nonel * M with M is
-        multiplicity value stored in internal table
-        """
-        from scipy.integrate import trapz
-
-        if daughter <= config["redist_threshold_ID"]:
-            _, cs_diff = self.incl_diff(mother, daughter)
-            cs_incl = trapz(cs_diff, x=self.xcenters,
-                            dx=bin_widths(self.xbins), axis=0)
-            return self.egrid, cs_incl[self._range]
-        elif (mother, daughter) in self.multiplicity:
-            egrid, cs_nonel = self.nonel(mother)
-            cs_nonel *= self.multiplicity[mother, daughter]
-            return egrid, cs_nonel
-        else:
-            return SophiaSuperposition.incl(self, mother, daughter)
-
-    def incl_diff(self, mother, daughter):
-        """Uses corresponding method from SophiaSuperposition class,
-        adding nonel to increase multiplicity by one
-        """
-        egrid, cs_diff = SophiaSuperposition.incl_diff(self, mother,
-                                                       daughter)
-        if (mother, daughter) in self.multiplicity:
-            xw = self.xwidths[-1]  # accounting for bin width
-            _, cs_nonel = self.nonel(mother)
-            cs_diff[-1, :] += \
-                self.multiplicity[mother, daughter] * cs_nonel / xw
-        elif (mother > 101) and (daughter in [2, 3, 4]):  # if it's a pion rescale to A^2/3
-            def superposition_incl(mother, daughter):
-                from scipy.integrate import trapz
-                _, Z, N = get_AZN(mother)
-                cs_diff = self.redist_proton[daughter].T * Z * self.cs_proton_grid + \
-                    self.redist_neutron[daughter].T * N * self.cs_neutron_grid
-                cs_incl = trapz(cs_diff, x=self.xcenters,
-                                dx=bin_widths(self.xbins), axis=0)
-                return cs_incl[self._range]
-
-            def superposition_multiplicities(mother ,daughter):
-                _, Z, N = get_AZN(mother)
-                cs_incl = superposition_incl(mother, daughter)
-                cs_nonel = Z * self.cs_proton_grid + N * self.cs_neutron_grid
-                return cs_incl / cs_nonel[self._range]
-
-            Am, _, _ = get_AZN(mother)
-            cs_diff *= float(Am)**(-1/3.)  # ... rescaling SpM to A^2/3
-
-            cs_incl_pi0_sophia = superposition_incl(mother, daughter) * float(Am)**(-1/3.)
-            cs_incl_pi0_data = 1e-30*self.pion_spl(egrid * 1e3)*Am**(2./3)
-
-            M_pi = superposition_multiplicities(mother, daughter)
-            M_pi0 = superposition_multiplicities(mother, 4)
-
-            renorm = M_pi / M_pi0 * cs_incl_pi0_data / cs_incl_pi0_sophia
-            cs_diff_renormed = cs_diff * renorm
-            cs_diff_renormed = self.fade(cs_diff, cs_diff_renormed, range(32)) # hardcoded index, found manually
-            cs_diff = self.fade(cs_diff_renormed, cs_diff, range(55, 95)) # hardcoded index, found manually
-
-            # # additional correction to pion scaling high energies, after paper was corrected
-            # def sigm(x, shift=0., gap=1, speed=1, base=0., rising=False):
-            #     """Models a general sigmoid with multiple parameters.
-
-            #     Parameters:
-            #     -----------
-            #     x: x values, argument
-            #     shift: middle point, inflection point
-            #     gap: maximal value - minimal value
-            #     speed: controls the speed of the change, 
-            #     base: minimal value
-            #     """
-            #     sigmoid = 1. /(1 + np.exp(- speed * (x - shift)))
-                
-            #     if rising:
-            #         return gap * sigmoid + base
-            #     else:
-            #         return gap*( 1. - sigmoid) + base
-
-            alpha_plus = np.where(egrid <= 1., 2./3, 1 - np.exp( -4./7*(egrid - 1)**.5)/3)
-            cs_diff *= Am**(alpha_plus - 2./3)
-
-        return egrid, cs_diff
 
 
 if __name__ == "__main__":

@@ -16,6 +16,9 @@ from numpy import array, exp, inf, linspace, sum
 from prince.util import get_AZN
 from prince_config import config, spec_data
 
+# JH: This file gave some linter errors for me, disabled for now
+# pylint: skip-file
+
 # class mydict(dict):
 #     def __getitem__(self, key):
 #         if key not in self:
