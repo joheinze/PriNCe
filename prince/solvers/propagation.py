@@ -3,9 +3,10 @@
 import numpy as np
 
 from prince.cosmology import H
-from prince.solvers_energy import DifferentialOperator, SemiLagrangianSolver
 from prince.util import PRINCE_UNITS, EnergyGrid, get_AZN, info
 from prince_config import config
+
+from .partial_diff import DifferentialOperator, SemiLagrangianSolver
 
 
 class UHECRPropagationResult(object):

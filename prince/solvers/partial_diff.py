@@ -487,7 +487,7 @@ class DifferentialOperator(object):
 
         # setup of equation system
         exponents = np.arange(len(stencils))
-        matrix = np.power.outer(stencils,exponents).T
+        matrix = np.power.outer(stencils,exponents).T # pylint: disable=no-member
         right = np.zeros_like(stencils)
         right[degree] = np.math.factorial(degree)
 
