@@ -6,7 +6,9 @@ from os import path
 import numpy as np
 
 from prince import cross_sections, data, interaction_rates
-from prince.util import EnergyGrid, LogEnergyGrid, get_AZN, info
+from prince._deprecated.util import get_AZN
+from prince.data import EnergyGrid, LogEnergyGrid
+from prince.util import info
 from prince_config import config
 
 

@@ -3,7 +3,8 @@ from os.path import join
 
 import numpy as np
 
-from prince.util import get_AZN, info, load_or_convert_array
+from prince._deprecated.util import get_AZN
+from prince.util import info, load_or_convert_array
 from prince_config import config
 
 from .base import CrossSectionBase

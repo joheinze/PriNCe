@@ -477,7 +477,7 @@ def nu_from_beta_decay(x_grid, mother, daughter, Gamma=200, angle=None):
     Z_mo = spec_data[mother]['charge']
     Z_da = spec_data[daughter]['charge']
 
-    from .util import get_AZN
+    from ._deprecated.util import get_AZN
     A_mo, _, _ = get_AZN(mother)
 
     if mother == 100 and daughter == 101:

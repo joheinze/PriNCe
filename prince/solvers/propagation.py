@@ -3,7 +3,9 @@
 import numpy as np
 
 from prince.cosmology import H
-from prince.util import PRINCE_UNITS, EnergyGrid, get_AZN, info
+from prince.data import PRINCE_UNITS, EnergyGrid
+from prince._deprecated.util import get_AZN
+from prince.util import info
 from prince_config import config
 
 from .partial_diff import DifferentialOperator, SemiLagrangianSolver
@@ -33,7 +35,7 @@ class UHECRPropagationResult(object):
         state = dic['state']
         known_spec = dic['known_spec']
 
-        from .data import SpeciesManager
+        from ..data import SpeciesManager
         spec_man = SpeciesManager(known_spec, edim)
 
         return cls(state, egrid, spec_man)

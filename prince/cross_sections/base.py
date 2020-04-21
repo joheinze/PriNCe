@@ -6,8 +6,9 @@ from os.path import isfile, join
 import numpy as np
 
 import prince.decays as decs
-from prince.util import (bin_widths, dict_add, get_2Dinterp_object, get_AZN,
-                         get_interp_object, info, load_or_convert_array)
+from prince._deprecated.util import bin_widths, get_AZN
+from prince.util import (dict_add, get_2Dinterp_object, get_interp_object,
+                         info, load_or_convert_array)
 from prince_config import config, spec_data
 
 

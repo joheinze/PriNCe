@@ -1,9 +1,84 @@
 """Module inteded to contain some prince-specific data structures."""
 
 import numpy as np
+import scipy.constants as spc
 
-from prince.util import get_AZN, info
+from prince.util import convert_to_namedtuple, info
 from prince_config import config, spec_data
+
+# Default units in Prince are ***cm, s, GeV***
+# Define here all constants and unit conversions and use
+# throughout the code. Don't write c=2.99.. whatever.
+# Write clearly which units a function returns.
+# Convert them if not standard unit
+# Accept only arguments in the units above
+
+UNITS_AND_CONVERSIONS_DEF = dict(
+    c=1e2 * spc.c,
+    cm2Mpc=1. / (spc.parsec * spc.mega * 1e2),
+    Mpc2cm=spc.mega * spc.parsec * 1e2,
+    m_proton=spc.physical_constants['proton mass energy equivalent in MeV'][0]
+    * 1e-3,
+    m_electron=spc.physical_constants['electron mass energy equivalent in MeV']
+    [0] * 1e-3,
+    r_electron=spc.physical_constants['classical electron radius'][0] * 1e2,
+    fine_structure=spc.fine_structure,
+    GeV2erg=1. / 624.15,
+    erg2GeV=624.15,
+    km2cm=1e5,
+    yr2sec=spc.year,
+    Gyr2sec=spc.giga * spc.year,
+    cm2sec=1e-2 / spc.c,
+    sec2cm=spc.c * 1e2)
+
+# This is the immutable unit object to be imported throughout the code
+PRINCE_UNITS = convert_to_namedtuple(UNITS_AND_CONVERSIONS_DEF, "PriNCeUnits")
+
+
+class EnergyGrid(object):
+    """Class for constructing a grid for discrete distributions.
+
+    Since we discretize everything in energy, the name seems appropriate.
+    All grids are log spaced.
+
+    Args:
+        lower (float): log10 of low edge of the lowest bin
+        upper (float): log10 of upper edge of the highest bin
+        bins_dec (int): bins per decade of energy
+    """
+    def __init__(self, lower, upper, bins_dec):
+        self.bins = np.logspace(lower, upper,
+                                int((upper - lower) * bins_dec + 1))
+        self.grid = 0.5 * (self.bins[1:] + self.bins[:-1])
+        self.widths = self.bins[1:] - self.bins[:-1]
+        self.d = self.grid.size
+        info(
+            5, 'Energy grid initialized {0:3.1e} - {1:3.1e}, {2} bins'.format(
+                self.bins[0], self.bins[-1], self.grid.size))
+
+
+class LogEnergyGrid(object):
+    """Class for constructing a grid for discrete distributions.
+
+    Since we discretize everything in energy, the name seems appropriate.
+    All grids are log spaced.
+
+    Args:
+        lower (float): log10 of low edge of the lowest bin
+        upper (float): log10 of upper edge of the highest bin
+        bins_dec (int): bins per decade of energy
+    """
+    def __init__(self, lower, upper, bins_dec):
+        self.bins = np.linspace(lower, upper, (upper - lower) * bins_dec + 1)
+        self.grid = 0.5 * (self.bins[1:] + self.bins[:-1])
+        self.bins = 10**self.bins
+        self.grid = 10**self.grid
+        self.widths = self.bins[1:] - self.bins[:-1]
+        self.d = self.grid.size
+        info(
+            1,
+            'LogEnergy grid initialized {0:3.1e} - {1:3.1e}, {2} bins'.format(
+                self.bins[0], self.bins[-1], self.grid.size))
 
 
 class PrinceSpecies(object):
@@ -15,7 +90,6 @@ class PrinceSpecies(object):
       particle_db (object): a dictionary with particle properties
       d (int): dimension of the energy grid
     """
-
     def __init__(self, ncoid, princeidx, d):
 
         info(5, 'Initializing new species', ncoid)
@@ -65,6 +139,7 @@ class PrinceSpecies(object):
     def _init_species(self):
         """Fill all class attributes with values from
         :var:`spec_data`, depending on ncoid."""
+        from prince._deprecated.util import get_AZN
 
         ncoid = self.ncoid
         dbentry = spec_data[ncoid]
@@ -164,7 +239,6 @@ class PrinceSpecies(object):
 
 class SpeciesManager(object):
     """Provides a database with particle and species."""
-
     def __init__(self, ncoid_list, ed):
         # (dict) Dimension of primary grid
         self.grid_dims = {'default': ed}
