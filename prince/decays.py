@@ -4,7 +4,7 @@ import numpy as np
 from scipy.integrate import trapz
 
 from prince.util import info
-from prince_config import spec_data
+from prince.data import spec_data
 
 def get_particle_channels(mo, mo_energy, da_energy):
     """

@@ -1,10 +1,16 @@
 """Module inteded to contain some prince-specific data structures."""
-
+import pickle as pickle
+import os.path as path
 import numpy as np
 import scipy.constants as spc
 
 from prince.util import convert_to_namedtuple, info
-from prince_config import config, spec_data
+from prince_config import config
+
+#: Dictionary containing particle properties, like mass, charge
+#: lifetime or branching ratios
+spec_data = pickle.load(
+    open(path.join(config["data_dir"], "particle_data.ppo"), "rb"))
 
 # Default units in Prince are ***cm, s, GeV***
 # Define here all constants and unit conversions and use
