@@ -18,9 +18,6 @@ class PhotoNuclearInteractionRate(object):
         print('direct init in PhotoNuclearInteractionRate')
         self.with_dense_jac = with_dense_jac
 
-        #: Reference to prince run
-        self.prince_run = prince_run
-
         #: Reference to PhotonField object
         self.photon_field = prince_run.photon_field
 
@@ -442,7 +439,7 @@ class PhotoNuclearInteractionRate(object):
             mem_pfield = self.photon_field
             self.photon_field = pfield
 
-        species = self.prince_run.spec_man.ncoid2sref[pid]
+        species = self.spec_man.ncoid2sref[pid]
         egrid = self.e_cosmicray.grid * species.A
         rate = -1 * self.get_dense_hadr_jacobian(force_update=True,z=z)[species.sl,species.sl].diagonal()
 
@@ -484,13 +481,13 @@ class ContinuousAdiabaticLossRate(object):
 
     def __init__(self, prince_run, energy='grid', *args, **kwargs):
         print('New cont loss class init called')
-        #: Reference to prince run
-        self.prince_run = prince_run
         #: Reference to species manager
         self.spec_man = prince_run.spec_man
 
         # Initialize grids
         self.e_cosmicray = prince_run.cr_grid
+        self.dim_states = prince_run.dim_states
+        self.dim_bins = prince_run.dim_bins
         # Init adiabatic loss vector
         self.energy_vector = self._init_energy_vec(energy)
 
@@ -506,11 +503,11 @@ class ContinuousAdiabaticLossRate(object):
     def _init_energy_vec(self, energy):
         """Prepare vector for scaling with units, charge and mass."""
         if energy == 'grid':
-            energy_vector = np.zeros(self.prince_run.dim_states)
+            energy_vector = np.zeros(self.dim_states)
             for spec in self.spec_man.species_refs:
                 energy_vector[spec.lidx():spec.uidx()] = self.e_cosmicray.grid
         elif energy == 'bins':
-            energy_vector = np.zeros(self.prince_run.dim_bins)
+            energy_vector = np.zeros(self.dim_bins)
             for spec in self.spec_man.species_refs:
                 energy_vector[spec.lbin():spec.ubin()] = self.e_cosmicray.bins
         else:
@@ -524,7 +521,7 @@ class ContinuousAdiabaticLossRate(object):
         """Returns energy loss length in cm
         (convenience function for plotting)
         """
-        species = self.prince_run.spec_man.ncoid2sref[pid]
+        species = self.spec_man.ncoid2sref[pid]
 
         egrid = self.energy_vector[species.sl] * species.A
         rate = self.loss_vector(z)[species.sl] * species.A
@@ -536,8 +533,6 @@ class ContinuousPairProductionLossRate(object):
 
     def __init__(self, prince_run, energy='grid', *args, **kwargs):
         print('New pair prod loss class init called')
-        #: Reference to prince run
-        self.prince_run = prince_run
         #: Reference to species manager
         self.spec_man = prince_run.spec_man
 
@@ -546,6 +541,8 @@ class ContinuousPairProductionLossRate(object):
 
         # Initialize grids
         self.e_cosmicray = prince_run.cr_grid
+        self.dim_states = prince_run.dim_states
+        self.dim_bins = prince_run.dim_bins
         self.e_photon = prince_run.ph_grid
 
         # xi is dimensionless (natural units) variable
@@ -605,7 +602,7 @@ class ContinuousPairProductionLossRate(object):
     def _init_scale_vec(self, energy):
         """Prepare vector for scaling with units, charge and mass."""
         if energy == 'grid':
-            scale_vec = np.zeros(self.prince_run.dim_states)
+            scale_vec = np.zeros(self.dim_states)
             units = (PRINCE_UNITS.fine_structure * PRINCE_UNITS.r_electron**2 *
                      PRINCE_UNITS.m_electron**2)
             for spec in self.spec_man.species_refs:
@@ -615,7 +612,7 @@ class ContinuousPairProductionLossRate(object):
                     spec.charge)**2 / float(spec.A) * np.ones_like(
                         self.e_cosmicray.grid, dtype='double')
         elif energy == 'bins':
-            scale_vec = np.zeros(self.prince_run.dim_bins)
+            scale_vec = np.zeros(self.dim_bins)
             units = (PRINCE_UNITS.fine_structure * PRINCE_UNITS.r_electron**2 *
                      PRINCE_UNITS.m_electron**2)
             for spec in self.spec_man.species_refs:
@@ -638,7 +635,7 @@ class ContinuousPairProductionLossRate(object):
             mem_pfield = self.photon_field
             self.photon_field = pfield
 
-        species = self.prince_run.spec_man.ncoid2sref[pid]
+        species = self.spec_man.ncoid2sref[pid]
 
         egrid = self.e_cosmicray.grid * species.A
         rate = self.loss_vector(z)[species.sl] * species.A

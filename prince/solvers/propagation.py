@@ -180,7 +180,6 @@ class UHECRPropagationSolver(object):
         self.current_z_rates = None
         self.recomp_z_threshold = config["update_rates_z_threshold"]
 
-        self.prince_run = prince_run
         self.spec_man = prince_run.spec_man
         self.egrid = prince_run.egrid
         self.ebins = prince_run.ebins
@@ -194,11 +193,11 @@ class UHECRPropagationSolver(object):
         self.enable_injection_jacobian = enable_injection_jacobian
         self.enable_partial_diff_jacobian = enable_partial_diff_jacobian
 
-        self.had_int_rates = self.prince_run.int_rates
-        self.adia_loss_rates_grid = self.prince_run.adia_loss_rates_grid
-        self.pair_loss_rates_grid = self.prince_run.pair_loss_rates_grid
-        self.adia_loss_rates_bins = self.prince_run.adia_loss_rates_bins
-        self.pair_loss_rates_bins = self.prince_run.pair_loss_rates_bins
+        self.had_int_rates = prince_run.int_rates
+        self.adia_loss_rates_grid = prince_run.adia_loss_rates_grid
+        self.pair_loss_rates_grid = prince_run.pair_loss_rates_grid
+        self.adia_loss_rates_bins = prince_run.adia_loss_rates_bins
+        self.pair_loss_rates_bins = prince_run.pair_loss_rates_bins
         self.intp = None
 
         self.state = np.zeros(prince_run.dim_states)
@@ -217,7 +216,7 @@ class UHECRPropagationSolver(object):
 
     @property
     def known_species(self):
-        return self.prince_run.spec_man.known_species
+        return self.spec_man.known_species
 
     @property
     def res(self):

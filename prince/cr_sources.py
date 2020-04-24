@@ -21,8 +21,8 @@ class CosmicRaySource(object, metaclass=ABCMeta):
                  *args,
                  **kwargs):
         # read out standard information from core class
-        self.prince_run = prince_run
         self.cr_grid = prince_run.cr_grid.grid
+        self.dim_states = prince_run.dim_states
         self.norm = norm
         self.spec_man = prince_run.spec_man
 
@@ -38,7 +38,7 @@ class CosmicRaySource(object, metaclass=ABCMeta):
         """Precompute the injection for all species on a single grid.
         
         Assumes that the injection is factorized in E and z"""
-        self.injection_grid = np.zeros(self.prince_run.dim_states)
+        self.injection_grid = np.zeros(self.dim_states)
 
         for pid in self.ncoids:
             if pid in self.params:
