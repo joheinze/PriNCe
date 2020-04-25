@@ -1,12 +1,13 @@
-*********
-Citations
-*********
+.. _citations:
 
-This code is still under development. The publication, describing its
-functionality, possibilities and technical details is in preparation.
+References
+----------
+
+This can contain some links to papers that are used within the code, like
+SOPHIA, the GRB evolution, TALYS, etc.
 
 Hadronic interaction models
----------------------------
+.................................
 
 * SIBYLL-2.3 release candidate 1 (RC1):
     | *Charm production in SIBYLL*
