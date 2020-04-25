@@ -3,7 +3,8 @@
 import numpy as np
 
 from prince.cosmology import H
-from prince.util import PRINCE_UNITS, EnergyGrid, get_AZN, info
+from prince.data import PRINCE_UNITS, EnergyGrid
+from prince.util import info
 from prince_config import config
 
 from .partial_diff import DifferentialOperator, SemiLagrangianSolver
@@ -33,7 +34,7 @@ class UHECRPropagationResult(object):
         state = dic['state']
         known_spec = dic['known_spec']
 
-        from .data import SpeciesManager
+        from ..data import SpeciesManager
         spec_man = SpeciesManager(known_spec, edim)
 
         return cls(state, egrid, spec_man)
@@ -143,7 +144,7 @@ class UHECRPropagationResult(object):
             spectra[idx] = np.nan_to_num(res)
 
         # get the average and variance by using the spectra as weights
-        lnA = np.array([np.log(get_AZN(el)[0]) for el in nco_ids])
+        lnA = np.array([np.log(self.spec_man.ncoid2sref[el].A) for el in nco_ids])
         average = (
             lnA[:, np.newaxis] * spectra).sum(axis=0) / spectra.sum(axis=0)
         variance = (lnA[:, np.newaxis]**2 *
@@ -154,7 +155,7 @@ class UHECRPropagationResult(object):
     def get_energy_density(self, nco_id):
         from scipy.integrate import trapz
 
-        A, _, _ = get_AZN(nco_id)
+        A = self.spec_man.ncoid2sref[nco_id].A
         return trapz(A * self.egrid * self.get_solution(nco_id), self.egrid)
 
 
@@ -178,10 +179,9 @@ class UHECRPropagationSolver(object):
         self.current_z_rates = None
         self.recomp_z_threshold = config["update_rates_z_threshold"]
 
-        self.prince_run = prince_run
         self.spec_man = prince_run.spec_man
-        self.egrid = prince_run.egrid
-        self.ebins = prince_run.ebins
+        self.egrid = prince_run.cr_grid.grid
+        self.ebins = prince_run.cr_grid.bins
         #Flags to enable/disable different loss types
         self.enable_adiabatic_losses = enable_adiabatic_losses
         self.enable_pairprod_losses = enable_pairprod_losses
@@ -192,11 +192,11 @@ class UHECRPropagationSolver(object):
         self.enable_injection_jacobian = enable_injection_jacobian
         self.enable_partial_diff_jacobian = enable_partial_diff_jacobian
 
-        self.had_int_rates = self.prince_run.int_rates
-        self.adia_loss_rates_grid = self.prince_run.adia_loss_rates_grid
-        self.pair_loss_rates_grid = self.prince_run.pair_loss_rates_grid
-        self.adia_loss_rates_bins = self.prince_run.adia_loss_rates_bins
-        self.pair_loss_rates_bins = self.prince_run.pair_loss_rates_bins
+        self.had_int_rates = prince_run.int_rates
+        self.adia_loss_rates_grid = prince_run.adia_loss_rates_grid
+        self.pair_loss_rates_grid = prince_run.pair_loss_rates_grid
+        self.adia_loss_rates_bins = prince_run.adia_loss_rates_bins
+        self.pair_loss_rates_bins = prince_run.pair_loss_rates_bins
         self.intp = None
 
         self.state = np.zeros(prince_run.dim_states)
@@ -215,7 +215,7 @@ class UHECRPropagationSolver(object):
 
     @property
     def known_species(self):
-        return self.prince_run.spec_man.known_species
+        return self.spec_man.known_species
 
     @property
     def res(self):

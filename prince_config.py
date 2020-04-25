@@ -172,8 +172,3 @@ config = {
         "some_setting": False,
     }
 }
-
-#: Dictionary containing particle properties, like mass, charge
-#: lifetime or branching ratios
-spec_data = pickle.load(
-    open(path.join(config["data_dir"], "particle_data.ppo"), "rb"))

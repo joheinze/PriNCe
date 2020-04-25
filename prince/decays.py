@@ -4,7 +4,7 @@ import numpy as np
 from scipy.integrate import trapz
 
 from prince.util import info
-from prince_config import spec_data
+from prince.data import spec_data
 
 def get_particle_channels(mo, mo_energy, da_energy):
     """
@@ -477,7 +477,7 @@ def nu_from_beta_decay(x_grid, mother, daughter, Gamma=200, angle=None):
     Z_mo = spec_data[mother]['charge']
     Z_da = spec_data[daughter]['charge']
 
-    from .util import get_AZN
+    from ._deprecated.util import get_AZN
     A_mo, _, _ = get_AZN(mother)
 
     if mother == 100 and daughter == 101:

@@ -1,10 +1,66 @@
 """Module inteded to contain some prince-specific data structures."""
-
+import pickle as pickle
+import os.path as path
 import numpy as np
+import scipy.constants as spc
 
-from prince.util import get_AZN, info
-from prince_config import config, spec_data
+from prince.util import convert_to_namedtuple, info
+from prince_config import config
 
+#: Dictionary containing particle properties, like mass, charge
+#: lifetime or branching ratios
+spec_data = pickle.load(
+    open(path.join(config["data_dir"], "particle_data.ppo"), "rb"))
+
+# Default units in Prince are ***cm, s, GeV***
+# Define here all constants and unit conversions and use
+# throughout the code. Don't write c=2.99.. whatever.
+# Write clearly which units a function returns.
+# Convert them if not standard unit
+# Accept only arguments in the units above
+
+UNITS_AND_CONVERSIONS_DEF = dict(
+    c=1e2 * spc.c,
+    cm2Mpc=1. / (spc.parsec * spc.mega * 1e2),
+    Mpc2cm=spc.mega * spc.parsec * 1e2,
+    m_proton=spc.physical_constants['proton mass energy equivalent in MeV'][0]
+    * 1e-3,
+    m_electron=spc.physical_constants['electron mass energy equivalent in MeV']
+    [0] * 1e-3,
+    r_electron=spc.physical_constants['classical electron radius'][0] * 1e2,
+    fine_structure=spc.fine_structure,
+    GeV2erg=1. / 624.15,
+    erg2GeV=624.15,
+    km2cm=1e5,
+    yr2sec=spc.year,
+    Gyr2sec=spc.giga * spc.year,
+    cm2sec=1e-2 / spc.c,
+    sec2cm=spc.c * 1e2)
+
+# This is the immutable unit object to be imported throughout the code
+PRINCE_UNITS = convert_to_namedtuple(UNITS_AND_CONVERSIONS_DEF, "PriNCeUnits")
+
+
+class EnergyGrid(object):
+    """Class for constructing a grid for discrete distributions.
+
+    Since we discretize everything in energy, the name seems appropriate.
+    All grids are log spaced.
+
+    Args:
+        lower (float): log10 of low edge of the lowest bin
+        upper (float): log10 of upper edge of the highest bin
+        bins_dec (int): bins per decade of energy
+    """
+    def __init__(self, lower, upper, bins_dec):
+        self.bins = np.logspace(lower, upper,
+                                int((upper - lower) * bins_dec + 1))
+        self.grid = 0.5 * (self.bins[1:] + self.bins[:-1])
+        self.widths = self.bins[1:] - self.bins[:-1]
+        self.d = self.grid.size
+        info(
+            5, 'Energy grid initialized {0:3.1e} - {1:3.1e}, {2} bins'.format(
+                self.bins[0], self.bins[-1], self.grid.size))
 
 class PrinceSpecies(object):
     """Bundles different particle properties for simplified
@@ -15,6 +71,19 @@ class PrinceSpecies(object):
       particle_db (object): a dictionary with particle properties
       d (int): dimension of the energy grid
     """
+    @staticmethod
+    def calc_AZN(nco_id):
+        """Returns mass number :math:`A`, charge :math:`Z` and neutron
+        number :math:`N` of ``nco_id``."""
+        Z, A = 1, 1
+
+        if nco_id >= 100:
+            Z = nco_id % 100
+            A = (nco_id - Z) // 100
+        else:
+            Z, A = 0, 0
+
+        return A, Z, A - Z
 
     def __init__(self, ncoid, princeidx, d):
 
@@ -65,7 +134,6 @@ class PrinceSpecies(object):
     def _init_species(self):
         """Fill all class attributes with values from
         :var:`spec_data`, depending on ncoid."""
-
         ncoid = self.ncoid
         dbentry = spec_data[ncoid]
 
@@ -77,7 +145,7 @@ class PrinceSpecies(object):
                 self.is_hadron = True
                 self.is_baryon = True
                 self.is_nucleus = True
-                self.A, self.Z, self.N = get_AZN(ncoid)
+                self.A, self.Z, self.N = self.calc_AZN(ncoid)
             elif ncoid not in [2, 3, 4, 50]:
                 self.is_hadron = True
                 self.is_meson = True
@@ -89,7 +157,9 @@ class PrinceSpecies(object):
                     self.is_alias = True
         else:
             self.is_nucleus = True
-            self.A, self.Z, self.N = get_AZN(ncoid)
+            self.A, self.Z, self.N = self.calc_AZN(ncoid)
+
+        self.AZN = self.A, self.Z, self.N
 
         if ncoid <= config["redist_threshold_ID"]:
             self.has_redist = True
@@ -164,7 +234,6 @@ class PrinceSpecies(object):
 
 class SpeciesManager(object):
     """Provides a database with particle and species."""
-
     def __init__(self, ncoid_list, ed):
         # (dict) Dimension of primary grid
         self.grid_dims = {'default': ed}

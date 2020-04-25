@@ -6,7 +6,9 @@ from os import path
 import numpy as np
 
 from prince import cross_sections, data, interaction_rates
-from prince.util import EnergyGrid, LogEnergyGrid, get_AZN, info
+from prince._deprecated.util import get_AZN
+from prince.data import EnergyGrid
+from prince.util import info
 from prince_config import config
 
 
@@ -29,16 +31,10 @@ class PriNCeRun(object):
             info(1, 'initialising Energy grid')
             self.cr_grid = EnergyGrid(*config["cosmic_ray_grid"])
             self.ph_grid = EnergyGrid(*config["photon_grid"])
-        elif config["grid_scale"] == 'logE':
-            info(1, 'initialising logEnergy grid')
-            self.cr_grid = LogEnergyGrid(*config["cosmic_ray_grid"])
-            self.ph_grid = LogEnergyGrid(*config["photon_grid"])
         else:
             raise Exception(
                 "Unknown energy grid scale {:}, adjust config['grid_scale']".
                 format(config['grid_scale']))
-        # Dimension of energy grid
-        self.ed = self.cr_grid.d
 
         # Cross section handler
         if 'cross_sections' in kwargs:
@@ -78,11 +74,11 @@ class PriNCeRun(object):
                 system_species.remove(pid)
 
         # Initialize species manager for all species for which cross sections are known
-        self.spec_man = data.SpeciesManager(system_species, self.ed)
+        self.spec_man = data.SpeciesManager(system_species, self.cr_grid.d)
 
         # Total dimension of system
-        self.dim_states = self.ed * self.spec_man.nspec
-        self.dim_bins = (self.ed + 1) * self.spec_man.nspec
+        self.dim_states = self.cr_grid.d * self.spec_man.nspec
+        self.dim_bins = (self.cr_grid.d + 1) * self.spec_man.nspec
 
         # Initialize continuous energy losses
         self.adia_loss_rates_grid = interaction_rates.ContinuousAdiabaticLossRate(
@@ -100,17 +96,8 @@ class PriNCeRun(object):
 
         # Let species manager know about the photon grid dimensions (for idx calculations)
         # it is accesible under index "ph" for lidx(), uidx() calls
-        self.spec_man.add_grid('ph', self.int_rates.dim_ph)
+        self.spec_man.add_grid('ph', self.ph_grid.d)
 
-    @property
-    def egrid(self):
-        """Energy grid used for single species state"""
-        return self.cr_grid.grid
-
-    @property
-    def ebins(self):
-        """Energy bins used for single species state"""
-        return self.cr_grid.bins
 
     def set_photon_field(self, pfield):
         self.photon_field = pfield

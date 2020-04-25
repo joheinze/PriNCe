@@ -6,9 +6,11 @@ from os.path import isfile, join
 import numpy as np
 
 import prince.decays as decs
-from prince.util import (bin_widths, dict_add, get_2Dinterp_object, get_AZN,
-                         get_interp_object, info, load_or_convert_array)
-from prince_config import config, spec_data
+from prince._deprecated.util import bin_widths, get_AZN
+from prince.data import spec_data
+from prince.util import (dict_add, get_2Dinterp_object, get_interp_object,
+                         info, load_or_convert_array)
+from prince_config import config
 
 
 class CrossSectionBase(object, metaclass=ABCMeta):
@@ -531,7 +533,6 @@ class CrossSectionBase(object, metaclass=ABCMeta):
             # Return the integral of the differential for the inclusive
             egr_incl, cs_diff = self.incl_diff(mother, daughter)
             # diff_mat = diff_mat.transpose()
-            # print bin_widths(self.xbins).shape, diff_mat.shape
             cs_incl = trapz(cs_diff,
                             x=self.xcenters,
                             dx=bin_widths(self.xbins),
