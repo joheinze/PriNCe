@@ -4,7 +4,6 @@ import numpy as np
 
 from prince.cosmology import H
 from prince.data import PRINCE_UNITS, EnergyGrid
-from prince._deprecated.util import get_AZN
 from prince.util import info
 from prince_config import config
 
@@ -145,7 +144,7 @@ class UHECRPropagationResult(object):
             spectra[idx] = np.nan_to_num(res)
 
         # get the average and variance by using the spectra as weights
-        lnA = np.array([np.log(get_AZN(el)[0]) for el in nco_ids])
+        lnA = np.array([np.log(self.spec_man.ncoid2sref[el].A) for el in nco_ids])
         average = (
             lnA[:, np.newaxis] * spectra).sum(axis=0) / spectra.sum(axis=0)
         variance = (lnA[:, np.newaxis]**2 *
@@ -156,7 +155,7 @@ class UHECRPropagationResult(object):
     def get_energy_density(self, nco_id):
         from scipy.integrate import trapz
 
-        A, _, _ = get_AZN(nco_id)
+        A = self.spec_man.ncoid2sref[nco_id].A
         return trapz(A * self.egrid * self.get_solution(nco_id), self.egrid)
 
 

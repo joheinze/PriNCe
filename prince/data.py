@@ -96,6 +96,20 @@ class PrinceSpecies(object):
       particle_db (object): a dictionary with particle properties
       d (int): dimension of the energy grid
     """
+    @staticmethod
+    def calc_AZN(nco_id):
+        """Returns mass number :math:`A`, charge :math:`Z` and neutron
+        number :math:`N` of ``nco_id``."""
+        Z, A = 1, 1
+
+        if nco_id >= 100:
+            Z = nco_id % 100
+            A = (nco_id - Z) // 100
+        else:
+            Z, A = 0, 0
+
+        return A, Z, A - Z
+
     def __init__(self, ncoid, princeidx, d):
 
         info(5, 'Initializing new species', ncoid)
@@ -145,8 +159,6 @@ class PrinceSpecies(object):
     def _init_species(self):
         """Fill all class attributes with values from
         :var:`spec_data`, depending on ncoid."""
-        from prince._deprecated.util import get_AZN
-
         ncoid = self.ncoid
         dbentry = spec_data[ncoid]
 
@@ -158,7 +170,7 @@ class PrinceSpecies(object):
                 self.is_hadron = True
                 self.is_baryon = True
                 self.is_nucleus = True
-                self.A, self.Z, self.N = get_AZN(ncoid)
+                self.A, self.Z, self.N = self.calc_AZN(ncoid)
             elif ncoid not in [2, 3, 4, 50]:
                 self.is_hadron = True
                 self.is_meson = True
@@ -170,7 +182,9 @@ class PrinceSpecies(object):
                     self.is_alias = True
         else:
             self.is_nucleus = True
-            self.A, self.Z, self.N = get_AZN(ncoid)
+            self.A, self.Z, self.N = self.calc_AZN(ncoid)
+
+        self.AZN = self.A, self.Z, self.N
 
         if ncoid <= config["redist_threshold_ID"]:
             self.has_redist = True

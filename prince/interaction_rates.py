@@ -3,7 +3,6 @@
 import numpy as np
 from scipy.integrate import trapz
 
-from prince._deprecated.util import get_AZN
 from prince.data import PRINCE_UNITS
 from prince.util import info
 from prince_config import config
@@ -75,6 +74,7 @@ class PhotoNuclearInteractionRate(object):
         sp_id_ref = self.spec_man.ncoid2sref
         resp = self.cross_sections.resp
         m_pr = PRINCE_UNITS.m_proton
+        ncoid2sref = self.spec_man.ncoid2sref
 
         # Energy variables
         dcr = self.dim_cr
@@ -158,12 +158,8 @@ class PhotoNuclearInteractionRate(object):
 
             # Mass number of mother and daughter
             # (float) cast needed for exact ratio
-            mass_mo = 1.  #float(get_AZN(moid)[0])
-            mass_da = 1.  #float(get_AZN(daid)[0])
-            # mass_mo = float(get_AZN(moid)[0])
-            # mass_da = float(get_AZN(daid)[0])
-            # if daid == 101:
-            #     mass_da = 2.
+            mass_mo = 1.  #float(ncoid2sref[moid].A)
+            mass_da = 1.  #float(ncoid2sref[daid].A)
 
             if mass_mo < mass_da or moid < 100:
                 continue
