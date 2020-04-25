@@ -180,8 +180,8 @@ class UHECRPropagationSolver(object):
         self.recomp_z_threshold = config["update_rates_z_threshold"]
 
         self.spec_man = prince_run.spec_man
-        self.egrid = prince_run.egrid
-        self.ebins = prince_run.ebins
+        self.egrid = prince_run.cr_grid.grid
+        self.ebins = prince_run.cr_grid.bins
         #Flags to enable/disable different loss types
         self.enable_adiabatic_losses = enable_adiabatic_losses
         self.enable_pairprod_losses = enable_pairprod_losses

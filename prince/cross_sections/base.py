@@ -533,7 +533,6 @@ class CrossSectionBase(object, metaclass=ABCMeta):
             # Return the integral of the differential for the inclusive
             egr_incl, cs_diff = self.incl_diff(mother, daughter)
             # diff_mat = diff_mat.transpose()
-            # print bin_widths(self.xbins).shape, diff_mat.shape
             cs_incl = trapz(cs_diff,
                             x=self.xcenters,
                             dx=bin_widths(self.xbins),

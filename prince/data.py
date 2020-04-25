@@ -62,31 +62,6 @@ class EnergyGrid(object):
             5, 'Energy grid initialized {0:3.1e} - {1:3.1e}, {2} bins'.format(
                 self.bins[0], self.bins[-1], self.grid.size))
 
-
-class LogEnergyGrid(object):
-    """Class for constructing a grid for discrete distributions.
-
-    Since we discretize everything in energy, the name seems appropriate.
-    All grids are log spaced.
-
-    Args:
-        lower (float): log10 of low edge of the lowest bin
-        upper (float): log10 of upper edge of the highest bin
-        bins_dec (int): bins per decade of energy
-    """
-    def __init__(self, lower, upper, bins_dec):
-        self.bins = np.linspace(lower, upper, (upper - lower) * bins_dec + 1)
-        self.grid = 0.5 * (self.bins[1:] + self.bins[:-1])
-        self.bins = 10**self.bins
-        self.grid = 10**self.grid
-        self.widths = self.bins[1:] - self.bins[:-1]
-        self.d = self.grid.size
-        info(
-            1,
-            'LogEnergy grid initialized {0:3.1e} - {1:3.1e}, {2} bins'.format(
-                self.bins[0], self.bins[-1], self.grid.size))
-
-
 class PrinceSpecies(object):
     """Bundles different particle properties for simplified
     availability of particle properties in :class:`prince.core.PriNCeRun`.

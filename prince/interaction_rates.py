@@ -30,10 +30,6 @@ class PhotoNuclearInteractionRate(object):
         self.e_photon = prince_run.ph_grid
         self.e_cosmicray = prince_run.cr_grid
 
-        # Create shortcuts for grid dimensions
-        self.dim_cr = self.e_cosmicray.d
-        self.dim_ph = self.e_photon.d
-
         # Initialize cache of redshift value
         self._ph_vec_zcache = None
         self._ratemat_zcache = None
@@ -77,8 +73,8 @@ class PhotoNuclearInteractionRate(object):
         ncoid2sref = self.spec_man.ncoid2sref
 
         # Energy variables
-        dcr = self.dim_cr
-        dph = self.dim_ph
+        dcr = self.e_cosmicray.d
+        dph = self.e_photon.d
         ecr = self.e_cosmicray.grid
         bcr = self.e_cosmicray.bins
         eph = self.e_photon.grid
