@@ -33,7 +33,7 @@ def list_species_by_mass(Amax, tau=inf):
     to be produced in spallation.
     '''
     species = {}
-    for nuc in [k for k in sorted(spec_data.keys()) if isinstance(k, int)]:
+    for nuc in sorted([k for k in spec_data.keys() if isinstance(k, int)]):
         if (nuc < 100) or (spec_data[nuc]['lifetime'] < tau):
             continue
         At, _, _ = get_AZN(nuc)
@@ -123,9 +123,9 @@ def residual_multiplicities():
 species_by_mass = list_species_by_mass(56, 0.)
 # resmul = residual_multiplicities()
 small_frags_relative_yields_filename = join(config['data_dir'], 'small_frags_relative_yields.pkl')
-with open(small_frags_relative_yields_filename, 'r') as f:
+with open(small_frags_relative_yields_filename, 'rb') as f:
     # it's faster to pickle.load a precomputed resmul
-    resmul = load(f)
+    resmul = load(f,encoding='latin1')
 
 
 #### empirical relations from reference...
@@ -424,7 +424,7 @@ def spallation_multiplicities(mother):
     
     incl_tab = {}
     cs_sum = 0
-    for A_big_frag in range(Am/2, Am-1):
+    for A_big_frag in range(Am//2, Am-1):
         for big_frag in species_by_mass[A_big_frag]:
             _, x, y = get_AZN(mother - big_frag)
             spalled_id = 100*(x+y) + x

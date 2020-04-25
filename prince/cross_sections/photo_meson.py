@@ -257,7 +257,7 @@ class EmpiricalModel(SophiaSuperposition):
                 return gap*( 1. - sigmoid) + base
 
         mass_scaling_file = join(config['data_dir'], 'scaling_lines')
-        nsc = np.load(mass_scaling_file, allow_pickle=True)
+        nsc = np.load(mass_scaling_file, allow_pickle=True,encoding='latin1')
 
         # defining the transistion smoothing function s 
         # emid = np.array(range(600, 630, 10) + range(680, 720, 10))
@@ -300,8 +300,8 @@ class EmpiricalModel(SophiaSuperposition):
         from scipy.interpolate import UnivariateSpline
 
         uf_file = join(config['data_dir'], 'universal-spline.pkl')
-        with open(uf_file, 'r') as f:
-            tck = pickle_load(f)
+        with open(uf_file, 'rb') as f:
+            tck = pickle_load(f,encoding='latin1') 
 
         self.univ_spl = UnivariateSpline._from_tck(tck)
 
@@ -312,8 +312,8 @@ class EmpiricalModel(SophiaSuperposition):
         from scipy.interpolate import UnivariateSpline
 
         uf_file = join(config['data_dir'], 'pion_spline.pkl')
-        with open(uf_file, 'r') as f:
-            tck = pickle_load(f)
+        with open(uf_file, 'rb') as f:
+            tck = pickle_load(f,encoding='latin1') 
 
         self.pion_spl = UnivariateSpline._from_tck(tck)
 
@@ -330,7 +330,7 @@ class EmpiricalModel(SophiaSuperposition):
                 self._incl_diff_tab[mom, dau] = ()
                 
         new_multiplicity = {}
-        nuclides = [k for k in sorted(spec_data.keys()) if isinstance(k, int)]
+        nuclides = sorted([k for k in spec_data.keys() if isinstance(k, int)])
         for mom in nuclides:
             A, _, _ = get_AZN(mom)
             if (mom < 101) or (A > config['max_mass']) or \

@@ -48,7 +48,7 @@ class PriNCeRun(object):
         if 'photon_field' in kwargs:
             self.photon_field = kwargs['photon_field']
         else:
-            import photonfields as pf
+            import prince.photonfields as pf
             self.photon_field = pf.CombinedPhotonField(
                 [pf.CMBPhotonSpectrum, pf.CIBGilmore2D])
 

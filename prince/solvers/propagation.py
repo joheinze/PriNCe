@@ -169,7 +169,7 @@ class UHECRPropagationSolver(object):
             enable_pairprod_losses=True,
             enable_photohad_losses=True,
             enable_injection_jacobian=True,
-            enable_partial_diff_jacobian=False,
+            enable_partial_diff_jacobian=True,
             z_offset=0.,
     ):
         self.initial_z = initial_z + z_offset
