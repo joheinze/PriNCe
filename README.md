@@ -2,7 +2,6 @@
 
 
 This code is written to solve the transport equation for ultra-high energy cosmic rays on cosmological scales.  
-The development is part of the [NEUCOS project](https://astro.desy.de/theory/neucos/index_eng.html)
 
 ## Status
 
@@ -138,3 +137,8 @@ https://doi.org/10.3847/1538-4357/ab05ce
 ## Copyright and license
 
 Code released under [the BSD 3-clause license (see LICENSE)](LICENSE).
+
+## Acknowledgements
+
+NEUCOS blurb! The development is part of the [NEUCOS project](https://astro.desy.de/theory/neucos/index_eng.html)
+And logos maybe?
