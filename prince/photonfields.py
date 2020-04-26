@@ -135,8 +135,13 @@ class CIBFranceschini2D(PhotonField):
     def __init__(self, simple_scaling=False):
         import pickle as pickle
         self.simple_scaling = simple_scaling
-        self.int2d = pickle.load(
-            open(join(config['data_dir'], 'CIB_franceschini_int2D.ppo'), 'rb'))
+        try:
+            self.int2d = pickle.load(
+                open(join(config['data_dir'], 'CIB_franceschini_int2D.ppo'), 'rb'))
+        except UnicodeDecodeError:
+            self.int2d = pickle.load(
+                open(join(config['data_dir'], 'CIB_franceschini_int2D.ppo'), 'rb'),
+                encoding='latin1')
 
     def get_photon_density(self, E, z):
         """Returns the redshift-scaled number density of CIB photons
@@ -176,8 +181,14 @@ class CIBInoue2D(PhotonField):
     def __init__(self, model='base', simple_scaling=False):
         import pickle as pickle
         self.simple_scaling = simple_scaling
-        self.int2d_base, self.int2d_min, self.int2d_max = pickle.load(
-            open(join(config['data_dir'], 'CIB_inoue_int2D.ppo'), 'rb'))
+        try:
+            self.int2d_base, self.int2d_min, self.int2d_max = pickle.load(
+                open(join(config['data_dir'], 'CIB_inoue_int2D.ppo'), 'rb'))
+        except UnicodeDecodeError:
+            self.int2d_base, self.int2d_min, self.int2d_max = pickle.load(
+                open(join(config['data_dir'], 'CIB_inoue_int2D.ppo'), 'rb'),
+                encoding='latin1')
+        
 
         if model == 'base':
             self.int2d = self.int2d_base
@@ -226,8 +237,13 @@ class CIBGilmore2D(PhotonField):
     def __init__(self, simple_scaling=False, model='fiducial'):
         import pickle as pickle
         self.simple_scaling = simple_scaling
-        self.int2d_fixed, self.int2d_fiducial = pickle.load(
-            open(join(config['data_dir'], 'CIB_gilmore_int2D.ppo'), 'rb'))
+        try:
+            self.int2d_fixed, self.int2d_fiducial = pickle.load(
+                open(join(config['data_dir'], 'CIB_gilmore_int2D.ppo'), 'rb'))
+        except UnicodeDecodeError:
+            self.int2d_fixed, self.int2d_fiducial = pickle.load(
+                open(join(config['data_dir'], 'CIB_gilmore_int2D.ppo'), 'rb'),
+                encoding='latin1')
 
         if model == 'fixed':
             self.int2d = self.int2d_fixed
@@ -273,8 +289,15 @@ class CIBDominguez2D(PhotonField):
     def __init__(self, simple_scaling=False):
         import pickle as pickle
         self.simple_scaling = simple_scaling
-        self.int2d, self.int2d_lower, self.int2d_upper = pickle.load(
-            open(join(config['data_dir'], 'CIB_dominguez_int2D.ppo'), 'rb'))
+        try:
+            self.int2d, self.int2d_lower, self.int2d_upper = pickle.load(
+                open(join(config['data_dir'], 'CIB_dominguez_int2D.ppo'), 'rb'))
+        except UnicodeDecodeError:
+            self.int2d, self.int2d_lower, self.int2d_upper = pickle.load(
+                open(join(config['data_dir'], 'CIB_dominguez_int2D.ppo'), 'rb'),
+                encoding='latin1')
+
+        
 
     def get_photon_density(self, E, z):
         """Returns the redshift-scaled number density of CIB photons
