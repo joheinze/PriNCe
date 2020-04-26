@@ -214,7 +214,7 @@ def load_or_convert_array(fname, **kwargs):
             np.save(join(config["data_dir"], fname + '.npy'), arr)
         return arr
     else:
-        return np.load(join(config["data_dir"], fname + '.npy'))
+        return np.load(join(config["data_dir"], fname + '.npy'), encoding='latin1')
 
 
 def dict_add(di, key, value):
