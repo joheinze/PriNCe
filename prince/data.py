@@ -9,8 +9,15 @@ from prince_config import config
 
 #: Dictionary containing particle properties, like mass, charge
 #: lifetime or branching ratios
-spec_data = pickle.load(
-    open(path.join(config["data_dir"], "particle_data.ppo"), "rb"))
+try:
+    spec_data = pickle.load(
+        open(path.join(config["data_dir"], "particle_data.ppo"), "rb"))
+except UnicodeDecodeError:
+    spec_data = pickle.load(
+        open(path.join(config["data_dir"], "particle_data.ppo"), "rb"), encoding='latin1')
+except FileNotFoundError:
+    info(0, 'Warning, particle database "particle_data.ppo" file not found.')
+
 
 # Default units in Prince are ***cm, s, GeV***
 # Define here all constants and unit conversions and use
