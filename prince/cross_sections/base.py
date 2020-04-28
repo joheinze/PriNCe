@@ -304,6 +304,14 @@ class CrossSectionBase(object, metaclass=ABCMeta):
         # The differential element dx_mu/x_pi
         int_scale = np.tile(bw / bc, (len(bc), 1))
 
+        from functools import lru_cache
+        @lru_cache(maxsize=512, typed=False)
+        def decay_cached(mother,daughter):
+            dec_dist = int_scale * decs.get_decay_matrix_bin_average(
+                mother, daughter, dec_bins_lower, dec_bins_upper)
+            
+            return dec_dist
+
         def convolve_with_decay_distribution(diff_dist, mother, daughter,
                                              branching_ratio):
             r"""Computes the prompt decay xdist by convolving the x distribution
@@ -316,8 +324,7 @@ class CrossSectionBase(object, metaclass=ABCMeta):
             """
             # dec_dist = int_scale * decs.get_decay_matrix(
             #     mother, daughter, dec_grid)
-            dec_dist = int_scale * decs.get_decay_matrix_bin_average(
-                mother, daughter, dec_bins_lower, dec_bins_upper)
+            dec_dist = decay_cached(mother,daughter)
 
             info(20, 'convolving with decay dist', mother, daughter)
             # Handle the case where table entry is (energy_grid, matrix)
@@ -452,6 +459,7 @@ class CrossSectionBase(object, metaclass=ABCMeta):
              "in total {1} inclusive channels").format(
                  len(self._nonel_tab),
                  len(self._incl_tab) + len(self._incl_diff_tab)))
+        info(2, f'Cache used for decays, {decay_cached.cache_info()}') # pylint:disable=no-value-for-parameter
 
     def nonel_scale(self, mother, scale='A'):
         """Returns the nonel cross section scaled by `scale`.
