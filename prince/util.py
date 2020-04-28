@@ -225,8 +225,11 @@ class AdditiveDictionary(dict):
 
     def __setitem__(self, key, value):
         if key not in self:
-            self[key] = value
+            super(AdditiveDictionary, self).__setitem__(key, value)
         elif isinstance(value, tuple):
-            self[key] = (self[key][0], value[1] + self[key][1])
+            super(AdditiveDictionary, self).__setitem__(
+                key, (self[key][0], value[1] + self[key][1]))
         else:
-            self[key] += value
+            super(AdditiveDictionary, self).__setitem__(
+                key, self[key] + value)
+            
