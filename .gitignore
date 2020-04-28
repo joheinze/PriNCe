@@ -7,3 +7,5 @@
 .ipynb_checkpoints
 __pycache__
 /docs/_build
+prince.egg-info/*
+sandbox_*
