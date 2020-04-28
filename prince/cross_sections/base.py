@@ -79,7 +79,7 @@ class CrossSectionBase(object, metaclass=ABCMeta):
         if e_max is None:
             e_max = np.max(self._egrid_tab)
 
-        info(2, "Setting range to {0:3.2e} - {1:3.2e}".format(e_min, e_max))
+        info(5, "Setting range to {0:3.2e} - {1:3.2e}".format(e_min, e_max))
         self._range = np.where((self._egrid_tab >= e_min)
                                & (self._egrid_tab <= e_max))[0]
         info(
