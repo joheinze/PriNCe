@@ -4,14 +4,24 @@ PriNCe documentation
 :Release: |release|
 :Date: |today|
 
-Purpose of the code (... compied from MCEq):
+PriNCe is derived from **Pr**\opagation **i**\ncluding **N**\uclear **C**\ascade **e**\quations.
+This code is to be a numerical solver of the transport equations for Ultra-High Energy Cosmic
+Rays through the radiation fields of the intergalactic space. Its specific features are:
 
-    This program is a toolkit to compute the evolution of particle densities
-    that evolve as a cascade in the Earth's atmosphere or other target media.
-    Particles are represented by average densities on discrete energy bins.
-    The results are differential energy spectra or total particle numbers.
-    Various models/parameterizations for particle interactions and atmospheric
-    density profiles are packaged with the code.  
+- **Time dependent UHECR transport equation solver**; efficient enough to compute a single spectrum within seconds,
+- **Fast and easy variation of input parameters**; such as cross section models and extragalactic photon backgrounds,
+- **Accessibility and modularity**; ability to easily modify and extend specific parts of the code through interfaces.
+
+To achieve these goals, PriNCe is written in pure Python using vectorized expressions for the performance
+intensive parts. It accelerates those using libraries like Numpy and Scipy.
+
+Development status
+..................
+
+Although the code is numerically accurate for its main purpose (UHECR propagation), one should consider it
+as *early alpha*, simply because so far only us (the devs) have been using it and the interfaces aren't
+sufficiently polished to be used *error-free* for tasks that we didn't foresee. Please file issues for
+anything strange, unclear, wrong, etc.. It will help us to debug the code and simplify the user interface.
 
 Installation
 ............
@@ -20,9 +30,13 @@ The installation via PyPi is the simplest method::
 
     pip install prince
 
-Supported architectures:
+Supported architectures
+.......................
 
-- Linux 32- and 64-bit
+Due to memory requirements 32-bit architectures are not recommended.
+It should run on Python 2.7 and above on
+
+- Linux
 - Mac OS X
 - Windows
 
@@ -79,16 +93,8 @@ Follow the :ref:`tutorial` and/or download and run the notebooks from
 Citations
 .........
 
-If you use MCEq in your scientific publication, please cite the code **AND** the physical models.
-
-The current citation for the MCEq is:
-
-    | *A new view on Auger data and cosmogenic neutrinos in light of different nuclear disintegration and air-shower models*  
-    | J. Heinze, A. Fedynitch, D. Boncioli and W. Winter  
-    | Astrophys.J. 873 (2019) no.1, 88  
-    | https://doi.org/10.3847/1538-4357/ab05ce
-
-Find the :ref:`citations` for the physical models.
+If you use PriNCe in your scientific publications, please cite the code **AND** the physical models.
+Have a look at the :ref:`citations` for instructions how to cite.
 
 Main documentation
 ..................

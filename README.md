@@ -29,8 +29,8 @@ make html
 
 ## System requirements
 
-- 3-5 GB RAM
-- ~1.5GB of disk space
+- lots of RAM
+- several GB disk space
 
 ## Software requirements
 

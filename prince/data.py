@@ -200,7 +200,7 @@ class PrinceSpecies(object):
         """Returns lower index of particle range in state vector.
 
         Returns:
-          (int): lower index in state vector :attr:`MCEqRun.phi`
+          (int): lower index in state vector :attr:`PrinceRun.phi`
         """
         return self.princeidx * self.grid_dims[grid_tag]
 
@@ -208,7 +208,7 @@ class PrinceSpecies(object):
         """Returns upper index of particle range in state vector.
 
         Returns:
-          (int): upper index in state vector :attr:`MCEqRun.phi`
+          (int): upper index in state vector :attr:`PrinceRun.phi`
         """
         return (self.princeidx + 1) * self.grid_dims[grid_tag]
 
@@ -216,7 +216,7 @@ class PrinceSpecies(object):
         """Returns lower bin of particle range in state vector.
 
         Returns:
-          (int): lower bin in state vector :attr:`MCEqRun.phi`
+          (int): lower bin in state vector :attr:`PrinceRun.phi`
         """
         return self.princeidx * (self.grid_dims[grid_tag] + 1)
 
@@ -224,7 +224,7 @@ class PrinceSpecies(object):
         """Returns upper bin of particle range in state vector.
 
         Returns:
-          (int): upper bin in state vector :attr:`MCEqRun.phi`
+          (int): upper bin in state vector :attr:`PrinceRun.phi`
         """
         return (self.princeidx + 1) * (self.grid_dims[grid_tag] + 1)
 
@@ -232,7 +232,7 @@ class PrinceSpecies(object):
         """Returns a list of all indices in the state vector.
 
         Returns:
-          (numpy.array): array of indices in state vector :attr:`MCEqRun.phi`
+          (numpy.array): array of indices in state vector :attr:`PrinceRun.phi`
         """
         idx = self.princeidx
         dim = self.grid_dims[grid_tag]

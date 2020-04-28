@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Matrix Cascade Equation (MCEq) documentation build configuration file, created by
+# Prince documentation build configuration file, created by
 # sphinx-quickstart on Fri Nov 21 10:13:38 2014.
 #
 # This file is execfile()d with the current directory set to its
