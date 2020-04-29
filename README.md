@@ -1,15 +1,12 @@
 # PriNCe - **Pr**opagation **i**ncluding **N**uclear **C**ascade **e**quations
 
-
 This code is written to solve the transport equation for ultra-high energy cosmic rays on cosmological scales.  
 
 ## Status
 
-
 Code stable and tested for UHECR propagation. Used in [Heinze et al., Astrophys.J. 873 (2019)](https://doi.org/10.3847/1538-4357/ab05ce)
 
 ## Data and other requirements
-
 
 The required data files are currently **not** contained in this repository:
 
@@ -18,7 +15,6 @@ If you have access to the old `SVN` repository, copy the `PriNCe/data` subfolder
 The old `SVN` repository also contains utility and test notebooks that have not yet been migrated to `git`
 
 ## Documentation
-
 
 Uses `sphinx`-docs (incomplete documentation).
 
@@ -48,7 +44,6 @@ Dependencies (list might be incomplete):
 **It might be worth to wait for the python 3 port** (since official Python 2 support is discontinued after 2019)
 
 ## Installation
-
 
 The installation simplest method relies on the Python package manager [Anaconda/Miniconda](https://store.continuum.io/cshop/anaconda/) by [Continuum Analytics](http://www.continuum.io). It doesn't just improve your life, but also provides most of the scientific computing packages by default. It will not spoil your system Python paths and will install itself into a specified directory. The only action which is needed for activation, is to add this directory to your system `$PATH` variable. To uninstall just delete this directory.
 
@@ -116,23 +111,19 @@ Anaconda offers MKL-linked numpy binaries free for academic use. It is necessary
 
 ## Examples
 
-
 ## Citation
-
 
 If you are using this code in your work, please cite:
 
 *A new view on Auger data and cosmogenic neutrinos in light of different nuclear disintegration and air-shower models*  
 J. Heinze, A. Fedynitch, D. Boncioli and W. Winter  
 Astrophys.J. 873 (2019) no.1, 88  
-https://doi.org/10.3847/1538-4357/ab05ce
+doi: [10.3847/1538-4357/ab05ce](https://doi.org/10.3847/1538-4357/ab05ce)
 
 ## Contributors
 
 - *Anatoli Fedynitch*
 - *Jonas Heinze*
-
-<!-- DESY, Platanenallee 6, 15xxx Zeuthen -->
 
 ## Copyright and license
 
@@ -140,5 +131,4 @@ Code released under [the BSD 3-clause license (see LICENSE)](LICENSE).
 
 ## Acknowledgements
 
-NEUCOS blurb! The development is part of the [NEUCOS project](https://astro.desy.de/theory/neucos/index_eng.html)
-And logos maybe?
+This code has been initially developed as part of the [NEUCOS project](https://astro.desy.de/theory/neucos/index_eng.html) and has received funding from the European Research Council (ERC) under the European Union’s Horizon 2020 research and innovation programme ([Grant No. 646623](https://cordis.europa.eu/project/id/646623)).
