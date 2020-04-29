@@ -170,7 +170,7 @@ class PhotoNuclearInteractionRate(object):
                                     (moid, daid))
 
                 # generate outer products using broadcasting
-                emo = ecr 
+                emo = ecr
                 xl = elims[0] / emo
                 xu = elims[1] / emo
                 delta_x = delta_ec / emo
@@ -194,65 +194,124 @@ class PhotoNuclearInteractionRate(object):
                 self._batch_cols.append(sp_id_ref[moid].lidx() + emo_idcs)
 
             elif (moid, daid) in self.cross_sections.known_diff_channels:
-                it_diff.reset()
-                continue
-                if (moid, daid) in resp.incl_diff_intp:
+
+                # from time import time
+                # start_time = time()
+
+                has_redist = (moid, daid) in resp.incl_diff_intp
+                if has_redist:
                     intp_diff = resp.incl_diff_intp[(moid, daid)]
                     intp_nonel = resp.nonel_intp[moid]
                     intp_nonel_antid = resp.nonel_intp[moid].antiderivative()
 
                     ymin = np.min(intp_diff.get_knots()[1])
-                    has_redist = True
                 else:
-                    has_redist = False
                     raise Exception('This should not occur.')
 
-                for m_eidx, d_eidx, ph_idx in it_diff:
-                    if d_eidx > m_eidx:
-                        continue
+                #print('ibatch before',ibatch)
+                ibatch_bf = ibatch
+                # generate outer products using broadcasting
+                emo = ecr[:, None, None]
+                eda = ecr[None, :, None]
+                epho = eph[None, None, :]
+                target_shape = np.ones_like(emo*eda*epho)
 
-                    emo = ecr[m_eidx]
-                    eda = ecr[d_eidx]
-                    epho = eph[ph_idx]
+                xl = elims[0, None, :, None] / emo * target_shape
+                xu = elims[1, None, :, None] / emo * target_shape
+                delta_x = delta_ec[None, :, None] / emo
 
-                    # Check for Tresholds
-                    xl = elims[0, d_eidx] / emo
-                    xu = elims[1, d_eidx] / emo
-                    yl = plims[0, ph_idx] * emo / m_pr
-                    yu = plims[1, ph_idx] * emo / m_pr
+                yl = plims[0, None, None, :] * emo / m_pr * target_shape
+                yu = plims[1, None, None, :] * emo / m_pr * target_shape
+                delta_y = delta_ph[None, None, :] * emo / m_pr
 
-                    if daid == 101 and xl < x_cut_proton:
-                        continue
-                    if xl < x_cut or yu < ymin or yl > y_cut:
-                        continue
+                int_fac = (delta_ec[:, None, None] * delta_ph[None, None, :] / emo) * target_shape
+                diff_fac = 1. / delta_x / delta_y
 
-                    xl = elims[0, d_eidx] / emo
-                    xu = elims[1, d_eidx] / emo
-                    delta_x = delta_ec[d_eidx] / emo
+                if daid == 101:
+                    cuts = np.logical_and(xl >= x_cut_proton, xl <= 1)
+                else:
+                    cuts = np.logical_and(xl >= x_cut, xl <= 1) #or (yu < ymin) or (yl > y_cut)
+                cuts = cuts[:,:,0]
 
-                    yl = plims[0, ph_idx] * emo / m_pr
-                    yu = plims[1, ph_idx] * emo / m_pr
-                    delta_y = delta_ph[ph_idx] * emo / m_pr
+                integrator = np.vectorize(intp_diff.integral)
+                # print('cuts:', cuts.shape)
+                # print('xl:', xl.shape, 'xu', xu.shape)
+                # print('yl:', yl.shape, 'yu', yu.shape)
+                # print('diff_fac:', diff_fac.shape, 'int_fac', int_fac.shape)
+                res = integrator(xl[cuts], xu[cuts], yl[cuts], yu[cuts]) * diff_fac[cuts] * int_fac[cuts]
 
-                    int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
-                                mass_mo / mass_da)
-                    diff_fac = 1. / delta_x / delta_y
+                emoidx, edaidx, _ = np.meshgrid(sp_id_ref[moid].lidx() + emo_idcs,
+                                             sp_id_ref[daid].lidx() + eda_idcs,
+                                             p_idcs, indexing='ij')
+                emoidx, edaidx = emoidx[cuts], edaidx[cuts]
 
-                    self._batch_matrix[
-                        ibatch, ph_idx] = intp_diff.integral(
-                            xl, xu, yl, yu) * diff_fac * int_fac
+                if has_nonel:
+                    res[emoidx == edaidx] -= (
+                        intp_nonel_antid(yu[cuts][emoidx == edaidx]) -
+                        intp_nonel_antid(yl[cuts][emoidx == edaidx])) * (
+                            diff_fac[cuts][emoidx == edaidx] *
+                            int_fac[cuts][emoidx == edaidx])
 
-                    if has_nonel and m_eidx == d_eidx:
-                        self._batch_matrix[ibatch, ph_idx] -= (
-                            intp_nonel_antid(yu) -
-                            intp_nonel_antid(yl)) * diff_fac * int_fac
+                self._batch_matrix[ibatch:ibatch + len(emoidx), :] = res
+                self._batch_rows.append(edaidx[:,0])
+                self._batch_cols.append(emoidx[:,0])
+                ibatch += len(emoidx)
+                # print('ibatch after',ibatch, 'diff', ibatch_bf - ibatch)
+                # print(emoidx.shape, edaidx.shape)
+                # it_diff.reset()
+                # print('ibatch before',ibatch)
+                # ibatch_bf = ibatch
+                # for m_eidx, d_eidx, ph_idx in it_diff:
+                #     if d_eidx > m_eidx:
+                #         continue
 
-                    if ph_idx == p_idcs[-1]:
-                        ibatch += 1
-                        self._batch_rows.append(sp_id_ref[daid].lidx() +
-                                                d_eidx)
-                        self._batch_cols.append(sp_id_ref[moid].lidx() +
-                                                m_eidx)
+                #     emo = ecr[m_eidx]
+                #     eda = ecr[d_eidx]
+                #     epho = eph[ph_idx]
+
+                #     # Check for Tresholds
+                #     xl = elims[0, d_eidx] / emo
+                #     xu = elims[1, d_eidx] / emo
+                #     yl = plims[0, ph_idx] * emo / m_pr
+                #     yu = plims[1, ph_idx] * emo / m_pr
+
+                #     if daid == 101 and xl < x_cut_proton:
+                #         continue
+                #     if xl < x_cut or yu < ymin or yl > y_cut:
+                #         continue
+
+                #     xl = elims[0, d_eidx] / emo
+                #     xu = elims[1, d_eidx] / emo
+                #     delta_x = delta_ec[d_eidx] / emo
+
+                #     yl = plims[0, ph_idx] * emo / m_pr
+                #     yu = plims[1, ph_idx] * emo / m_pr
+                #     delta_y = delta_ph[ph_idx] * emo / m_pr
+
+                #     int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
+                #                 mass_mo / mass_da)
+                #     diff_fac = 1. / delta_x / delta_y
+
+                #     self._batch_matrix[
+                #         ibatch, ph_idx] = intp_diff.integral(
+                #             xl, xu, yl, yu) * diff_fac * int_fac
+
+                #     if has_nonel and m_eidx == d_eidx:
+                #         self._batch_matrix[ibatch, ph_idx] -= (
+                #             intp_nonel_antid(yu) -
+                #             intp_nonel_antid(yl)) * diff_fac * int_fac
+
+                #     if ph_idx == p_idcs[-1]:
+                #         ibatch += 1
+                #         self._batch_rows.append(sp_id_ref[daid].lidx() +
+                #                                 d_eidx)
+                #         self._batch_cols.append(sp_id_ref[moid].lidx() +
+                #                                 m_eidx)
+                # print('ibatch after',ibatch, 'diff', ibatch_bf - ibatch)
+
+                # end_time = time()
+                # print(f'Used {end_time - start_time} s this lopp')
+
             else:
                 info(20, 'Species combination not included in model', moid,
                      daid)
@@ -264,6 +323,11 @@ class PhotoNuclearInteractionRate(object):
         self._batch_rows = np.concatenate(self._batch_rows, axis=None)
         self._batch_cols = np.concatenate(self._batch_cols, axis=None)
         self._batch_vec = np.zeros(ibatch)
+
+        print(self._batch_matrix.shape)
+        print(self._batch_rows.shape)
+        print(self._batch_cols.shape)
+        print(self._batch_vec.shape)
 
         memory = (self._batch_matrix.nbytes + self._batch_rows.nbytes +
                   self._batch_cols.nbytes + self._batch_vec.nbytes) / 1024**2
