@@ -8,7 +8,7 @@ import numpy as np
 import prince.decays as decs
 from prince._deprecated.util import bin_widths, get_AZN
 from prince.data import spec_data
-from prince.util import (dict_add, get_2Dinterp_object, get_interp_object,
+from prince.util import (get_2Dinterp_object, get_interp_object,
                          info, load_or_convert_array)
 from prince_config import config
 
@@ -79,7 +79,7 @@ class CrossSectionBase(object, metaclass=ABCMeta):
         if e_max is None:
             e_max = np.max(self._egrid_tab)
 
-        info(2, "Setting range to {0:3.2e} - {1:3.2e}".format(e_min, e_max))
+        info(5, "Setting range to {0:3.2e} - {1:3.2e}".format(e_min, e_max))
         self._range = np.where((self._egrid_tab >= e_min)
                                & (self._egrid_tab <= e_max))[0]
         info(
@@ -261,12 +261,14 @@ class CrossSectionBase(object, metaclass=ABCMeta):
         are known, will be forced to beta-decay until they reach a stable
         element.
         """
+        from prince.util import AdditiveDictionary
         # TODO: check routine, how to avoid empty channels and
         # mothers with zero nonel cross sections
 
         # The new dictionary that will replace _incl_tab
-        new_incl_tab = {}
-        new_dec_diff_tab = {}
+        new_incl_tab = AdditiveDictionary()
+        new_dec_diff_tab = AdditiveDictionary()
+
         threshold = config["tau_dec_threshold"]
 
         # How to indent debug printout for recursion
@@ -364,13 +366,13 @@ class CrossSectionBase(object, metaclass=ABCMeta):
                         20, dbg_indent(reclev),
                         'daughter {0} stable and differential. Adding to ({1}, {2})'
                         .format(da, first_mo, da))
-                    dict_add(new_dec_diff_tab, (first_mo, da), csection)
+                    new_dec_diff_tab[(first_mo, da)] = csection
                 else:
                     info(
                         20, dbg_indent(reclev),
                         'daughter {0} stable. Adding to ({1}, {2})'.format(
                             da, first_mo, da))
-                    dict_add(new_incl_tab, (first_mo, da), csection)
+                    new_incl_tab[(first_mo, da)] = csection
                 return
 
             # ..otherwise follow decay products of this daughter, tracking the
@@ -448,9 +450,9 @@ class CrossSectionBase(object, metaclass=ABCMeta):
             follow_chain(mo, da, value, 0)
 
         # Overwrite the old incl dictionary
-        self._incl_tab = new_incl_tab
+        self._incl_tab = dict(new_incl_tab)
         # Overwrite the old incl_diff dictionary
-        self._incl_diff_tab = new_dec_diff_tab
+        self._incl_diff_tab = dict(new_dec_diff_tab)
         # Reduce also the incl_diff_tab by removing the unknown mothers. At this stage
         # of the code, the particles with redistributions are
         info(
