@@ -46,26 +46,9 @@ The steps performed by the solver are:
 
   \Phi_{i + 1} = \Delta X_i\boldsymbol{M}_{int} \cdot \Phi_i  + \frac{\Delta X_i}{\rho(X_i)}\cdot\boldsymbol{M}_{dec} \cdot \Phi_i)
 
-with
 
-.. math::
-  \boldsymbol{M}_{int} = (-\boldsymbol{1} + \boldsymbol{C}){\boldsymbol{\Lambda}}_{int}
-  :label: int_matrix
-
-and
-
-.. math::
-  \boldsymbol{M}_{dec} = (-\boldsymbol{1} + \boldsymbol{D}){\boldsymbol{\Lambda}}_{dec}.
-  :label: dec_matrix
-
-
-.. automodule:: prince.solvers
+.. automodule:: prince.solvers.propagation
    :members:
 
-Miscellaneous
-.............
-
-Different helper functions.
-
-.. automodule:: MCEq.misc
+.. automodule:: prince.solvers.partial_diff
    :members:
