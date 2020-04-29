@@ -1,11 +1,10 @@
 # ignore the data folder 
 /data/
-/utils/
 
 # ignore subfolders used for programm settings and caches
 .vscode
 .ipynb_checkpoints
 __pycache__
 /docs/_build
-prince.egg-info/*
+prince.egg-info
 sandbox_*

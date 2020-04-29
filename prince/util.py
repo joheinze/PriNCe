@@ -214,38 +214,22 @@ def load_or_convert_array(fname, **kwargs):
             np.save(join(config["data_dir"], fname + '.npy'), arr)
         return arr
     else:
-        return np.load(join(config["data_dir"], fname + '.npy'))
+        return np.load(join(config["data_dir"], fname + '.npy'), encoding='latin1')
 
 
-def dict_add(di, key, value):
-    """Adds value to previous value of di[key], otherwise the key
-    is created with value set to `value`."""
+class AdditiveDictionary(dict):
+    """This dictionary subclass adds values if keys are
+    are already present instead of overwriting. For value tuples
+    only the second argument is added and the first kept to its
+    original value."""
 
-    if key in di:
-        if isinstance(value, tuple):
-            new_value = value[1] + di[key][1]
-            di[key] = (di[key][0], new_value)
-            # The code below is a template what to do
-            # if energy grids are unequal and one needs to
-            # sum over common indices
-            # try:
-            # If energy grids are the same
-            # new_value = value[1] + di[key][1]
-            # value[1] += di[key][1]
-            # di[key] = (di[key][0], new_value)
-            # except ValueError:
-            #     # old_egr = di[key][0]
-            #     # old_val = di[key][1]
-            #     # new_egr = value[0]
-            #     # new_val = value[1]
-            #     # if prevval.shape[1] > value.shape[1]:
-            #     #     idcs = np.in1d(di[key][0], value)
-            #     #     value += prevval[idcs]
-            #     print key, value[1].shape, di[key][1].shape, '\n', value, '\n', di[key]
-            #     raise Exception()
-
+    def __setitem__(self, key, value):
+        if key not in self:
+            super(AdditiveDictionary, self).__setitem__(key, value)
+        elif isinstance(value, tuple):
+            super(AdditiveDictionary, self).__setitem__(
+                key, (self[key][0], value[1] + self[key][1]))
         else:
-            di[key] += value
-    else:
-        di[key] = value
-
+            super(AdditiveDictionary, self).__setitem__(
+                key, self[key] + value)
+            
