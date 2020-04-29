@@ -64,7 +64,7 @@ def gen_prince_db():
     MCEq a dictionary for quick lookup in PriNCe."""
 
     data_raw = np.loadtxt(
-        path.join(fpath, '160302_BETA_MATHEMATICA.dat'), dtype=float)
+        path.join('../data/raw/160302_BETA_MATHEMATICA.dat'), dtype=float)
 
     nuclide_data = {}
 
