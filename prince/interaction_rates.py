@@ -201,6 +201,7 @@ class PhotoNuclearInteractionRate(object):
                 has_redist = (moid, daid) in resp.incl_diff_intp
                 if has_redist:
                     intp_diff = resp.incl_diff_intp[(moid, daid)]
+                    intp_diff_integral = resp.incl_diff_intp_integral[(moid, daid)]
                     intp_nonel = resp.nonel_intp[moid]
                     intp_nonel_antid = resp.nonel_intp[moid].antiderivative()
 
@@ -233,12 +234,24 @@ class PhotoNuclearInteractionRate(object):
                     cuts = np.logical_and(xl >= x_cut, xl <= 1) #or (yu < ymin) or (yl > y_cut)
                 cuts = cuts[:,:,0]
 
-                integrator = np.vectorize(intp_diff.integral)
-                # print('cuts:', cuts.shape)
-                # print('xl:', xl.shape, 'xu', xu.shape)
-                # print('yl:', yl.shape, 'yu', yu.shape)
-                # print('diff_fac:', diff_fac.shape, 'int_fac', int_fac.shape)
-                res = integrator(xl[cuts], xu[cuts], yl[cuts], yu[cuts]) * diff_fac[cuts] * int_fac[cuts]
+                # integrator = np.vectorize(intp_diff.integral)
+                # #integrator = intp_diff.integral
+                # # print('cuts:', cuts.shape)
+                # # print('xl:', xl.shape, 'xu', xu.shape)
+                # # print('yl:', yl.shape, 'yu', yu.shape)
+                # # print('diff_fac:', diff_fac.shape, 'int_fac', int_fac.shape)
+                # res = integrator(xl[cuts], xu[cuts], yl[cuts], yu[cuts]) * diff_fac[cuts] * int_fac[cuts]
+                # print(res.min(),res.max())
+
+                # print(xl[cuts].min(), xu[cuts].max(), yl[cuts].min(), yu[cuts].max())
+                res = intp_diff_integral.ev(xu[cuts],yu[cuts]) 
+                res -= intp_diff_integral.ev(xl[cuts],yu[cuts])
+                res -= intp_diff_integral.ev(xu[cuts],yl[cuts])
+                res += intp_diff_integral.ev(xl[cuts],yl[cuts])
+                res *= diff_fac[cuts] * int_fac[cuts]
+                res[res<0] = 0.
+                # print(res.min(),res.max())
+                # print('---'*10)
 
                 emoidx, edaidx, _ = np.meshgrid(sp_id_ref[moid].lidx() + emo_idcs,
                                              sp_id_ref[daid].lidx() + eda_idcs,

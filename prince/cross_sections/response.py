@@ -25,7 +25,8 @@ class ResponseFunction(object):
         self.nonel_intp = {}
         self.incl_intp = {}
         self.incl_diff_intp = {}
-
+        self.incl_diff_intp_integral = {}
+        
         self._precompute_interpolators()
 
     # forward is_differential() to CrossSectionBase
@@ -160,3 +161,10 @@ class ResponseFunction(object):
             ygr, rfunc = self.get_channel(mother, daughter)
             self.incl_diff_intp[(mother, daughter)] = get_2Dinterp_object(
                 self.xcenters, ygr, rfunc, self.cross_section.xbins)
+
+            from scipy.integrate import cumtrapz
+            integral = cumtrapz(rfunc, ygr, axis=1,initial=0)
+            integral = cumtrapz(integral, self.xcenters, axis=0,initial=0)
+
+            self.incl_diff_intp_integral[(mother, daughter)] = get_2Dinterp_object(
+                self.xcenters, ygr, integral, self.cross_section.xbins)
