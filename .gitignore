@@ -1,6 +1,5 @@
 # ignore the data folder 
 /data/
-/utils/
 
 # ignore subfolders used for programm settings and caches
 .vscode
