@@ -122,16 +122,6 @@ class PhotoNuclearInteractionRate(object):
         # We are gonna fill the batch matrix with the cross section using iterators
         # The op_axes arguments define how to compute the outer product.
 
-        # Iterate over all combinations of species
-        spec_iter = np.nditer(
-            [known_species, known_species], op_axes=[[0, -1], [-1, 0]])
-
-        # Iterate over mother and daughter indices synchronously
-        it_bc = np.nditer(
-            [emo_idcs, eda_idcs, p_idcs],
-            op_axes=[[0, -1], [0, -1], [-1, 0]],
-            flags=['external_loop'])
-
         # Iterate over outer product of m_energy x d_energy x ph_energy
         it_diff = np.nditer(
             [emo_idcs, eda_idcs, p_idcs],
@@ -145,9 +135,10 @@ class PhotoNuclearInteractionRate(object):
         x_cut_proton = config['x_cut_proton']
 
         ibatch = 0
+
+        import itertools
+        spec_iter = itertools.product(known_species,known_species)
         for moid, daid in spec_iter:
-            # Cast from np.array to Python int
-            moid, daid = int(moid), int(daid)
 
             # Mass number of mother and daughter
             # (float) cast needed for exact ratio
@@ -157,59 +148,54 @@ class PhotoNuclearInteractionRate(object):
             if mass_mo < mass_da or moid < 100:
                 continue
             else:
-                info(1, f'Filling channel {moid} -> {daid}')
+                info(10, f'Filling channel {moid} -> {daid}')
 
-            if moid == daid:
+            has_nonel = moid == daid
+            if has_nonel:
                 intp_nonel = resp.nonel_intp[moid].antiderivative()
-                has_nonel = True
-            else:
-                has_nonel = False
 
             if (((moid, daid) in self.cross_sections.known_bc_channels) or
                 (has_nonel and
                  (moid, daid) not in self.cross_sections.known_diff_channels)):
 
-                it_bc.reset()
-                if (moid, daid) in resp.incl_intp:
+                has_incl = (moid, daid) in resp.incl_intp
+                if has_incl:
                     intp_bc = resp.incl_intp[(moid, daid)].antiderivative()
-                    has_incl = True
                 else:
-                    has_incl = False
                     info(1, 'Inclusive interpolator not found for',
                          (moid, daid))
+
                 if not (has_nonel or has_incl):
                     raise Exception('Channel without interactions:',
                                     (moid, daid))
 
-                for m_eidx, d_eidx, ph_idx in it_bc:
-                    m_eidx = m_eidx[0]
-                    d_eidx = d_eidx[0]
-                    emo = ecr[m_eidx]
+                # generate outer products using broadcasting
+                emo = ecr 
+                xl = elims[0] / emo
+                xu = elims[1] / emo
+                delta_x = delta_ec / emo
 
-                    xl = elims[0, d_eidx] / emo
-                    xu = elims[1, d_eidx] / emo
-                    delta_x = delta_ec[d_eidx] / emo
+                yl = plims[0,np.newaxis,:] * emo[:,np.newaxis] / m_pr
+                yu = plims[1,np.newaxis,:] * emo[:,np.newaxis] / m_pr
+                delta_y = delta_ph[np.newaxis,:] * emo[:,np.newaxis] / m_pr
 
-                    yl = plims[0, ph_idx] * emo / m_pr
-                    yu = plims[1, ph_idx] * emo / m_pr
-                    delta_y = delta_ph[ph_idx] * emo / m_pr
+                int_fac = (delta_ec[:,np.newaxis] * delta_ph[np.newaxis,:] / emo[:,np.newaxis])
+                diff_fac = 1. / delta_x[:,np.newaxis] / delta_y
 
-                    int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo)
-                    diff_fac = 1. / delta_x / delta_y
-                    if has_incl:
-                        self._batch_matrix[ibatch, :] = (
-                            intp_bc(yu) - intp_bc(yl)) * int_fac * diff_fac
-                    if has_nonel:
-                        self._batch_matrix[ibatch, :] -= (intp_nonel(
-                            yu) - intp_nonel(yl)) * int_fac * diff_fac
+                if has_incl:
+                    self._batch_matrix[ibatch:ibatch+len(emo), :] = (
+                        intp_bc(yu) - intp_bc(yl)) * int_fac * diff_fac
+                if has_nonel:
+                    self._batch_matrix[ibatch:ibatch+len(emo), :] -= (intp_nonel(
+                        yu) - intp_nonel(yl)) * int_fac * diff_fac
 
-                    # Try later to check for zero result to save more zeros.
-                    ibatch += 1
-                    self._batch_rows.append(sp_id_ref[daid].lidx() + d_eidx)
-                    self._batch_cols.append(sp_id_ref[moid].lidx() + m_eidx)
+                ibatch += len(emo)
+                self._batch_rows.append(sp_id_ref[daid].lidx() + eda_idcs)
+                self._batch_cols.append(sp_id_ref[moid].lidx() + emo_idcs)
 
             elif (moid, daid) in self.cross_sections.known_diff_channels:
                 it_diff.reset()
+                continue
                 if (moid, daid) in resp.incl_diff_intp:
                     intp_diff = resp.incl_diff_intp[(moid, daid)]
                     intp_nonel = resp.nonel_intp[moid]
@@ -271,9 +257,12 @@ class PhotoNuclearInteractionRate(object):
                 info(20, 'Species combination not included in model', moid,
                      daid)
 
-        self._batch_matrix.resize((ibatch, dph))
-        self._batch_rows = np.array(self._batch_rows)
-        self._batch_cols = np.array(self._batch_cols)
+        #self._batch_matrix.resize((ibatch, dph))
+        self._batch_matrix = self._batch_matrix[:ibatch,:]
+        # self._batch_rows = np.array(self._batch_rows)
+        # self._batch_cols = np.array(self._batch_cols)
+        self._batch_rows = np.concatenate(self._batch_rows, axis=None)
+        self._batch_cols = np.concatenate(self._batch_cols, axis=None)
         self._batch_vec = np.zeros(ibatch)
 
         memory = (self._batch_matrix.nbytes + self._batch_rows.nbytes +
