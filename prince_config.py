@@ -82,7 +82,6 @@ config = {
     # 'logE': linear grid in x = log_10(E): x_i = x_min + i * Delta
     "grid_scale":'E',
 
-    "bin_average":'method2',
     "semi_lagr_method":'5th_order',
 
     #===========================================================================

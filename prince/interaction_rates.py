@@ -42,6 +42,7 @@ class PhotoNuclearInteractionRate(object):
         self.coupling_mat = None
         self.dense_coupling_mat = None
 
+        self._estimate_batch_matrix()
         self._init_matrices()
         self._init_coupling_mat(sp_format='csr')
 
@@ -62,6 +63,33 @@ class PhotoNuclearInteractionRate(object):
 
         return photon_vector
 
+    def _estimate_batch_matrix(self):
+        ''' estimate dimension of the batch matrix'''
+        dcr = self.e_cosmicray.d
+        dph = self.e_photon.d
+
+        batch_dim = 0
+        for specid in self.spec_man.known_species:
+            if specid < 100:
+                continue
+            # Add the main diagonal self-couplings (absoption)
+            batch_dim += dcr
+            for rtup in self.cross_sections.reactions[specid]:
+                # Off main diagonal couplings (reinjection)
+                if rtup in self.cross_sections.known_bc_channels:
+                    batch_dim += dcr
+                elif rtup in self.cross_sections.known_diff_channels:
+                    # Only half of the elements can be non-zero (energy conservation)
+                    batch_dim += int(dcr**2 / 2) + 1
+
+        info(2, 'Batch matrix dimensions are {0}x{1}'.format(batch_dim, dph))
+        self._batch_matrix = np.zeros((batch_dim, dph))
+        self._batch_rows = []
+        self._batch_cols = []
+        info(
+            3,
+            'Memory usage: {0} MB'.format(self._batch_matrix.nbytes / 1024**2))
+
     def _init_matrices(self):
         """ A new take on filling the matrices"""
 
@@ -70,7 +98,6 @@ class PhotoNuclearInteractionRate(object):
         sp_id_ref = self.spec_man.ncoid2sref
         resp = self.cross_sections.resp
         m_pr = PRINCE_UNITS.m_proton
-        ncoid2sref = self.spec_man.ncoid2sref
 
         # Energy variables
         dcr = self.e_cosmicray.d
@@ -91,246 +118,158 @@ class PhotoNuclearInteractionRate(object):
         eda_idcs = np.arange(dcr)
         p_idcs = np.arange(dph)
 
-        # estimate dimension of the batch matrix
-        batch_dim = 0
-        for specid in known_species:
-            if specid < 100:
-                continue
-            # Add the main diagonal self-couplings (absoption)
-            batch_dim += dcr
-            for rtup in self.cross_sections.reactions[specid]:
-                # Off main diagonal couplings (reinjection)
-                if rtup in self.cross_sections.known_bc_channels:
-                    batch_dim += dcr
-                elif rtup in self.cross_sections.known_diff_channels:
-                    # Only half of the elements can be non-zero (energy conservation)
-                    batch_dim += int(dcr**2 / 2) + 1
-
-        batch_dim *= 2
-        info(2, 'Batch matrix dimensions are {0}x{1}'.format(batch_dim, dph))
-        self._batch_matrix = np.zeros((batch_dim, dph))
-        info(
-            3,
-            'Memory usage: {0} MB'.format(self._batch_matrix.nbytes / 1024**2))
-        ibatch = 0
-        self._batch_rows = []
-        self._batch_cols = []
-
-        # We are gonna fill the batch matrix with the cross section using iterators
-        # The op_axes arguments define how to compute the outer product.
-
-        # Iterate over all combinations of species
-        spec_iter = np.nditer(
-            [known_species, known_species], op_axes=[[0, -1], [-1, 0]])
-
-        # Iterate over mother and daughter indices synchronously
-        it_bc = np.nditer(
-            [emo_idcs, eda_idcs, p_idcs],
-            op_axes=[[0, -1], [0, -1], [-1, 0]],
-            flags=['external_loop'])
-
-        # Iterate over outer product of m_energy x d_energy x ph_energy
-        it_diff = np.nditer(
-            [emo_idcs, eda_idcs, p_idcs],
-            op_axes=[[0, -1, -1], [-1, 0, -1], [-1, -1, 0]],
-            # flags=['buffered','external_loop']
-        )
-
         # values for x and y to cut on:
         x_cut = config['x_cut']
         y_cut = config['y_cut']
         x_cut_proton = config['x_cut_proton']
-        # Xmin = 1e-8,1e-5,1e-2,1e-1.
-        # ymax = 1e1, 1e3, 1e5, 1e8.
 
-        if config["bin_average"] == 'method1':
-            info(1, 'Using bin central value for diff channel')
-        if config["bin_average"] == 'method2':
-            info(1, 'Using bin average value for diff channel')
-
+        ibatch = 0
+        import itertools
+        spec_iter = itertools.product(known_species,known_species)
         for moid, daid in spec_iter:
-            # Cast from np.array to Python int
-            moid, daid = int(moid), int(daid)
 
-            # Mass number of mother and daughter
-            # (float) cast needed for exact ratio
-            mass_mo = 1.  #float(ncoid2sref[moid].A)
-            mass_da = 1.  #float(ncoid2sref[daid].A)
-
-            if mass_mo < mass_da or moid < 100:
+            if moid < 100:
                 continue
-
-            if moid == daid:
-                intp_nonel = resp.nonel_intp[moid].antiderivative()
-                has_nonel = True
             else:
-                has_nonel = False
+                info(10, f'Filling channel {moid} -> {daid}')
+
+            has_nonel = moid == daid
+            if has_nonel:
+                intp_nonel = resp.nonel_intp[moid].antiderivative()
 
             if (((moid, daid) in self.cross_sections.known_bc_channels) or
                 (has_nonel and
                  (moid, daid) not in self.cross_sections.known_diff_channels)):
 
-                it_bc.reset()
-                if (moid, daid) in resp.incl_intp:
+                has_incl = (moid, daid) in resp.incl_intp
+                if has_incl:
                     intp_bc = resp.incl_intp[(moid, daid)].antiderivative()
-                    has_incl = True
                 else:
-                    has_incl = False
                     info(1, 'Inclusive interpolator not found for',
                          (moid, daid))
+
                 if not (has_nonel or has_incl):
                     raise Exception('Channel without interactions:',
                                     (moid, daid))
 
-                for m_eidx, d_eidx, ph_idx in it_bc:
-                    m_eidx = m_eidx[0]
-                    d_eidx = d_eidx[0]
-                    emo = ecr[m_eidx]
+                # The cross sections need to be evaluated 
+                # on x = E_{CR,da} / E_{CR,mo} and y = E_ph * E_{CR,mo} / m_proton
+                # To vectorize the evaluation, we create outer products using numpy broadcasting:
+                
+                emo = ecr
+                xl = elims[0] / emo
+                xu = elims[1] / emo
+                delta_x = delta_ec / emo
 
-                    # ------------------------------
-                    # method 1 simple central value
-                    # ------------------------------
-                    if config["bin_average"] == 'method1':
-                        center_y = eph[ph_idx] * emo / m_pr
-                        int_fac = (delta_ph[ph_idx])
-                        # int_fac = (delta_ph[ph_idx] *  mass_mo / mass_da)
-                        if has_incl:
-                            self._batch_matrix[ibatch, :] = resp.incl_intp[(
-                                moid, daid)](center_y) * int_fac
-                        if has_nonel:
-                            self._batch_matrix[
-                                ibatch, :] -= resp.nonel_intp[moid](
-                                    center_y) * int_fac
-                    # -----------------------------------
-                    # method 2 average over e_ph only
-                    # -----------------------------------
-                    elif config["bin_average"] == 'method2':
-                        xl = elims[0, d_eidx] / emo
-                        xu = elims[1, d_eidx] / emo
-                        delta_x = delta_ec[d_eidx] / emo
+                yl = plims[0,None,:] * emo[:,None] / m_pr
+                yu = plims[1,None,:] * emo[:,None] / m_pr
+                delta_y = delta_ph[None,:] * emo[:,None] / m_pr
 
-                        yl = plims[0, ph_idx] * emo / m_pr
-                        yu = plims[1, ph_idx] * emo / m_pr
-                        delta_y = delta_ph[ph_idx] * emo / m_pr
+                int_fac = (delta_ec[:,None] * delta_ph[None,:] / emo[:,None])
+                diff_fac = 1. / delta_x[:,None] / delta_y
 
-                        int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo)
-                        # int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
-                        #         mass_mo / mass_da)
-                        diff_fac = 1. / delta_x / delta_y
-                        if has_incl:
-                            self._batch_matrix[ibatch, :] = (
-                                intp_bc(yu) - intp_bc(yl)) * int_fac * diff_fac
-                        if has_nonel:
-                            self._batch_matrix[ibatch, :] -= (intp_nonel(
-                                yu) - intp_nonel(yl)) * int_fac * diff_fac
-                    # -------------------------------------------------------------------
-                    # if method was not in list before, raise an Expection
-                    # -------------------------------------------------------------------
-                    else:
-                        raise Exception(
-                            'Unknown bin-average method ({:})'.format(
-                                config["bin_average"]))
+                # This takes the average by evaluating the integral and dividing by bin width
+                if has_incl:
+                    self._batch_matrix[ibatch:ibatch+len(emo), :] = (
+                        intp_bc(yu) - intp_bc(yl)) * int_fac * diff_fac
+                if has_nonel:
+                    self._batch_matrix[ibatch:ibatch+len(emo), :] -= (intp_nonel(
+                        yu) - intp_nonel(yl)) * int_fac * diff_fac
 
-                    # Try later to check for zero result to save more zeros.
-                    ibatch += 1
-                    self._batch_rows.append(sp_id_ref[daid].lidx() + d_eidx)
-                    self._batch_cols.append(sp_id_ref[moid].lidx() + m_eidx)
+                # finally map this to the coupling matrix
+                ibatch += len(emo)
+                self._batch_rows.append(sp_id_ref[daid].lidx() + eda_idcs)
+                self._batch_cols.append(sp_id_ref[moid].lidx() + emo_idcs)
 
             elif (moid, daid) in self.cross_sections.known_diff_channels:
-                it_diff.reset()
-                if (moid, daid) in resp.incl_diff_intp:
+
+                has_redist = (moid, daid) in resp.incl_diff_intp
+                if has_redist:
                     intp_diff = resp.incl_diff_intp[(moid, daid)]
+                    intp_diff_integral = resp.incl_diff_intp_integral[(moid, daid)]
                     intp_nonel = resp.nonel_intp[moid]
                     intp_nonel_antid = resp.nonel_intp[moid].antiderivative()
 
                     ymin = np.min(intp_diff.get_knots()[1])
-                    has_redist = True
                 else:
-                    has_redist = False
                     raise Exception('This should not occur.')
 
-                for m_eidx, d_eidx, ph_idx in it_diff:
-                    # print m_eidx, d_eidx, ph_idx
-                    if d_eidx > m_eidx:
-                        continue
+                ibatch_bf = ibatch
+                # generate outer products using broadcasting
+                emo = ecr[:, None, None]
+                eda = ecr[None, :, None]
+                epho = eph[None, None, :]
+                target_shape = np.ones_like(emo*eda*epho)
 
-                    emo = ecr[m_eidx]
-                    eda = ecr[d_eidx]
-                    epho = eph[ph_idx]
+                xl = elims[0, None, :, None] / emo * target_shape
+                xu = elims[1, None, :, None] / emo * target_shape
+                delta_x = delta_ec[None, :, None] / emo
 
-                    # Check for Tresholds
-                    xl = elims[0, d_eidx] / emo
-                    xu = elims[1, d_eidx] / emo
-                    yl = plims[0, ph_idx] * emo / m_pr
-                    yu = plims[1, ph_idx] * emo / m_pr
+                yl = plims[0, None, None, :] * emo / m_pr * target_shape
+                yu = plims[1, None, None, :] * emo / m_pr * target_shape
+                delta_y = delta_ph[None, None, :] * emo / m_pr
 
-                    if daid == 101 and xl < x_cut_proton:
-                        continue
-                    if xl < x_cut or yu < ymin or yl > y_cut:
-                        continue
+                int_fac = (delta_ec[:, None, None] * delta_ph[None, None, :] / emo) * target_shape
+                diff_fac = 1. / delta_x / delta_y
 
-                    # ------------------------------
-                    # method 1 simple central value
-                    # ------------------------------
-                    if config["bin_average"] == 'method1':
-                        center_x = eda / emo
-                        center_y = epho * emo / m_pr
+                # Generate boolean arrays to cut on xvalues
+                if daid == 101:
+                    cuts = np.logical_and(xl >= x_cut_proton, xl <= 1)
+                else:
+                    cuts = np.logical_and(xl >= x_cut, xl <= 1) #or (yu < ymin) or (yl > y_cut)
+                cuts = cuts[:,:,0]
 
-                        int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
-                                   mass_mo / mass_da)
-                        self._batch_matrix[ibatch, ph_idx] += intp_diff(
-                            center_x, center_y, grid=True) * int_fac
+                # # NOTE JH: This is an old version, which brute force vectorizes the integral with numpy
+                # # I am leaving this in the comments, in case we want to go back for testing-
+                # integrator = np.vectorize(intp_diff.integral)
+                # res = integrator(xl[cuts], xu[cuts], yl[cuts], yu[cuts]) * diff_fac[cuts] * int_fac[cuts]
 
-                        if has_nonel and m_eidx == d_eidx:
-                            int_fac = delta_ph[ph_idx]
-                            self._batch_matrix[ibatch, ph_idx] -= intp_nonel(
-                                center_y) * int_fac
-                    # -----------------------------------------
-                    # method 2 average over e_ph and E_da only
-                    # -----------------------------------------
-                    elif config["bin_average"] == 'method2':
-                        xl = elims[0, d_eidx] / emo
-                        xu = elims[1, d_eidx] / emo
-                        delta_x = delta_ec[d_eidx] / emo
+                # This takes the average by evaluating the integral and dividing by bin width
+                # intp_diff_integral contains the antiderivate, to to get the integral (xl,yl,xu,yu)
+                # we need to substract INT = (0,0,xu,yu) - (0,0,xl,yu) - (0,0,xu,yl) + (0,0,xl,yl)
+                res = intp_diff_integral.ev(xu[cuts],yu[cuts]) 
+                res -= intp_diff_integral.ev(xl[cuts],yu[cuts])
+                res -= intp_diff_integral.ev(xu[cuts],yl[cuts])
+                res += intp_diff_integral.ev(xl[cuts],yl[cuts])
+                res *= diff_fac[cuts] * int_fac[cuts]
+                res[res<0] = 0.
 
-                        yl = plims[0, ph_idx] * emo / m_pr
-                        yu = plims[1, ph_idx] * emo / m_pr
-                        delta_y = delta_ph[ph_idx] * emo / m_pr
+                # Since we made cuts on x, we need to make the same cut on the index mapping
+                emoidx, edaidx, _ = np.meshgrid(sp_id_ref[moid].lidx() + emo_idcs,
+                                             sp_id_ref[daid].lidx() + eda_idcs,
+                                             p_idcs, indexing='ij')
+                emoidx, edaidx = emoidx[cuts], edaidx[cuts]
 
-                        int_fac = (delta_ec[m_eidx] * delta_ph[ph_idx] / emo *
-                                   mass_mo / mass_da)
-                        diff_fac = 1. / delta_x / delta_y
+                # Now add the nonel interactions on the main diagonal
+                if has_nonel:
+                    res[emoidx == edaidx] -= (
+                        intp_nonel_antid(yu[cuts][emoidx == edaidx]) -
+                        intp_nonel_antid(yl[cuts][emoidx == edaidx])) * (
+                            diff_fac[cuts][emoidx == edaidx] *
+                            int_fac[cuts][emoidx == edaidx])
 
-                        self._batch_matrix[
-                            ibatch, ph_idx] = intp_diff.integral(
-                                xl, xu, yl, yu) * diff_fac * int_fac
+                # Finally write this to the batch matrix
+                self._batch_matrix[ibatch:ibatch + len(emoidx), :] = res
+                self._batch_rows.append(edaidx[:,0])
+                self._batch_cols.append(emoidx[:,0])
+                ibatch += len(emoidx)
 
-                        if has_nonel and m_eidx == d_eidx:
-                            self._batch_matrix[ibatch, ph_idx] -= (
-                                intp_nonel_antid(yu) -
-                                intp_nonel_antid(yl)) * diff_fac * int_fac
-                    # -------------------------------------------------------------------
-                    # if method was not in list before, raise an Expection
-                    # -------------------------------------------------------------------
-                    else:
-                        raise Exception(
-                            'Unknown bin-average method ({:})'.format(
-                                config["bin_average"]))
-
-                    if ph_idx == p_idcs[-1]:
-                        ibatch += 1
-                        self._batch_rows.append(sp_id_ref[daid].lidx() +
-                                                d_eidx)
-                        self._batch_cols.append(sp_id_ref[moid].lidx() +
-                                                m_eidx)
             else:
                 info(20, 'Species combination not included in model', moid,
                      daid)
 
-        self._batch_matrix.resize((ibatch, dph))
-        self._batch_rows = np.array(self._batch_rows)
-        self._batch_cols = np.array(self._batch_cols)
+        #self._batch_matrix.resize((ibatch, dph))
+        self._batch_matrix = self._batch_matrix[:ibatch,:]
+        # self._batch_rows = np.array(self._batch_rows)
+        # self._batch_cols = np.array(self._batch_cols)
+        self._batch_rows = np.concatenate(self._batch_rows, axis=None)
+        self._batch_cols = np.concatenate(self._batch_cols, axis=None)
         self._batch_vec = np.zeros(ibatch)
+
+        info(2,f'Batch matrix shape: {self._batch_matrix.shape}')
+        info(2,f'Batch rows shape: {self._batch_rows.shape}')
+        info(2,f'Batch cols shape: {self._batch_cols.shape}')
+        info(2,f'Batch vector shape: {self._batch_vec.shape}')
 
         memory = (self._batch_matrix.nbytes + self._batch_rows.nbytes +
                   self._batch_cols.nbytes + self._batch_vec.nbytes) / 1024**2
@@ -635,7 +574,7 @@ class ContinuousPairProductionLossRate(object):
 
         self.photon_field = mem_pfield
         return egrid, length
-    
+
     def _phi(self, xi):
         """Phi function as in Blumental 1970"""
 
