@@ -41,8 +41,6 @@ Dependencies (list might be incomplete):
 - tqdm
 - jupyter notebook or jupyter lab (optional, but needed for examples)
 
-**It might be worth to wait for the python 3 port** (since official Python 2 support is discontinued after 2019)
-
 ## Installation
 
 The installation simplest method relies on the Python package manager [Anaconda/Miniconda](https://store.continuum.io/cshop/anaconda/) by [Continuum Analytics](http://www.continuum.io). It doesn't just improve your life, but also provides most of the scientific computing packages by default. It will not spoil your system Python paths and will install itself into a specified directory. The only action which is needed for activation, is to add this directory to your system `$PATH` variable. To uninstall just delete this directory.
@@ -83,25 +81,7 @@ Anaconda offers MKL-linked numpy binaries free for academic use. It is necessary
     conda install mkl
     ```
 
-6. (**Optional**) The computation above redshift 1 can be significantly accelerated with some minor modifications to `scipy`. See `/afs/ifh.de/group/that/work-jh/git/scipy` (DESY/THAT internal work folder). The relevant modification is in `scipy/integrate/_ivp/bdf.py`:
-
-    from l. 423 in `_step_impl(self)`:  
-
-    ```python
-        # Avoid step size oscillation around maximal step size
-        if self.h_abs * factor > self.max_step:
-            if not self.h_abs == self.max_step:
-                change_D(D, order, max_step / self.h_abs)
-                self.h_abs = self.max_step
-                self.n_equal_steps = 0
-                self.LU = None
-            self.n_equal_steps = 0
-            return True, None
-    ```
-
-    This workaround avoids some unnecessary recomputation of the step size. You can add it to any self-compiled version of `scipy`. **Be carefull, since this is only tested qualitatively for UHECR propagation**.
-
-7. Run some example
+6. Run some example
 
     ```bash
     jupyter lab
