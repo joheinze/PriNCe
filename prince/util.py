@@ -380,6 +380,7 @@ class PrinceBDF(BDF):
         self.order = order
 
         factor = min(MAX_FACTOR, safety * np.max(factors))
+        
         # # This is the custom modification for PriNCe
         if round(self.h_abs * factor, ndigits=15) > self.max_step:
             if round(self.h_abs,ndigits=15) != self.max_step:

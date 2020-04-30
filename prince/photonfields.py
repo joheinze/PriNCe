@@ -119,7 +119,9 @@ class CMBPhotonSpectrum(PhotonField):
         # density at z = 0, for energy E / (1 + z); ECMB = kB * T0
 
         E_CMB = config['E_CMB']
+        owarn = np.seterr(over='ignore')
         nlocal = pref * Ered**2 / (np.exp(Ered / E_CMB) - 1.0)
+        np.seterr(**owarn)
         return (1. + z)**2 * nlocal  # JH: Fixed, was (1. + z) ** 3 before
 
 class CIBFranceschini2D(PhotonField):
