@@ -567,8 +567,8 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
         # find the maximum injection and reduce the system by this
         self.red_idx = np.nonzero(self.injection(1., 0.))[0].max()
 
-        from scipy.integrate import BDF
-        self.r = BDF(
+        from prince.util import PrinceBDF
+        self.r = PrinceBDF(
             self.eqn_deriv,
             self.initial_z,
             initial_state,
