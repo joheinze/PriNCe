@@ -1,4 +1,7 @@
+
 # PriNCe - **Pr**opagation **i**ncluding **N**uclear **C**ascade **e**quations
+
+[![Documentation Status](https://readthedocs.org/projects/prince/badge/?version=latest)](https://prince.readthedocs.io/en/latest/?badge=latest)
 
 This code is written to solve the transport equation for ultra-high energy cosmic rays on cosmological scales.  
 
@@ -15,14 +18,9 @@ The code requires data files which are **not** contained in the repository. You 
 
 We are planning to make this download automatic in a future release.
 
-## Documentation
+## [Documentation](https://prince.readthedocs.io/en/latest/)
 
-Uses `sphinx`-docs. To build type:
-
-```bash
-cd docs
-make html
-```
+Uses `sphinx`-docs, which can be read at [readthedocs](https://prince.readthedocs.io/en/latest/)
 
 The documentation is still *incomplete*
 
