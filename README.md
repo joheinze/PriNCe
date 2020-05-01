@@ -2,26 +2,29 @@
 
 This code is written to solve the transport equation for ultra-high energy cosmic rays on cosmological scales.  
 
-## Status
+## Development status
 
-Code stable and tested for UHECR propagation. Used in [Heinze et al., Astrophys.J. 873 (2019)](https://doi.org/10.3847/1538-4357/ab05ce)
+Although the code is numerically accurate for its main purpose (UHECR propagation), one should consider it
+as *early alpha*, simply because so far only us (the devs) have been using it and the interfaces aren't
+sufficiently polished to be used *error-free* for tasks that we didn't foresee. Please file issues for
+anything strange, unclear, wrong, etc.. It will help us to debug the code and simplify the user interface.
 
 ## Data and other requirements
 
-The required data files are currently **not** contained in this repository:
+The code requires data files which are **not** contained in the repository. You need to manually download the tarball from the [latest release](https://github.com/joheinze/PriNCe/releases) and unpack it to `./data`.
 
-If you have access to the old `SVN` repository, copy the `PriNCe/data` subfolder, otherwise ask the authors
-
-The old `SVN` repository also contains utility and test notebooks that have not yet been migrated to `git`
+We are planning to make this download automatic in a future release.
 
 ## Documentation
 
-Uses `sphinx`-docs (incomplete documentation).
+Uses `sphinx`-docs. To build type:
 
 ```bash
 cd docs
 make html
 ```
+
+The documentation is still *incomplete*
 
 ## System requirements
 
@@ -34,82 +37,25 @@ The majority of the code consists of pure Python modules.
 
 Dependencies (list might be incomplete):
 
-- python-3.7 or later (The legacy python 2.7 version is retained as a branches/Py2_legacy)
+- python-3.7 or later
 - numpy
 - scipy
 - matplotlib
 - tqdm
-- jupyter notebook or jupyter lab (optional, but needed for examples)
-
-**It might be worth to wait for the python 3 port** (since official Python 2 support is discontinued after 2019)
+- jupyter (optional, but needed for examples)
 
 ## Installation
 
-The installation simplest method relies on the Python package manager [Anaconda/Miniconda](https://store.continuum.io/cshop/anaconda/) by [Continuum Analytics](http://www.continuum.io). It doesn't just improve your life, but also provides most of the scientific computing packages by default. It will not spoil your system Python paths and will install itself into a specified directory. The only action which is needed for activation, is to add this directory to your system `$PATH` variable. To uninstall just delete this directory.
+Since this code is written in pure Python 3, it requries no installation. All you need is a python distribution including `pip`. For scientific computing [Anaconda/Miniconda](https://www.anaconda.com/products/individual/) is a good choice.
 
-1. Download one of the installers for your system architecure from here:
+Simply `git clone` (or manually download) this repository and link it using `pip`:
 
-   - [Anaconda](http://continuum.io/downloads) - larger download, already containing most of the scientific packages and the package manager `conda` itself
-   - [Miniconda](http://conda.pydata.org/miniconda.html) - minimal download, which contains the minimum requirements for the package manager `conda`.
+```bash
+git clone https://github.com/joheinze/PriNCe
+pip install -e PriNCe
+```
 
-2. Run the installer and follow the instructions:
-
-    ```bash
-    bash your-chosen-conda-distribution.sh
-    ```
-
-    Open a new terminal window to reload your new `$PATH` variable.
-
-3. To install all dependencies into you new conda environment
-
-    ```bash
-    conda install [package name]
-    ```
-
-    This will ask conda to download and install all needed packages into its default environment.
-
-4. Adjust your `PYTHONPATH` to make the package available in any folder:
-
-    ```bash
-    export PYTHONPATH=$PYTHONPATH:<main dir>
-    ```
-
-    (We recommend adding this export to .zshrc or .bashrc)
-
-5. (**Optional**) Acceleration of the integration routines can be achieved using [Intel Math Kernel Library](https://software.intel.com/en-us/intel-mkl) (MKL).  
-Anaconda offers MKL-linked numpy binaries free for academic use. It is necessary to register using your *.edu* mail address to receive a license. The demo period is 30 days. If you want to give it a try
-
-    ```bash
-    conda install mkl
-    ```
-
-6. (**Optional**) The computation above redshift 1 can be significantly accelerated with some minor modifications to `scipy`. See `/afs/ifh.de/group/that/work-jh/git/scipy` (DESY/THAT internal work folder). The relevant modification is in `scipy/integrate/_ivp/bdf.py`:
-
-    from l. 423 in `_step_impl(self)`:  
-
-    ```python
-        # Avoid step size oscillation around maximal step size
-        if self.h_abs * factor > self.max_step:
-            if not self.h_abs == self.max_step:
-                change_D(D, order, max_step / self.h_abs)
-                self.h_abs = self.max_step
-                self.n_equal_steps = 0
-                self.LU = None
-            self.n_equal_steps = 0
-            return True, None
-    ```
-
-    This workaround avoids some unnecessary recomputation of the step size. You can add it to any self-compiled version of `scipy`. **Be carefull, since this is only tested qualitatively for UHECR propagation**.
-
-7. Run some example
-
-    ```bash
-    jupyter lab
-    ```
-
-    click on the examples directory and start with `create_kernel.ipynb`. Click through the blocks and see what happens.
-
-## Examples
+This will automatically install the dependencies. If you do not want to use `pip` you can also just add this folder to your `PYTHONPATH`.
 
 ## Citation
 
