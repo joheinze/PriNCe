@@ -6,7 +6,7 @@ import scipy.constants as spc
 import h5py
 
 
-from prince.util import convert_to_namedtuple, info, normalize_db_entry_name
+from prince.util import convert_to_namedtuple, info
 from prince_config import config
 
 #: Dictionary containing particle properties, like mass, charge

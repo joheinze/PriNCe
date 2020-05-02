@@ -38,7 +38,7 @@ class TestCsec(unittest.TestCase):
         self.assertEqual(cs.known_diff_channels, species_talys['diff'])
 
     def test_peanut(self):
-        cs = cross_sections.TabulatedCrossSection('peanut_IAS')
+        cs = cross_sections.TabulatedCrossSection('PEANUT_IAS')
         self.assertEqual(cs.known_species, species_peanut['species'])
         self.assertEqual(cs.known_bc_channels, species_peanut['incl'])
         self.assertEqual(cs.known_diff_channels, species_peanut['diff'])
