@@ -9,21 +9,7 @@ import numpy as np
 
 base = path.dirname(path.abspath(__file__))
 sys.path.append(base)
-# sys.path.append(base+"/CRFluxModels")
 
-#detrmine shared library extension and MKL path
-lib_ext = None
-mkl_default = path.join(sys.prefix, 'lib', 'libmkl_rt')
-
-if platform.platform().find('Linux') != -1:
-    lib_ext = '.so'
-elif platform.platform().find('Darwin') != -1:
-    lib_ext = '.dylib'
-else:
-    #Windows case
-    mkl_default = path.join(sys.prefix, 'pkgs', 'mkl-11.3.3-1', 'Library',
-                            'bin', 'mkl_rt')
-    lib_ext = '.dll'
 
 config = {
 
@@ -37,17 +23,12 @@ config = {
     # Paths and library locations
     #=========================================================================
 
-    # Directory where the data files for the calculation are stored
-    "data_dir": path.join(base, 'data'),
-    # Directory for raw files if conversion of some sort is needed
-    "raw_data_dir": path.join(base, 'data/raw'),
-    # # nuclear cross sections
-    # "data_dir": '/data',
+    # Location of the database
+    "data_dir": path.join(base, 'prince', 'data'),
+    # PrinceDB file name
+    "db_fname": 'prince_db_05.h5',
     # Model file for redistribution functions (from SOPHIA or similar)
     "redist_fname": "sophia_redistribution_logbins.npy",
-
-    # full path to libmkl_rt.[so/dylib] (only if kernel=='MKL')
-    "MKL_path": mkl_default + lib_ext,
 
     #=========================================================================
     # Physics configuration
@@ -132,7 +113,7 @@ config = {
 
     # #Number of MKL threads (for sparse matrix multiplication the performance
     # #advantage from using more than 1 thread is limited by memory bandwidth)
-    "MKL_threads": 1,
+    "MKL_threads": 4,
 
     # Sparse matrix-vector product from "MKL"|"scipy"
     "spmv_lib": "MKL",
@@ -171,3 +152,35 @@ config = {
         "some_setting": False,
     }
 }
+
+#: determine shared library extension and MKL path
+pf = platform.platform()
+
+if 'Linux' in pf:
+    mkl_path = path.join(sys.prefix, 'lib', 'libmkl_rt.so')
+elif 'Darwin' in pf:
+    mkl_path = path.join(sys.prefix, 'lib', 'libmkl_rt.dylib')
+else:
+    # Windows case
+    mkl_path = path.join(sys.prefix, 'Library', 'bin', 'mkl_rt.dll')
+
+# mkl library handler
+mkl = None
+
+# Check if MKL library found
+if path.isfile(mkl_path):
+    has_mkl = True
+else:
+    has_mkl = False
+
+def set_mkl_threads(nthreads):
+    from ctypes import cdll, c_int, byref
+    mkl = cdll.LoadLibrary(mkl_path)
+    # Set number of threads
+    config["MKL_threads"] = nthreads
+    mkl.mkl_set_num_threads(byref(c_int(nthreads)))
+    if config['debug_level'] >= 5:
+        print('MKL threads limited to {0}'.format(nthreads))
+
+if has_mkl:
+    set_mkl_threads(config["MKL_threads"])
