@@ -14,7 +14,7 @@ class PhotoNuclearInteractionRate(object):
     """
 
     def __init__(self, prince_run=None, with_dense_jac=True, *args, **kwargs):
-        print('direct init in PhotoNuclearInteractionRate')
+        info(3,'creating instance')
         self.with_dense_jac = with_dense_jac
 
         #: Reference to PhotonField object
@@ -411,7 +411,7 @@ class ContinuousAdiabaticLossRate(object):
     """Implementation of continuous pair production loss rates."""
 
     def __init__(self, prince_run, energy='grid', *args, **kwargs):
-        print('New cont loss class init called')
+        info(3,'creating instance')
         #: Reference to species manager
         self.spec_man = prince_run.spec_man
 
@@ -463,7 +463,7 @@ class ContinuousPairProductionLossRate(object):
     """Implementation of continuous pair production loss rates."""
 
     def __init__(self, prince_run, energy='grid', *args, **kwargs):
-        print('New pair prod loss class init called')
+        info(3,'creating instance')
         #: Reference to species manager
         self.spec_man = prince_run.spec_man
 
@@ -478,7 +478,7 @@ class ContinuousPairProductionLossRate(object):
 
         # xi is dimensionless (natural units) variable
         xi_steps = 400 if 'xi_steps' not in kwargs else kwargs['xi_steps']
-        print('using', xi_steps, 'steps in xi')
+        info(2,'using', xi_steps, 'steps in xi')
         self.xi = np.logspace(np.log10(2 + 1e-8), 16., xi_steps)
 
         # weights for integration
