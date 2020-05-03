@@ -124,26 +124,10 @@ class CMBPhotonSpectrum(PhotonField):
         np.seterr(**owarn)
         return (1. + z)**2 * nlocal  # JH: Fixed, was (1. + z) ** 3 before
 
-class CIBFranceschini2D(PhotonField):
-    """CIB model "1" by Fraceschini et al.
-
-    CIB photon distribution for z = 0...2. Requires availability of
-    an `scipy.interp2d` object file `data/CIB_franceschini_int2D.ppo`.
-
-    Ref.:
-        A. Franceschini et al., Astron. Astrphys. 487, 837 (2008) [arXiv:0805.1841]
-    """
-
-    def __init__(self, simple_scaling=False):
-        import pickle as pickle
-        self.simple_scaling = simple_scaling
-        try:
-            self.int2d = pickle.load(
-                open(join(config['data_dir'], 'CIB_franceschini_int2D.ppo'), 'rb'))
-        except UnicodeDecodeError:
-            self.int2d = pickle.load(
-                open(join(config['data_dir'], 'CIB_franceschini_int2D.ppo'), 'rb'),
-                encoding='latin1')
+class EBLSplined2D(PhotonField):
+    def __init__(self):
+        self.simple_scaling = None
+        self.int2d = None
 
     def get_photon_density(self, E, z):
         """Returns the redshift-scaled number density of CIB photons
@@ -157,18 +141,33 @@ class CIBFranceschini2D(PhotonField):
         Returns:
           float: CMB photon spectrum in :math:`{\\rm GeV}}^{-1} {\\rm cm}}^{-3}`
         """
+        # pylint:disable=not-callable
         if self.simple_scaling:
             Ered = E / (1. + z)
             nlocal = self.int2d(Ered, 0., assume_sorted=True)
             nz = self.int2d(Ered, z, assume_sorted=True)
             scale = trapz(nz,Ered) / trapz(nlocal,Ered) / (1+z)**3
-            print(scale)
+            # print(scale)
             return (1. + z)**2 * nlocal * scale
         else:
             return self.int2d(E, z, assume_sorted=True)
 
+class CIBFranceschini2D(EBLSplined2D):
+    """CIB model "1" by Fraceschini et al.
 
-class CIBInoue2D(PhotonField):
+    CIB photon distribution for z = 0...2. Requires availability of
+    an `scipy.interp2d` object file `data/CIB_franceschini_int2D.ppo`.
+
+    Ref.:
+        A. Franceschini et al., Astron. Astrphys. 487, 837 (2008) [arXiv:0805.1841]
+    """
+
+    def __init__(self, simple_scaling=False):
+        from prince.data import db_handler
+        self.int2d = db_handler.ebl_spline('Francescini2008','base')
+        self.simple_scaling = simple_scaling
+
+class CIBInoue2D(EBLSplined2D):
     """CIB model "2" by Inoue et al.
 
     CIB photon distribution for z = 0...10. Requires availability of
@@ -181,49 +180,14 @@ class CIBInoue2D(PhotonField):
     """
 
     def __init__(self, model='base', simple_scaling=False):
-        import pickle as pickle
+        from prince.data import db_handler
+
+        assert model in ['base', 'upper', 'lower']
+
+        self.int2d = db_handler.ebl_spline('Inoue2013', model)
         self.simple_scaling = simple_scaling
-        try:
-            self.int2d_base, self.int2d_min, self.int2d_max = pickle.load(
-                open(join(config['data_dir'], 'CIB_inoue_int2D.ppo'), 'rb'))
-        except UnicodeDecodeError:
-            self.int2d_base, self.int2d_min, self.int2d_max = pickle.load(
-                open(join(config['data_dir'], 'CIB_inoue_int2D.ppo'), 'rb'),
-                encoding='latin1')
         
-
-        if model == 'base':
-            self.int2d = self.int2d_base
-        elif model == 'min':
-            self.int2d = self.int2d_min
-        elif model == 'max':
-            self.int2d = self.int2d_max
-        else:
-            raise Exception(self.__class__.__name__ + '(): Model class ' +
-                            model + ' unknown.')
-
-    def get_photon_density(self, E, z):
-        """Returns the redshift-scaled number density of CIB photons
-
-        Accepts scalar, vector and matrix arguments.
-
-        Args:
-          z (float): redshift
-          E (float): photon energy (GeV)
-
-        Returns:
-          float: CMB photon spectrum in :math:`{\\rm GeV}}^{-1} {\\rm cm}}^{-3}`
-        """
-        if self.simple_scaling:
-            Ered = E / (1. + z)
-            nlocal = self.int2d(Ered, 0., assume_sorted=True)
-            nz = self.int2d(Ered, z, assume_sorted=True)
-            scale = trapz(nz,Ered) / trapz(nlocal,Ered) / (1+z)**3
-            return (1. + z)**2 * nlocal * scale
-        else:
-            return self.int2d(E, z, assume_sorted=True)
-
-class CIBGilmore2D(PhotonField):
+class CIBGilmore2D(EBLSplined2D):
     """CIB model "3" by Gilmore et al.
 
     CIB photon distribution for z = 0...7. Requires availability of
@@ -236,46 +200,16 @@ class CIBGilmore2D(PhotonField):
         R.C. Gilmore et al., MNRAS Soc. 422, 3189 (2012) [arXiv:1104.0671]
     """
 
-    def __init__(self, simple_scaling=False, model='fiducial'):
-        import pickle as pickle
+    def __init__(self, model='fiducial', simple_scaling=False):
+        from prince.data import db_handler
+
+        assert model in ['fixed', 'fiducial']
+
+        self.int2d = db_handler.ebl_spline('Gilmore2011', model)
         self.simple_scaling = simple_scaling
-        try:
-            self.int2d_fixed, self.int2d_fiducial = pickle.load(
-                open(join(config['data_dir'], 'CIB_gilmore_int2D.ppo'), 'rb'))
-        except UnicodeDecodeError:
-            self.int2d_fixed, self.int2d_fiducial = pickle.load(
-                open(join(config['data_dir'], 'CIB_gilmore_int2D.ppo'), 'rb'),
-                encoding='latin1')
 
-        if model == 'fixed':
-            self.int2d = self.int2d_fixed
-        elif model == 'fiducial':
-            self.int2d = self.int2d_fiducial
-        else:
-            raise Exception('Not interpolator for model {:}'.format(model))
 
-    def get_photon_density(self, E, z):
-        """Returns the redshift-scaled number density of CIB photons
-
-        Accepts scalar, vector and matrix arguments.
-
-        Args:
-          z (float): redshift
-          E (float): photon energy (GeV)
-
-        Returns:
-          float: CMB photon spectrum in :math:`{\\rm GeV}}^{-1} {\\rm cm}}^{-3}`
-        """
-        if self.simple_scaling:
-            Ered = E / (1. + z)
-            nlocal = self.int2d(Ered, 0., assume_sorted=True)
-            nz = self.int2d(Ered, z, assume_sorted=True)
-            scale = trapz(nz,Ered) / trapz(nlocal,Ered) / (1+z)**3
-            return (1. + z)**2 * nlocal * scale
-        else:
-            return self.int2d(E, z, assume_sorted=True)
-
-class CIBDominguez2D(PhotonField):
+class CIBDominguez2D(EBLSplined2D):
     """CIB model "3" by Gilmore et al.
 
     CIB photon distribution for z = 0...2. Requires availability of
@@ -287,40 +221,14 @@ class CIBDominguez2D(PhotonField):
     Ref.:
         R.C. Gilmore et al., MNRAS 410, 2556 (2011) [arXiv:1104.0671]
     """
+    def __init__(self, model='base', simple_scaling=False):
+        from prince.data import db_handler
 
-    def __init__(self, simple_scaling=False):
-        import pickle as pickle
+        assert model in ['base', 'upper', 'lower']
+
+        self.int2d = db_handler.ebl_spline('Dominguez2011', model)
         self.simple_scaling = simple_scaling
-        try:
-            self.int2d, self.int2d_lower, self.int2d_upper = pickle.load(
-                open(join(config['data_dir'], 'CIB_dominguez_int2D.ppo'), 'rb'))
-        except UnicodeDecodeError:
-            self.int2d, self.int2d_lower, self.int2d_upper = pickle.load(
-                open(join(config['data_dir'], 'CIB_dominguez_int2D.ppo'), 'rb'),
-                encoding='latin1')
 
-        
-
-    def get_photon_density(self, E, z):
-        """Returns the redshift-scaled number density of CIB photons
-
-        Accepts scalar, vector and matrix arguments.
-
-        Args:
-          z (float): redshift
-          E (float): photon energy (GeV)
-
-        Returns:
-          float: CMB photon spectrum in :math:`{\\rm GeV}}^{-1} {\\rm cm}}^{-3}`
-        """
-        if self.simple_scaling:
-            Ered = E / (1. + z)
-            nlocal = self.int2d(Ered, 0., assume_sorted=True)
-            nz = self.int2d(Ered, z, assume_sorted=True)
-            scale = trapz(nz,Ered) / trapz(nlocal,Ered) / (1+z)**3
-            return (1. + z)**2 * nlocal * scale
-        else:
-            return self.int2d(E, z, assume_sorted=True)
 
 class CIBFranceschiniZ0(PhotonField):
     """CIB model "1" by Fraceschini et al.

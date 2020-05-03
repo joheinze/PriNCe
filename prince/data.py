@@ -3,6 +3,8 @@ import pickle as pickle
 import os.path as path
 import numpy as np
 import scipy.constants as spc
+import h5py
+
 
 from prince.util import convert_to_namedtuple, info
 from prince_config import config
@@ -48,6 +50,63 @@ UNITS_AND_CONVERSIONS_DEF = dict(
 PRINCE_UNITS = convert_to_namedtuple(UNITS_AND_CONVERSIONS_DEF, "PriNCeUnits")
 
 
+class PrinceDB(object):
+    """Provides access to data stored in an HDF5 file.
+
+    The file contains all tables for runnin PriNCe. Currently
+    the only still required file is the particle database. The tools
+    to generate this database are publicly available in
+    `PriNCe-data-utils <https://github.com/joheinze/PriNCe-data-utils>`_.
+
+    """
+
+    def __init__(self):
+
+        info(2, 'Opening HDF5 file', config['db_fname'])
+        self.prince_db_fname = path.join(config["data_dir"], config['db_fname'])
+        if not path.isfile(self.prince_db_fname):
+            raise Exception(
+                'Prince DB file {0} not found in "data" directory.'.format(
+                    config['db_fname']))
+
+        with h5py.File(self.prince_db_fname, 'r') as prince_db:
+            self.version = (prince_db.attrs['version'])
+
+    def _check_subgroup_exists(self, subgroup, mname):
+        available_models = list(subgroup)
+        if mname not in available_models:
+            info(0, 'Invalid choice/model', mname)
+            info(0, 'Choose from:\n', '\n'.join(available_models))
+            raise Exception('Unknown selections.')
+
+    def photo_nuclear_db(self, model_tag):
+        info(10, 'Reading photo-nuclear db. tag={0}'.format(model_tag))
+        db_entry = {}
+        with h5py.File(self.prince_db_fname, 'r') as prince_db:
+            self._check_subgroup_exists(prince_db['photo_nuclear'],
+                                        model_tag)
+            for entry in ['energy_grid', 'fragment_yields', 'inel_mothers',
+                          'inelastic_cross_sctions', 'mothers_daughters']:
+                info(10, 'Reading entry {0} from db.'.format(entry))
+                db_entry[entry] = prince_db['photo_nuclear'][model_tag][entry][:]
+        return db_entry
+
+    def ebl_spline(self, model_tag, subset='base'):
+        from scipy.interpolate import interp2d
+        info(10, 'Reading EBL field splines. tag={0}'.format(model_tag))
+        with h5py.File(self.prince_db_fname, 'r') as prince_db:
+            self._check_subgroup_exists(prince_db['EBL_models'],
+                                        model_tag)
+            self._check_subgroup_exists(prince_db['EBL_models'][model_tag],
+                                        subset)
+            spl_gr = prince_db['EBL_models'][model_tag][subset]
+
+            return interp2d(spl_gr['x'], spl_gr['y'], spl_gr['z'],
+                            fill_value=0., kind='linear')
+
+#: db_handler is the HDF file interface
+db_handler = PrinceDB()
+
 class EnergyGrid(object):
     """Class for constructing a grid for discrete distributions.
 
@@ -59,6 +118,7 @@ class EnergyGrid(object):
         upper (float): log10 of upper edge of the highest bin
         bins_dec (int): bins per decade of energy
     """
+
     def __init__(self, lower, upper, bins_dec):
         self.bins = np.logspace(lower, upper,
                                 int((upper - lower) * bins_dec + 1))
@@ -68,6 +128,7 @@ class EnergyGrid(object):
         info(
             5, 'Energy grid initialized {0:3.1e} - {1:3.1e}, {2} bins'.format(
                 self.bins[0], self.bins[-1], self.grid.size))
+
 
 class PrinceSpecies(object):
     """Bundles different particle properties for simplified
@@ -241,6 +302,7 @@ class PrinceSpecies(object):
 
 class SpeciesManager(object):
     """Provides a database with particle and species."""
+
     def __init__(self, ncoid_list, ed):
         # (dict) Dimension of primary grid
         self.grid_dims = {'default': ed}

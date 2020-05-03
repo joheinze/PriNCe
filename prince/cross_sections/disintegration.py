@@ -16,12 +16,12 @@ class TabulatedCrossSection(CrossSectionBase):
         (model_prefix)_egrid.data, (model_prefix)_nonel.data, (model_prefix)_incl_i_j.data 
     
         Data available for Peanut and TALYS with :
-        model_prefix = 'peanut_IAS' and model_prefix = 'CRP2_TALYS'
+        model_prefix = 'PEANUT_IAS' and model_prefix = 'CRP2_TALYS'
         Data available from 1 MeV to 1 GeV
     """
 
     def __init__(self,
-                 model_prefix='peanut_IAS',
+                 model_prefix='PEANUT_IAS',
                  max_mass=None,
                  *args,
                  **kwargs):
@@ -33,26 +33,24 @@ class TabulatedCrossSection(CrossSectionBase):
         self._optimize_and_generate_index()
 
     def _load(self, model_prefix):
-
+        from prince.data import db_handler
         info(2, "Load tabulated cross sections")
         # The energy grid is given in MeV, so we convert to GeV
-        egrid = load_or_convert_array(
-            model_prefix + "_egrid.dat", dtype='float') * 1e-3
-        info(2, "Egrid loading finished")
+        photo_nuclear_tables = db_handler.photo_nuclear_db(model_prefix)
 
-        # Load tables from files
-        _nonel_tab = load_or_convert_array(model_prefix + "_nonel.dat")
-        _incl_tab = load_or_convert_array(model_prefix + "_incl_i_j.dat")
+        egrid = photo_nuclear_tables["energy_grid"]
+        info(2, "Egrid loading finished")
 
         # Integer idices of mothers and inclusive channels are stored
         # in first column(s)
-        pid_nonel = _nonel_tab[:, 0].astype('int')
-        pids_incl = _incl_tab[:, 0:2].astype('int')
+        pid_nonel = photo_nuclear_tables["inel_mothers"]
+        pids_incl = photo_nuclear_tables["mothers_daughters"]
 
         # the rest of the line denotes the crosssection on the egrid in mbarn,
         # which is converted here to cm^2
-        nonel_raw = _nonel_tab[:, 1:] * 1e-27
-        incl_raw = _incl_tab[:, 2:] * 1e-27
+        nonel_raw = photo_nuclear_tables["inelastic_cross_sctions"]
+        incl_raw = photo_nuclear_tables["fragment_yields"]
+
         info(2, "Data file loading finished")
 
         # Now write the raw data into a dict structure
