@@ -43,6 +43,7 @@ setup(
         'scipy',
         'numpy',
         'tqdm',
+        'h5py',
         'requests'
     ],
     tests_require=['pytest','matplotlib'],

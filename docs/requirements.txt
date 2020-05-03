@@ -4,5 +4,6 @@ matplotlib
 scipy
 numpy
 tqdm
+h5py
 mock
 requests
