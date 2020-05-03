@@ -1,6 +1,11 @@
 # ignore the data folder 
 /data/
 
+#ignore large datafiles
+prince/data/sophia_crosssec.npy
+prince/data/sophia_redistribution_logbins.npy
+prince/data/prince_db_05.h5
+
 # ignore subfolders used for programm settings and caches
 .vscode
 .ipynb_checkpoints
