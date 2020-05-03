@@ -1,6 +1,8 @@
 sphinxcontrib-napoleon>=0.1.0
 sphinx_rtd_theme
 matplotlib
+scipy
+numpy
 tqdm
 mock
 requests
