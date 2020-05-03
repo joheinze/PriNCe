@@ -16,7 +16,7 @@ The photon field will be the CMB and the Gilmore et. al. CIB model.
 `prince_run` will take a few minutes to instanciate. This oject can be saved using `pickle` to skip this step.
 
 Changing model assumption
--------------------------
+.........................
 
 Either of these assumptions can be changed by manually creating objects::
 
@@ -48,7 +48,7 @@ The config is a simple dictionary, see `prince_config.py` for all available opti
 Most settings need to be set before creating other objects, such as `PriNCeRun`
 
 Solving the Transport equation
-------------------------------
+..............................
 
 To solve the transport equation, create an instance of :class:`UHECRPropagationSolverBDF`::
 
@@ -78,7 +78,7 @@ The result is available as `solver.res`, which is an instance of :class:`UHECRPr
 and contains several convienience functions for accessing the propagated spectra (see full documentation or examples).
 
 Custom UHECR sources
---------------------
+....................
 
 In the above examples we injected a pure nitrogen source. To inject a mix of elements,
 provide more keys to the `params` argument::
@@ -103,9 +103,9 @@ provide more keys to the `params` argument::
 `gamma` and `rmax` can also be defined separately for each element.
 
 The spectral shape is defined by the source class (in this case :class:`prince.cr_sources.AugerFitSource`)
-:module:`prince.cr_sources` contains several other predefined classes. 
+:mod:`prince.cr_sources` contains several other predefined classes. 
 You can also define your own source class by subclassing :class:`prince.cr_sources.CosmicRaySource`
-and implementing `CosmicRaySource.injection_spectrum`.
+and implementing :func:`CosmicRaySource.injection_spectrum`.
 
 .. Tutorial
 .. --------
