@@ -226,7 +226,7 @@ class CIBDominguez2D(EBLSplined2D):
 
         assert model in ['base', 'upper', 'lower']
 
-        self.int2d = db_handler.ebl_spline('Dominguez2011', model)
+        self.int2d = db_handler.ebl_spline('Dominguez2010', model)
         self.simple_scaling = simple_scaling
 
 
