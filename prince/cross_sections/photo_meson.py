@@ -9,8 +9,6 @@ from prince.util import info, load_or_convert_array
 from prince_config import config
 
 from .base import CrossSectionBase
-
-
 class SophiaSuperposition(CrossSectionBase):
     """ Cross sections generated using the Sophia event generator for protons and neutrons.
     Includes redistribution functions into secondaries
@@ -29,31 +27,41 @@ class SophiaSuperposition(CrossSectionBase):
         self._load()
 
     def _load(self):
+        from prince.data import db_handler
+        info(2, "Load tabulated cross sections")
+        photo_nuclear_tables = db_handler.photo_meson_db('SOPHIA')
         info(2, "Loading SOPHIA cross sections from file.")
-        info(5, "File used:", join(config["data_dir"], config["redist_fname"]))
-        # load the crossection from file
-        self._egrid_tab, self.cs_proton_grid, self.cs_neutron_grid = \
-        load_or_convert_array(
-            'sophia_crosssec', delimiter=',', unpack=True)
 
-        epsr_grid, self.xbins, self.redist_proton, self.redist_neutron = np.load(
-            join(config["data_dir"], config["redist_fname"]), allow_pickle=True,
-            encoding='latin1')
+        egrid = photo_nuclear_tables["energy_grid"]
+        xbins = photo_nuclear_tables["xbins"]
+        info(2, "Egrid loading finished")
 
-        # check if crosssection and redistribution are defined on the same grid,
-        # other wise interpolate crosssection
-        if epsr_grid.shape != self._egrid_tab.shape or np.any(
-                epsr_grid != self._egrid_tab):
-            info(1, "Adjusting cross section by interpolation.")
-            self.cs_proton_grid = np.interp(epsr_grid, self._egrid_tab,
-                                            self.cs_proton_grid)
-            self.cs_neutron_grid = np.interp(epsr_grid, self._egrid_tab,
-                                             self.cs_neutron_grid)
-            self._egrid_tab = epsr_grid
+        # Integer idices of mothers and inclusive channels are stored
+        # in first column(s)
+        pid_nonel = photo_nuclear_tables["inel_mothers"]
+        pids_incl = photo_nuclear_tables["mothers_daughters"]
 
-        # sophia crossections are in mubarn; convert here to cm^2
-        self.cs_proton_grid *= 1e-30
-        self.cs_neutron_grid *= 1e-30
+        # the rest of the line denotes the crosssection on the egrid in mbarn,
+        # which is converted here to cm^2
+        nonel_raw = photo_nuclear_tables["inelastic_cross_sctions"]
+        incl_raw = photo_nuclear_tables["fragment_yields"]
+
+        info(2, "Data file loading finished")
+
+        self._egrid_tab = egrid
+        self.cs_proton_grid = nonel_raw[pid_nonel==101].flatten()
+        self.cs_neutron_grid = nonel_raw[pid_nonel==100].flatten()
+
+        self.xbins = xbins
+        self.redist_proton = {}
+        self.redist_neutron = {}
+        for (mo, da), csgrid in zip(pids_incl, incl_raw):
+            if mo == 101:
+                self.redist_proton[da] = csgrid
+            elif mo == 100:
+                self.redist_neutron[da] = csgrid
+            else:
+                raise Exception(f'Sophia model should only contain protons and neutrons, but has mother id {mo}')
 
         # set up inclusive differential channels for protons and neutron
         # The model can return both, integrated over x and redistributed.
@@ -199,16 +207,18 @@ class SophiaSuperposition(CrossSectionBase):
             )
         csec_diff = None
         # TODO: File shall contain the functions in .T directly
+        #   JH: I left it like this on purpose, since the raw data is ordered more consistently
+        #       i.e. redist.shape = cs_nonel.shape + xbins.shape
+        #       The ordering should rather be changed in the rest of the code
         if daughter in self.redist_proton:
-            cgrid = Z * self.cs_proton_grid
-            csec_diff = self.redist_proton[daughter].T * cgrid
+            csec_diff = self.redist_proton[daughter].T * Z
 
         if daughter in self.redist_neutron:
             cgrid = N * self.cs_neutron_grid
             if np.any(csec_diff):
-                csec_diff += self.redist_neutron[daughter].T * cgrid
+                csec_diff += self.redist_neutron[daughter].T * N
             else:
-                csec_diff = self.redist_neutron[daughter].T * cgrid
+                csec_diff = self.redist_neutron[daughter].T * N
 
         return self.egrid, csec_diff[:, self._range]
 

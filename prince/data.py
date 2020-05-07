@@ -91,6 +91,18 @@ class PrinceDB(object):
                 db_entry[entry] = prince_db['photo_nuclear'][model_tag][entry][:]
         return db_entry
 
+    def photo_meson_db(self, model_tag):
+        info(10, 'Reading photo-nuclear db. tag={0}'.format(model_tag))
+        db_entry = {}
+        with h5py.File(self.prince_db_fname, 'r') as prince_db:
+            self._check_subgroup_exists(prince_db['photo_nuclear'],
+                                        model_tag)
+            for entry in ['energy_grid', 'xbins', 'fragment_yields', 'inel_mothers',
+                          'inelastic_cross_sctions', 'mothers_daughters']:
+                info(10, 'Reading entry {0} from db.'.format(entry))
+                db_entry[entry] = prince_db['photo_nuclear'][model_tag][entry][:]
+        return db_entry
+
     def ebl_spline(self, model_tag, subset='base'):
         from scipy.interpolate import interp2d
         info(10, 'Reading EBL field splines. tag={0}'.format(model_tag))
