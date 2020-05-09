@@ -10,6 +10,71 @@ from prince_config import config
 from .partial_diff import DifferentialOperator, SemiLagrangianSolver
 
 
+def mkl_csrmat_args(csr_mat):
+    """Cast pointers of scipy csr matrix for MKL BLAS."""
+    from ctypes import c_double, c_int, c_char, POINTER, byref
+    data = csr_mat.data.ctypes.data_as(POINTER(c_double))
+    ci = csr_mat.indices.ctypes.data_as(POINTER(c_int))
+    pb = csr_mat.indptr[:-1].ctypes.data_as(POINTER(c_int))
+    pe = csr_mat.indptr[1:].ctypes.data_as(POINTER(c_int))
+    m = byref(c_int(csr_mat.shape[0]))
+    n = byref(c_int(csr_mat.shape[1]))
+    return m, n, data, ci, pb, pe
+
+
+def mkl_vec(np_vec):
+    """Cast pointers of numpy dense vector of double for MKL BLAS."""
+    from ctypes import c_double, POINTER
+    return np_vec, np_vec.ctypes.data_as(POINTER(c_double))
+
+
+def mkl_matdescr(trans='n'):
+    """Generate matdescr (matrix description) array required by BLAS calls."""
+    from ctypes import c_char, POINTER, byref
+    if trans == 'n':
+        trans = byref(c_char(b'n'))  # Non-trans
+    else:
+        trans = byref(c_char(b't'))  # Non-trans
+    npmatd = np.chararray(6)
+    npmatd[0] = b'G'  # General
+    npmatd[3] = b'C'  # C-ordering
+    return trans, npmatd.ctypes.data_as(POINTER(c_char))
+
+def mkl_gemm(alpha, mA, mB, beta, mC, transa=False):
+    from ctypes import c_double, c_int, c_char, POINTER, byref
+    from prince_config import mkl
+    alpha = byref(c_double(alpha))
+    beta = byref(c_double(beta))
+    transa, mdsc = mkl_matdescr('t' if transa else 'n')
+    m, k, data, ci, pb, pe = mkl_csrmat_args(mA)
+    n = byref(c_int(mC.shape[1]))
+    b = mB.ctypes.data_as(POINTER(c_double))
+    c = mC.ctypes.data_as(POINTER(c_double))
+    print(mC.flags)
+    ldb = byref(c_int(mB.shape[1]))
+    ldc = byref(c_int(mC.shape[1]))
+    mkl.mkl_dcsrmm(
+        transa, m, n, k, alpha, mdsc,
+                 data, ci, pb, pe,
+                 b, ldb,
+                 beta, c, ldc)
+    return mC
+
+def mkl_gemv(alpha, mA, b, beta, c, transa=False):
+    from ctypes import c_double, c_int, c_char, POINTER, byref
+    from prince_config import mkl
+    alpha = byref(c_double(alpha))
+    beta = byref(c_double(beta))
+    transa, mdsc = mkl_matdescr('t' if transa else 'n')
+    m, n, data, ci, pb, pe = mkl_csrmat_args(mA)
+    bp = b.ctypes.data_as(POINTER(c_double))
+    cp = c.ctypes.data_as(POINTER(c_double))
+    mkl.mkl_dcsrmv(
+        transa, m, n, alpha, mdsc,
+        data, ci, pb, pe,
+        bp, beta, cp)
+    return c
+
 class UHECRPropagationResult(object):
     """Reduced version of solver class, that only holds the result vector and defined add and multiply
     """
@@ -89,7 +154,7 @@ class UHECRPropagationResult(object):
         else:
             com_egrid = egrid
 
-        if type(nco_ids) is list:
+        if isinstance(nco_ids, list):
             pass
         elif nco_ids == 'CR':
             nco_ids = [s for s in self.known_species if s >= 100]
@@ -99,7 +164,7 @@ class UHECRPropagationResult(object):
             ]
         elif nco_ids == 'all':
             nco_ids = self.known_species
-        elif type(nco_ids) is tuple:
+        elif isinstance(nco_ids, tuple):
             select, vmin, vmax = nco_ids
             nco_ids = [
                 s for s in self.known_species if vmin <= select(s) <= vmax
@@ -182,11 +247,11 @@ class UHECRPropagationSolver(object):
         self.spec_man = prince_run.spec_man
         self.egrid = prince_run.cr_grid.grid
         self.ebins = prince_run.cr_grid.bins
-        #Flags to enable/disable different loss types
+        # Flags to enable/disable different loss types
         self.enable_adiabatic_losses = enable_adiabatic_losses
         self.enable_pairprod_losses = enable_pairprod_losses
         self.enable_photohad_losses = enable_photohad_losses
-        #Flag for Jacobian injection:
+        # Flag for Jacobian injection:
         # if True injection in jacobion
         # if False injection only per dz-step
         self.enable_injection_jacobian = enable_injection_jacobian
@@ -385,7 +450,7 @@ class UHECRPropagationSolver(object):
 
         if self.enable_injection_jacobian:
             # print 'inj', self.injection(1., z).shape
-            r += self.injection(1., z)[:,np.newaxis] 
+            r += self.injection(1., z)[:, np.newaxis]
         if self.enable_partial_diff_jacobian:
             conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
             if self.enable_adiabatic_losses:
@@ -395,11 +460,68 @@ class UHECRPropagationSolver(object):
             # print 'conloss', conloss.shape
             # print 'state',state.shape
             partial_deriv = self.dldz(z) * self.diff_operator.operator.dot(
-                conloss[:,np.newaxis] * state)
+                conloss[:, np.newaxis] * state)
             # print 'pderiv', partial_deriv.shape
             r += partial_deriv
 
         return r
+
+    def eqn_deriv_mkl(self, z, state, *args):
+
+        if state.shape[1] > 1:
+            matrix_input = True
+        else:
+            matrix_input = False
+
+        # Here starts the eqn_deriv content
+        z = z - self.z_offset
+        self.ncallsf += 1
+
+        # Update rates/cross sections only if solver requests to do so
+        if abs(z - self.current_z_rates) > self.recomp_z_threshold:
+            self._update_jacobian(z)
+            self.current_z_rates = z
+
+        # Allocate result array
+        # np_r = np.zeros(state.shape)
+        np_r2 = np.zeros(state.shape)
+        
+        if matrix_input:
+            # print(self.jacobian.data.flags)
+            # np_r = mkl_gemm(1., self.jacobian, state, 0., np_r)
+            # print('a1', self.jacobian[:5,:5].todense())
+            # print('a2', state[:5,:5])
+            np_r2 = self.jacobian.dot(state)
+            # print('b1', self.jacobian[:5,:5].todense())
+            # print('b2', state[:5,:5])
+            # # print(self.jacobian.shape, state.shape, np_r.shape, np_r2.shape)
+            # print(np_r[:10,:10])
+            # print(np_r2[:10,:10])
+            # print('1', np.allclose(np_r, np_r2, atol=0.))
+        else:
+            np_r2 = mkl_gemv(1., self.jacobian, state, 0., np_r2)
+
+        if self.enable_injection_jacobian:
+            # np_r += self.injection(1., z)[:, np.newaxis]
+            np_r2 += self.injection(1., z)[:, np.newaxis]
+        
+        if self.enable_partial_diff_jacobian:
+            conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
+            if self.enable_adiabatic_losses:
+                conloss += self.adia_loss_rates_grid.loss_vector(z)
+            if self.enable_pairprod_losses:
+                conloss += self.pair_loss_rates_grid.loss_vector(z)
+            if matrix_input:
+                # np_r2 = mkl_gemm(self.dldz(z), self.diff_operator.operator,
+                #     conloss[:, np.newaxis] * state, 1., np_r2)
+
+                np_r2 += self.dldz(z) * self.diff_operator.operator.dot(
+                    conloss[:, np.newaxis] * state)
+            else:
+                np_r2 = mkl_gemv(self.dldz(z), self.diff_operator.operator,
+                    conloss[:, np.newaxis] * state, 1., np_r2)
+
+        return np_r2
 
     def eqn_deriv_euler(self, z, state, *args):
         z = z - self.z_offset
@@ -483,11 +605,13 @@ class UHECRPropagationSolver(object):
 
         return self.last_hadr_jac
 
+
 class UHECRPropagationSolverEULER(UHECRPropagationSolver):
-    def __init__(self,*args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super(UHECRPropagationSolverEULER, self).__init__(*args, **kwargs)
 
-    def solve(self, dz=1e-3, verbose=True, extended_output=False, initial_inj = False, disable_inj = False):
+    def solve(self, dz=1e-3, verbose=True, extended_output=False,
+              initial_inj=False, disable_inj=False):
         from time import time
         self._update_jacobian(self.initial_z)
         self.current_z_rates = self.initial_z
@@ -553,8 +677,8 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
 class UHECRPropagationSolverBDF(UHECRPropagationSolver):
 
     def __init__(self, *args, **kwargs):
-        self.atol = kwargs.pop('atol',1e40)
-        self.rtol = kwargs.pop('rtol',1e-10)
+        self.atol = kwargs.pop('atol', 1e40)
+        self.rtol = kwargs.pop('rtol', 1e-10)
         super(UHECRPropagationSolverBDF, self).__init__(*args, **kwargs)
         # UHECRPropagationSolver.__init__(self,*args,**kwargs)
 
@@ -569,7 +693,7 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
 
         from prince.util import PrinceBDF
         self.r = PrinceBDF(
-            self.eqn_deriv,
+            self.eqn_deriv_mkl,
             self.initial_z,
             initial_state,
             self.final_z,
@@ -597,7 +721,6 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
         info(2, 'Setting up Solver')
         self._init_solver(dz)
         info(2, 'Solver initialized in {0} s'.format(time() - start_time))
-
 
         info(2, 'Starting integration.')
         if progressbar:
@@ -647,7 +770,7 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
 
         # after each run we delete the solver to save memory
         self.state = self.r.y.copy()
-        
+
         if summary or verbose:
             print('Summary:')
             print('---------------------')

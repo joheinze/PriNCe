@@ -315,8 +315,6 @@ class PhotoNuclearInteractionRate(object):
         """Updates the sparse (csr) coupling matrix
         Only the data vector is updated to minimize computation
         """
-        from scipy.sparse import csc_matrix
-
         # Do not execute dot product if photon field didn't change
         if self._update_rates(z, force_update):
             self.coupling_mat.data = scale_fac * self._batch_vec
@@ -352,7 +350,6 @@ class PhotoNuclearInteractionRate(object):
         Returns:
             (bool): True if fields we indeed updated, False if nothing happened.
         """
-
         if self._ratemat_zcache != z or force_update:
             info(5, 'Updating batch rate vectors.')
             np.dot(

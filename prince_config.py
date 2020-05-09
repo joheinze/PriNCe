@@ -174,6 +174,7 @@ else:
     has_mkl = False
 
 def set_mkl_threads(nthreads):
+    global mkl
     from ctypes import cdll, c_int, byref
     mkl = cdll.LoadLibrary(mkl_path)
     # Set number of threads
