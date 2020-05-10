@@ -116,7 +116,7 @@ config = {
     "MKL_threads": 4,
 
     # Sparse matrix-vector product from "CUPY"|"MKL"|"scipy"
-    "linear_algebra_backend": "CUPY",
+    "linear_algebra_backend": "MKL",
 
     # Parameters for the lsodes integrator. 
     "ode_params": {
