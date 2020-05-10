@@ -5,7 +5,7 @@ import numpy as np
 from prince.cosmology import H
 from prince.data import PRINCE_UNITS, EnergyGrid
 from prince.util import info
-from prince_config import config
+from prince_config import config, has_cupy, has_mkl
 
 from .partial_diff import DifferentialOperator, SemiLagrangianSolver
 
@@ -208,15 +208,15 @@ class UHECRPropagationSolver(object):
                                                   prince_run.spec_man.nspec).operator
         self.semi_lag_solver = SemiLagrangianSolver(prince_run.cr_grid)
 
-        if config["linear_algebra_backend"].lower() == 'cupy':
-            import cupyx
-            self.diff_operator = cupyx.scipy.sparse.csr_matrix(self.diff_operator)
+        # Configuration of BLAS backend
+        self.using_cupy = False
+        if has_cupy and config["linear_algebra_backend"].lower() == 'cupy':
             self.eqn_derivative = self.eqn_deriv_cupy
-        elif config["linear_algebra_backend"].lower() == 'mkl':
+            self.using_cupy = True
+        elif has_mkl and config["linear_algebra_backend"].lower() == 'mkl':
             self.eqn_derivative = self.eqn_deriv_mkl
         else:
             self.eqn_derivative = self.eqn_deriv_standard
-
 
         # Reset counters
         self.ncallsf = 0
@@ -493,8 +493,15 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
 
         # find the maximum injection and reduce the system by this
         self.red_idx = np.nonzero(self.injection(1., 0.))[0].max()
+        
+        # Convert csr_matrix from GPU to scipy
+        try:
+            sparsity = self.had_int_rates.get_hadr_jacobian(
+                self.initial_z, 1.).get()
+        except AttributeError:
+            sparsity = self.had_int_rates.get_hadr_jacobian(
+                self.initial_z, 1.)
 
-        sparsity = self.had_int_rates.get_hadr_jacobian(self.initial_z, 1.).get()
         from prince.util import PrinceBDF
         self.r = PrinceBDF(
             self.eqn_derivative,

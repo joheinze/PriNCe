@@ -129,18 +129,8 @@ config = {
         # 'with_jacobian': True
     },
 
-    # # Use sparse linear algebra (recommended!)
-    # "use_sparse": True,
-
     # # Selection of integrator (euler/odepack)
     # "integrator": "euler",
-
-    # # euler kernel implementation (numpy/MKL/CUDA).
-    # "kernel_config": "MKL",
-
-
-    # # Float precision (32 only yields speed up with CUDA, MKL gets slower?)
-    # "FP_precision": 64,
 
     #=========================================================================
     # Advanced settings
@@ -154,16 +144,16 @@ config = {
 }
 
 # Check for CUPY library for GPU support
-has_cupy = False
-if config["linear_algebra_backend"].lower() == 'cupy':
-    try:
-        import cupy
-        has_cupy = True
-        mempool = cupy.get_default_memory_pool()
-        mempool.free_all_blocks()
-    except ModuleNotFoundError:
-        print('CUPY not found for GPU support. Degrading to MKL.')
+try:
+    import cupy
+    has_cupy = True
+    mempool = cupy.get_default_memory_pool()
+    mempool.free_all_blocks()
+except ModuleNotFoundError:
+    print('CUPY not found for GPU support. Degrading to MKL.')
+    if config["linear_algebra_backend"] == 'cupy':
         config["linear_algebra_backend"] = 'MKL'
+    has_cupy = False
 
 #: determine shared library extension and MKL path
 pf = platform.platform()

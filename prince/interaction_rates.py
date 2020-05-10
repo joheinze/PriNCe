@@ -7,11 +7,12 @@ from prince.data import PRINCE_UNITS
 from prince.util import info
 from prince_config import config, has_cupy
 
+using_cupy = False
 # Use GPU support
-if has_cupy:
+if has_cupy and config["linear_algebra_backend"].lower() == 'cupy':
     import cupy
     from prince_config import mempool
-
+    using_cupy = True
 
 class PhotoNuclearInteractionRate(object):
     """Implementation of photo-hadronic/nuclear interaction rates.
@@ -49,7 +50,7 @@ class PhotoNuclearInteractionRate(object):
 
         self._estimate_batch_matrix()
         self._init_matrices()
-        self._init_coupling_mat(sp_format='csr')
+        self._init_coupling_mat()
 
     def photon_vector(self, z):
         """Returns photon vector at redshift `z` on photon grid.
@@ -283,51 +284,37 @@ class PhotoNuclearInteractionRate(object):
                   self._batch_cols.nbytes + self._batch_vec.nbytes) / 1024**2
         info(3, "Memory usage after initialization: {:} MB".format(memory))
 
-    def _init_coupling_mat(self, sp_format):
-        """Initialises the coupling matrix directly in sparse (csc) format.
+    def _init_coupling_mat(self):
+        """Initialises the coupling matrix directly in sparse (csr) format.
         """
-        info(0, 'Initiating coupling matrix in ({:}) format'.format(sp_format))
+        info(0, 'Initiating coupling matrix in ({:}) format'.format('CSR'))
 
-        if sp_format == 'csc' and False:  # Remove maybe? No advantage as far as I remember
-            from scipy.sparse import csc_matrix
-            self.coupling_mat = csc_matrix(
+        from scipy.sparse import csr_matrix
+        if using_cupy:
+            # For GPU we initialize the csr matrix on the host and then cast to GPU
+            from cupyx.scipy.sparse import csr_matrix as cp_csr_matrix
+            self.coupling_mat_np = csr_matrix(
+                (self._batch_vec.astype(np.float32),
+                    (self._batch_rows, self._batch_cols)),
+                copy=True)
+            self.coupling_mat = cp_csr_matrix(self.coupling_mat_np, copy=True)
+            self._batch_vec = self.coupling_mat.data
+            del self.coupling_mat_np
+        else:
+            self.coupling_mat = csr_matrix(
                 (self._batch_vec, (self._batch_rows, self._batch_cols)),
                 copy=True)
-            # create an index to sort by columns and then rows,
-            # which is the same ordering CSC has internally
-            # lexsort sorts by last argument first!!!
-            self.sortidx = np.lexsort((self._batch_rows, self._batch_cols))
-        elif sp_format == 'csr':
-            from scipy.sparse import csr_matrix
-            if has_cupy:
-                # For GPU we initialize the csr matrix on the host and then cast to GPU
-                from cupyx.scipy.sparse import csr_matrix as cp_csr_matrix
-                self.coupling_mat_np = csr_matrix(
-                    (self._batch_vec.astype(np.float32),
-                     (self._batch_rows, self._batch_cols)),
-                    copy=True)
-                self.coupling_mat = cp_csr_matrix(self.coupling_mat_np, copy=True)
-                self._batch_vec = self.coupling_mat.data
-                del self.coupling_mat_np
-            else:
-                self.coupling_mat = csr_matrix(
-                    (self._batch_vec, (self._batch_rows, self._batch_cols)),
-                    copy=True)
 
-            # create an index to sort by rows and then columns,
-            # which is the same ordering CSR has internally
-            # lexsort sorts by last argument first!!!
-            self.sortidx = np.lexsort((self._batch_cols, self._batch_rows))
-        else:
-            raise Exception(
-                'Unsupported sparse format ({:}) for coupling matrix, choose (csc) or (csr)'.
-                format(sp_format))
+        # create an index to sort by rows and then columns,
+        # which is the same ordering CSR has internally
+        # lexsort sorts by last argument first!!!
+        self.sortidx = np.lexsort((self._batch_cols, self._batch_rows))
 
         self._batch_rows = self._batch_rows[self.sortidx]
         self._batch_cols = self._batch_cols[self.sortidx]
 
         # Reorder batch matrix according to order in coupling_mat
-        if has_cupy:
+        if using_cupy:
             self._batch_matrix = cupy.array(
                 self._batch_matrix[self.sortidx, :], dtype=np.float32)
         else:
@@ -348,9 +335,9 @@ class PhotoNuclearInteractionRate(object):
         if self._ratemat_zcache != z or force_update:
             info(5, 'Updating batch rate vectors.')
 
-            if has_cupy:
+            if using_cupy:
                 if isinstance(self._batch_matrix, np.ndarray):
-                    self._init_coupling_mat(sp_format='csr')
+                    self._init_coupling_mat()
                 cupy.dot(
                     self._batch_matrix, cupy.array(
                         self.photon_vector(z), dtype=np.float32),
@@ -387,8 +374,9 @@ class PhotoNuclearInteractionRate(object):
 
         species = self.spec_man.ncoid2sref[pid]
         egrid = self.e_cosmicray.grid * species.A
-        rate = -1 * self.get_dense_hadr_jacobian(
-            force_update=True, z=z)[species.sl, species.sl].diagonal()
+        rate = -1 * self.get_hadr_jacobian(
+            force_update=True, z=z).toarray()[
+                species.sl, species.sl].diagonal()
 
         length = 1 / rate
 
