@@ -115,8 +115,8 @@ config = {
     # #advantage from using more than 1 thread is limited by memory bandwidth)
     "MKL_threads": 4,
 
-    # Sparse matrix-vector product from "MKL"|"scipy"
-    "spmv_lib": "MKL",
+    # Sparse matrix-vector product from "CUPY"|"MKL"|"scipy"
+    "linear_algebra_backend": "CUPY",
 
     # Parameters for the lsodes integrator. 
     "ode_params": {
@@ -153,6 +153,18 @@ config = {
     }
 }
 
+# Check for CUPY library for GPU support
+has_cupy = False
+if config["linear_algebra_backend"].lower() == 'cupy':
+    try:
+        import cupy
+        has_cupy = True
+        mempool = cupy.get_default_memory_pool()
+        mempool.free_all_blocks()
+    except ModuleNotFoundError:
+        print('CUPY not found for GPU support. Degrading to MKL.')
+        config["linear_algebra_backend"] = 'MKL'
+
 #: determine shared library extension and MKL path
 pf = platform.platform()
 
@@ -185,3 +197,7 @@ def set_mkl_threads(nthreads):
 
 if has_mkl:
     set_mkl_threads(config["MKL_threads"])
+
+if not has_mkl and config["linear_algebra_backend"].lower() == 'mkl':
+    print('MKL runtime not found. Degrading to scipy.')
+    config["linear_algebra_backend"] = 'scipy'

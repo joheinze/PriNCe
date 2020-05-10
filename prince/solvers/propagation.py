@@ -9,72 +9,6 @@ from prince_config import config
 
 from .partial_diff import DifferentialOperator, SemiLagrangianSolver
 
-
-def mkl_csrmat_args(csr_mat):
-    """Cast pointers of scipy csr matrix for MKL BLAS."""
-    from ctypes import c_double, c_int, c_char, POINTER, byref
-    data = csr_mat.data.ctypes.data_as(POINTER(c_double))
-    ci = csr_mat.indices.ctypes.data_as(POINTER(c_int))
-    pb = csr_mat.indptr[:-1].ctypes.data_as(POINTER(c_int))
-    pe = csr_mat.indptr[1:].ctypes.data_as(POINTER(c_int))
-    m = byref(c_int(csr_mat.shape[0]))
-    n = byref(c_int(csr_mat.shape[1]))
-    return m, n, data, ci, pb, pe
-
-
-def mkl_vec(np_vec):
-    """Cast pointers of numpy dense vector of double for MKL BLAS."""
-    from ctypes import c_double, POINTER
-    return np_vec, np_vec.ctypes.data_as(POINTER(c_double))
-
-
-def mkl_matdescr(trans='n'):
-    """Generate matdescr (matrix description) array required by BLAS calls."""
-    from ctypes import c_char, POINTER, byref
-    if trans == 'n':
-        trans = byref(c_char(b'n'))  # Non-trans
-    else:
-        trans = byref(c_char(b't'))  # Non-trans
-    npmatd = np.chararray(6)
-    npmatd[0] = b'G'  # General
-    npmatd[3] = b'C'  # C-ordering
-    return trans, npmatd.ctypes.data_as(POINTER(c_char))
-
-def mkl_gemm(alpha, mA, mB, beta, mC, transa=False):
-    from ctypes import c_double, c_int, c_char, POINTER, byref
-    from prince_config import mkl
-    alpha = byref(c_double(alpha))
-    beta = byref(c_double(beta))
-    transa, mdsc = mkl_matdescr('t' if transa else 'n')
-    m, k, data, ci, pb, pe = mkl_csrmat_args(mA)
-    n = byref(c_int(mC.shape[1]))
-    b = mB.ctypes.data_as(POINTER(c_double))
-    c = mC.ctypes.data_as(POINTER(c_double))
-    print(mC.flags)
-    ldb = byref(c_int(mB.shape[1]))
-    ldc = byref(c_int(mC.shape[1]))
-    mkl.mkl_dcsrmm(
-        transa, m, n, k, alpha, mdsc,
-                 data, ci, pb, pe,
-                 b, ldb,
-                 beta, c, ldc)
-    return mC
-
-def mkl_gemv(alpha, mA, b, beta, c, transa=False):
-    from ctypes import c_double, c_int, c_char, POINTER, byref
-    from prince_config import mkl
-    alpha = byref(c_double(alpha))
-    beta = byref(c_double(beta))
-    transa, mdsc = mkl_matdescr('t' if transa else 'n')
-    m, n, data, ci, pb, pe = mkl_csrmat_args(mA)
-    bp = b.ctypes.data_as(POINTER(c_double))
-    cp = c.ctypes.data_as(POINTER(c_double))
-    mkl.mkl_dcsrmv(
-        transa, m, n, alpha, mdsc,
-        data, ci, pb, pe,
-        bp, beta, cp)
-    return c
-
 class UHECRPropagationResult(object):
     """Reduced version of solver class, that only holds the result vector and defined add and multiply
     """
@@ -271,8 +205,18 @@ class UHECRPropagationSolver(object):
         self.list_of_sources = []
 
         self.diff_operator = DifferentialOperator(prince_run.cr_grid,
-                                                  prince_run.spec_man.nspec)
+                                                  prince_run.spec_man.nspec).operator
         self.semi_lag_solver = SemiLagrangianSolver(prince_run.cr_grid)
+
+        if config["linear_algebra_backend"].lower() == 'cupy':
+            import cupyx
+            self.diff_operator = cupyx.scipy.sparse.csr_matrix(self.diff_operator)
+            self.eqn_derivative = self.eqn_deriv_cupy
+        elif config["linear_algebra_backend"].lower() == 'mkl':
+            self.eqn_derivative = self.eqn_deriv_mkl
+        else:
+            self.eqn_derivative = self.eqn_deriv_standard
+
 
         # Reset counters
         self.ncallsf = 0
@@ -423,7 +367,7 @@ class UHECRPropagationSolver(object):
                 conloss += self.pair_loss_rates_grid.loss_vector(z)
 
             state[:] = state + self.dldz(
-                z) * delta_z * self.diff_operator.operator.dot(conloss * state)
+                z) * delta_z * self.diff_operator.dot(conloss * state)
 
         # -------------------------------------------------------------------
         # if method was not in list before, raise an Expection
@@ -434,40 +378,65 @@ class UHECRPropagationSolver(object):
 
         return state
 
-    def eqn_deriv(self, z, state, *args):
+    def eqn_deriv_standard(self, z, state, *args):
         z = z - self.z_offset
 
         self.ncallsf += 1
 
-        # print 'state', state.shape
         # Update rates/cross sections only if solver requests to do so
         if abs(z - self.current_z_rates) > self.recomp_z_threshold:
             self._update_jacobian(z)
             self.current_z_rates = z
+        
+        if self.using_cupy:
+            import cupy
+            state = cupy.array(state)
 
         r = self.jacobian.dot(state)
-        # print 'deriv', r.shape
-
+        
         if self.enable_injection_jacobian:
-            # print 'inj', self.injection(1., z).shape
             r += self.injection(1., z)[:, np.newaxis]
+
         if self.enable_partial_diff_jacobian:
             conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
             if self.enable_adiabatic_losses:
                 conloss += self.adia_loss_rates_grid.loss_vector(z)
             if self.enable_pairprod_losses:
                 conloss += self.pair_loss_rates_grid.loss_vector(z)
-            # print 'conloss', conloss.shape
-            # print 'state',state.shape
-            partial_deriv = self.dldz(z) * self.diff_operator.operator.dot(
+            r += self.dldz(z) * self.diff_operator.dot(
                 conloss[:, np.newaxis] * state)
-            # print 'pderiv', partial_deriv.shape
-            r += partial_deriv
-
         return r
 
-    def eqn_deriv_mkl(self, z, state, *args):
+    def eqn_deriv_cupy(self, z, state, *args):
+        import cupy
+        
+        z = z - self.z_offset
 
+        self.ncallsf += 1
+
+        # Update rates/cross sections only if solver requests to do so
+        if abs(z - self.current_z_rates) > self.recomp_z_threshold:
+            self._update_jacobian(z)
+            self.current_z_rates = z
+        
+        state = cupy.array(state)
+
+        r = self.jacobian.dot(state)
+        if self.enable_injection_jacobian:
+            r += cupy.array(self.injection(1., z))[:, np.newaxis]
+        if self.enable_partial_diff_jacobian:
+            conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
+            if self.enable_adiabatic_losses:
+                conloss += self.adia_loss_rates_grid.loss_vector(z)
+            if self.enable_pairprod_losses:
+                conloss += self.pair_loss_rates_grid.loss_vector(z)
+            r += self.dldz(z) * self.diff_operator.dot(
+                cupy.array(conloss)[:, np.newaxis] * state)
+        
+        return cupy.asnumpy(r)
+
+    def eqn_deriv_mkl(self, z, state, *args):
+        from prince.solvers.mkl_interface import csrmm, csrmv
         if state.shape[1] > 1:
             matrix_input = True
         else:
@@ -482,28 +451,17 @@ class UHECRPropagationSolver(object):
             self._update_jacobian(z)
             self.current_z_rates = z
 
-        # Allocate result array
-        # np_r = np.zeros(state.shape)
-        np_r2 = np.zeros(state.shape)
+        res = np.zeros(state.shape)
         
         if matrix_input:
-            # print(self.jacobian.data.flags)
-            # np_r = mkl_gemm(1., self.jacobian, state, 0., np_r)
-            # print('a1', self.jacobian[:5,:5].todense())
-            # print('a2', state[:5,:5])
-            np_r2 = self.jacobian.dot(state)
-            # print('b1', self.jacobian[:5,:5].todense())
-            # print('b2', state[:5,:5])
-            # # print(self.jacobian.shape, state.shape, np_r.shape, np_r2.shape)
-            # print(np_r[:10,:10])
-            # print(np_r2[:10,:10])
-            # print('1', np.allclose(np_r, np_r2, atol=0.))
+            state = np.ascontiguousarray(state)
+            res = csrmm(1., self.jacobian, state, 0., res)
         else:
-            np_r2 = mkl_gemv(1., self.jacobian, state, 0., np_r2)
+            res = csrmv(1., self.jacobian, state, 0., res)
+            
 
         if self.enable_injection_jacobian:
-            # np_r += self.injection(1., z)[:, np.newaxis]
-            np_r2 += self.injection(1., z)[:, np.newaxis]
+            res += self.injection(1., z)[:, np.newaxis]
         
         if self.enable_partial_diff_jacobian:
             conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
@@ -512,167 +470,13 @@ class UHECRPropagationSolver(object):
             if self.enable_pairprod_losses:
                 conloss += self.pair_loss_rates_grid.loss_vector(z)
             if matrix_input:
-                # np_r2 = mkl_gemm(self.dldz(z), self.diff_operator.operator,
-                #     conloss[:, np.newaxis] * state, 1., np_r2)
-
-                np_r2 += self.dldz(z) * self.diff_operator.operator.dot(
-                    conloss[:, np.newaxis] * state)
+                res = csrmm(self.dldz(z), self.diff_operator,
+                    conloss[:, np.newaxis] * state, 1., res)
             else:
-                np_r2 = mkl_gemv(self.dldz(z), self.diff_operator.operator,
-                    conloss[:, np.newaxis] * state, 1., np_r2)
+                res = csrmv(self.dldz(z), self.diff_operator,
+                    conloss[:, np.newaxis] * state, 1., res)
 
-        return np_r2
-
-    def eqn_deriv_euler(self, z, state, *args):
-        z = z - self.z_offset
-
-        self.ncallsf += 1
-
-        # print 'state', state.shape
-        # Update rates/cross sections only if solver requests to do so
-        if abs(z - self.current_z_rates) > self.recomp_z_threshold:
-            self._update_jacobian(z)
-            self.current_z_rates = z
-
-        r = self.jacobian.dot(state)
-        # print 'deriv', r.shape
-
-        if self.enable_injection_jacobian:
-            # print 'inj', self.injection(1., z).shape
-            r += self.injection(1., z)
-        if self.enable_partial_diff_jacobian:
-            conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
-            if self.enable_adiabatic_losses:
-                conloss += self.adia_loss_rates_grid.loss_vector(z)
-            if self.enable_pairprod_losses:
-                conloss += self.pair_loss_rates_grid.loss_vector(z)
-            # print 'conloss', conloss.shape
-            # print 'state',state.shape
-            partial_deriv = self.dldz(z) * self.diff_operator.operator.dot(
-                conloss * state)
-            # print 'pderiv', partial_deriv.shape
-            r += partial_deriv
-
-        return r
-
-    def eqn_deriv_old(self, z, state, *args):
-        z = z - self.z_offset
-
-        self.ncallsf += 1
-
-        # Update rates/cross sections only if solver requests to do so
-        if abs(z - self.current_z_rates) > self.recomp_z_threshold:
-            self._update_jacobian(z)
-            self.current_z_rates = z
-
-        if self.enable_injection_jacobian and self.enable_partial_diff_jacobian:
-            conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
-            if self.enable_adiabatic_losses:
-                conloss += self.adia_loss_rates_grid.loss_vector(z)
-            if self.enable_pairprod_losses:
-                conloss += self.pair_loss_rates_grid.loss_vector(z)
-            partial_deriv = self.dldz(z) * self.diff_operator.operator.dot(
-                conloss * state)
-            r = self.jacobian.dot(state) + self.injection(1.,
-                                                          z) + partial_deriv
-        elif self.enable_injection_jacobian:
-            r = self.jacobian.dot(state) + self.injection(1., z)
-        elif self.enable_partial_diff_jacobian:
-            conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
-            if self.enable_adiabatic_losses:
-                conloss += self.adia_loss_rates_grid.loss_vector(z)
-            if self.enable_pairprod_losses:
-                conloss += self.pair_loss_rates_grid.loss_vector(z)
-            partial_deriv = self.dldz(z) * self.diff_operator.operator.dot(
-                conloss * state)
-            r = self.jacobian.dot(state) + partial_deriv
-        else:
-            r = self.jacobian.dot(state)
-        return r
-
-    def eqn_jac(self, z, state, *jac_args):
-        self.ncallsj += 1
-
-        from scipy.sparse import dia_matrix
-        if self.last_hadr_jac is None:
-            if self.enable_photohad_losses:
-                self.last_hadr_jac = self.had_int_rates.get_dense_hadr_jacobian(
-                    z, self.dldz(z))
-            else:
-                self.last_hadr_jac = self.had_int_rates.get_dense_hadr_jacobian(
-                    z, self.dldz(z))
-                self.last_hadr_jac *= 0.
-
-        return self.last_hadr_jac
-
-
-class UHECRPropagationSolverEULER(UHECRPropagationSolver):
-    def __init__(self, *args, **kwargs):
-        super(UHECRPropagationSolverEULER, self).__init__(*args, **kwargs)
-
-    def solve(self, dz=1e-3, verbose=True, extended_output=False,
-              initial_inj=False, disable_inj=False):
-        from time import time
-        self._update_jacobian(self.initial_z)
-        self.current_z_rates = self.initial_z
-
-        # stepcount = 0
-        dz = -1 * dz
-        start_time = time()
-        curr_z = self.initial_z
-        if initial_inj:
-            initial_state = self.injection(dz, self.initial_z)
-            print(initial_state)
-        else:
-            initial_state = np.zeros(self.dim_states)
-        state = initial_state
-        info(2, 'Starting integration.')
-
-        while curr_z + dz >= self.final_z:
-            if verbose:
-                info(3, "Integrating at z={0}".format(curr_z))
-
-            # --------------------------------------------
-            # Solve for hadronic interactions
-            # --------------------------------------------
-            if verbose:
-                print('Solving hadr losses at t =', curr_z)
-            self._update_jacobian(curr_z)
-
-            state += self.eqn_deriv_euler(curr_z, state) * dz
-
-            # --------------------------------------------
-            # Apply the injection
-            # --------------------------------------------
-            if not disable_inj:
-                if not self.enable_injection_jacobian and not self.enable_partial_diff_jacobian:
-                    if verbose:
-                        print('applying injection at t =', curr_z)
-                    state += self.injection(dz, curr_z)
-
-            # --------------------------------------------
-            # Apply the semi lagrangian
-            # --------------------------------------------
-            if not self.enable_partial_diff_jacobian:
-                if self.enable_adiabatic_losses or self.enable_pairprod_losses:
-                    if verbose:
-                        print('applying semi lagrangian at t =', curr_z)
-                    state = self.semi_lagrangian(dz, curr_z, state)
-
-            # --------------------------------------------
-            # Some last checks and resets
-            # --------------------------------------------
-            if curr_z < -1 * dz:
-                print('break at z =', curr_z)
-                break
-            curr_z += dz
-
-        # self.r.integrate(self.final_z)
-
-        end_time = time()
-        info(2, 'Integration completed in {0} s'.format(end_time - start_time))
-        self.state = state
-
+        return res
 
 class UHECRPropagationSolverBDF(UHECRPropagationSolver):
 
@@ -680,7 +484,6 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
         self.atol = kwargs.pop('atol', 1e40)
         self.rtol = kwargs.pop('rtol', 1e-10)
         super(UHECRPropagationSolverBDF, self).__init__(*args, **kwargs)
-        # UHECRPropagationSolver.__init__(self,*args,**kwargs)
 
     def _init_solver(self, dz):
         initial_state = np.zeros(self.dim_states)
@@ -691,9 +494,10 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
         # find the maximum injection and reduce the system by this
         self.red_idx = np.nonzero(self.injection(1., 0.))[0].max()
 
+        sparsity = self.had_int_rates.get_hadr_jacobian(self.initial_z, 1.).get()
         from prince.util import PrinceBDF
         self.r = PrinceBDF(
-            self.eqn_deriv_mkl,
+            self.eqn_derivative,
             self.initial_z,
             initial_state,
             self.final_z,
@@ -701,7 +505,7 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
             atol=self.atol,
             rtol=self.rtol,
             #  jac = self.eqn_jac,
-            jac_sparsity=self.eqn_jac(self.initial_z, initial_state),
+            jac_sparsity=sparsity,
             vectorized=True)
 
     def solve(self,
@@ -786,3 +590,70 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
 
         end_time = time()
         info(2, 'Integration completed in {0} s'.format(end_time - start_time))
+
+class UHECRPropagationSolverEULER(UHECRPropagationSolver):
+    def __init__(self, *args, **kwargs):
+        super(UHECRPropagationSolverEULER, self).__init__(*args, **kwargs)
+
+    def solve(self, dz=1e-3, verbose=True, extended_output=False,
+              initial_inj=False, disable_inj=False):
+        from time import time
+        self._update_jacobian(self.initial_z)
+        self.current_z_rates = self.initial_z
+
+        # stepcount = 0
+        dz = -1 * dz
+        start_time = time()
+        curr_z = self.initial_z
+        if initial_inj:
+            initial_state = self.injection(dz, self.initial_z)
+            print(initial_state)
+        else:
+            initial_state = np.zeros(self.dim_states)
+        state = initial_state
+        info(2, 'Starting integration.')
+
+        while curr_z + dz >= self.final_z:
+            if verbose:
+                info(3, "Integrating at z={0}".format(curr_z))
+
+            # --------------------------------------------
+            # Solve for hadronic interactions
+            # --------------------------------------------
+            if verbose:
+                print('Solving hadr losses at t =', curr_z)
+            self._update_jacobian(curr_z)
+
+            state += self.eqn_deriv_euler(curr_z, state) * dz
+
+            # --------------------------------------------
+            # Apply the injection
+            # --------------------------------------------
+            if not disable_inj:
+                if not self.enable_injection_jacobian and not self.enable_partial_diff_jacobian:
+                    if verbose:
+                        print('applying injection at t =', curr_z)
+                    state += self.injection(dz, curr_z)
+
+            # --------------------------------------------
+            # Apply the semi lagrangian
+            # --------------------------------------------
+            if not self.enable_partial_diff_jacobian:
+                if self.enable_adiabatic_losses or self.enable_pairprod_losses:
+                    if verbose:
+                        print('applying semi lagrangian at t =', curr_z)
+                    state = self.semi_lagrangian(dz, curr_z, state)
+
+            # --------------------------------------------
+            # Some last checks and resets
+            # --------------------------------------------
+            if curr_z < -1 * dz:
+                print('break at z =', curr_z)
+                break
+            curr_z += dz
+
+        # self.r.integrate(self.final_z)
+
+        end_time = time()
+        info(2, 'Integration completed in {0} s'.format(end_time - start_time))
+        self.state = state
