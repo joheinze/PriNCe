@@ -55,6 +55,10 @@ pip install -e PriNCe
 
 This will automatically install the dependencies. If you do not want to use `pip` you can also just add this folder to your `PYTHONPATH`.
 
+## [Examples](https://github.com/joheinze/PriNCe-examples)
+
+Examples are separately maintained: [Examples repository](https://github.com/joheinze/PriNCe-examples)
+
 ## Citation
 
 If you are using this code in your work, please cite:

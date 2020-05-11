@@ -88,7 +88,7 @@ Examples
 ........
 
 Follow the :ref:`tutorial` and/or download and run the notebooks from 
-`github <https://github.com/joheinze/prince/tree/master/examples>`_.
+`github <https://github.com/joheinze/PriNCe-examples>`_.
 
 Citations
 .........
