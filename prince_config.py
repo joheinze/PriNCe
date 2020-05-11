@@ -115,8 +115,8 @@ config = {
     # #advantage from using more than 1 thread is limited by memory bandwidth)
     "MKL_threads": 4,
 
-    # Sparse matrix-vector product from "MKL"|"scipy"
-    "spmv_lib": "MKL",
+    # Sparse matrix-vector product from "CUPY"|"MKL"|"scipy"
+    "linear_algebra_backend": "MKL",
 
     # Parameters for the lsodes integrator. 
     "ode_params": {
@@ -129,18 +129,8 @@ config = {
         # 'with_jacobian': True
     },
 
-    # # Use sparse linear algebra (recommended!)
-    # "use_sparse": True,
-
     # # Selection of integrator (euler/odepack)
     # "integrator": "euler",
-
-    # # euler kernel implementation (numpy/MKL/CUDA).
-    # "kernel_config": "MKL",
-
-
-    # # Float precision (32 only yields speed up with CUDA, MKL gets slower?)
-    # "FP_precision": 64,
 
     #=========================================================================
     # Advanced settings
@@ -152,6 +142,18 @@ config = {
         "some_setting": False,
     }
 }
+
+# Check for CUPY library for GPU support
+try:
+    import cupy
+    has_cupy = True
+    mempool = cupy.get_default_memory_pool()
+    mempool.free_all_blocks()
+except ModuleNotFoundError:
+    print('CUPY not found for GPU support. Degrading to MKL.')
+    if config["linear_algebra_backend"] == 'cupy':
+        config["linear_algebra_backend"] = 'MKL'
+    has_cupy = False
 
 #: determine shared library extension and MKL path
 pf = platform.platform()
@@ -174,6 +176,7 @@ else:
     has_mkl = False
 
 def set_mkl_threads(nthreads):
+    global mkl
     from ctypes import cdll, c_int, byref
     mkl = cdll.LoadLibrary(mkl_path)
     # Set number of threads
@@ -184,3 +187,7 @@ def set_mkl_threads(nthreads):
 
 if has_mkl:
     set_mkl_threads(config["MKL_threads"])
+
+if not has_mkl and config["linear_algebra_backend"].lower() == 'mkl':
+    print('MKL runtime not found. Degrading to scipy.')
+    config["linear_algebra_backend"] = 'scipy'

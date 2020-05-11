@@ -67,10 +67,7 @@ class CombinedPhotonField(PhotonField):
           float: CMB photon spectrum in :math:`{\\rm GeV}}^{-1} {\\rm cm}}^{-3}`
         """
         E = np.atleast_1d(E)
-        dime = E.shape[0]
-        res = np.zeros(dime)
-        for model in self.model_list:
-            res += model.get_photon_density(E, z)
+        res = np.sum([model.get_photon_density(E, z) for model in self.model_list], axis=0)
         return res
 
 
@@ -119,10 +116,14 @@ class CMBPhotonSpectrum(PhotonField):
         # density at z = 0, for energy E / (1 + z); ECMB = kB * T0
 
         E_CMB = config['E_CMB']
-        owarn = np.seterr(over='ignore')
-        nlocal = pref * Ered**2 / (np.exp(Ered / E_CMB) - 1.0)
-        np.seterr(**owarn)
-        return (1. + z)**2 * nlocal  # JH: Fixed, was (1. + z) ** 3 before
+        # Call exp only for values within dynamic range of the function
+        eratio = Ered / E_CMB
+        exp_range = eratio < 709. # This is the limit for 64 bits
+        nlocal = np.zeros_like(Ered)
+        pref *= (1. + z)**2 # Normalize
+        nlocal[exp_range] = pref * Ered[exp_range]**2 / (np.exp(eratio[exp_range]) - 1.0)
+        del exp_range
+        return nlocal
 
 class EBLSplined2D(PhotonField):
     def __init__(self):
