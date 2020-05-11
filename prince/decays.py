@@ -468,6 +468,8 @@ def nu_from_beta_decay(x_grid, mother, daughter, Gamma=200, angle=None):
     Returns:
       float: probability density on x_grid
     """
+    import warnings
+
     info(10, 'Calculating neutrino energy from beta decay', mother, daughter)
 
     mass_el = spec_data[20]['mass']
@@ -514,12 +516,14 @@ def nu_from_beta_decay(x_grid, mother, daughter, Gamma=200, angle=None):
     else:
         ctheta = angle
 
-    E_mesh, ctheta_mesh = np.meshgrid(E, ctheta, indexing='ij')
-    boost = Gamma * (1 - ctheta_mesh)
-
+    boost = Gamma * (1 - ctheta)
     Emax = E0 * boost
-    res = E_mesh**2 / boost**5 * (Emax - E_mesh) * np.sqrt(
-        (E_mesh - Emax)**2 - boost**2 * mass_el**2)
+
+    E_mesh, boost_mesh = np.meshgrid(E, boost, indexing='ij')
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        res = E_mesh**2 / boost_mesh**5 * (Emax - E_mesh) * np.sqrt(
+            (E_mesh - Emax)**2 - boost_mesh**2 * mass_el**2)
     res[E_mesh > Emax] = 0.
     res = np.nan_to_num(res)
 
