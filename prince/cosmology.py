@@ -4,7 +4,7 @@ Contains basic functions to handle standard cosmology
 
 import numpy as np
 
-import prince_config as config
+import prince.config as config
 
 def H(z, H0=config.H_0s):
     """Expansion rate of the universe.

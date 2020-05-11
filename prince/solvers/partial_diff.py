@@ -1,6 +1,6 @@
 
 import numpy as np
-from prince_config import linear_algebra_backend
+import prince.config as config
 
 class SemiLagrangianSolver(object):
     """Contains routines to project spectra from shifted grids back to old grid"""
@@ -323,7 +323,7 @@ class DifferentialOperator(object):
 
         self.nspec = nspec
         self.operator = self.construct_differential_operator()
-        if linear_algebra_backend.lower() == 'cupy':
+        if config.linear_algebra_backend.lower() == 'cupy':
             import cupyx
             self.operator = cupyx.scipy.sparse.csr_matrix(self.operator)
 

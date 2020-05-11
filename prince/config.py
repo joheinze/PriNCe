@@ -9,7 +9,7 @@ import numpy as np
 
 base_path = path.dirname(path.abspath(__file__))
 
-#: Debug flag for verbose printing, 0 silences MCEq entirely
+#: Debug flag for verbose printing, 0 silences PriNCe entirely
 debug_level = 1
 #: Printout debug info only for functions in this list (just give the name,
 #: "get_solution" for instance) Warning, this option slows down initialization
@@ -25,7 +25,7 @@ print_module = False
 # =================================================================
 
 #: Directory where the data files for the calculation are stored
-data_dir = path.join(base_path, 'prince', 'data')
+data_dir = path.join(base_path, 'data')
 
 #: PrinceDB file name
 db_fname = 'prince_db_05.h5'

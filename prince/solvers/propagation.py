@@ -5,9 +5,7 @@ import numpy as np
 from prince.cosmology import H
 from prince.data import PRINCE_UNITS, EnergyGrid
 from prince.util import info
-from prince_config import (
-    has_cupy, has_mkl, linear_algebra_backend, semi_lagr_method,
-    cosmic_ray_grid, update_rates_z_threshold)
+import prince.config as config
 
 from .partial_diff import DifferentialOperator, SemiLagrangianSolver
 
@@ -83,7 +81,7 @@ class UHECRPropagationResult(object):
         # create a common egrid or used supplied one
         if egrid is None:
             max_mass = max([s.A for s in self.spec_man.species_refs])
-            emin_log, emax_log, nbins = list(cosmic_ray_grid)
+            emin_log, emax_log, nbins = list(config.cosmic_ray_grid)
             emax_log = np.log10(max_mass * 10**emax_log)
             nbins *= 4
             com_egrid = EnergyGrid(emin_log, emax_log, nbins).grid
@@ -178,7 +176,7 @@ class UHECRPropagationSolver(object):
         self.z_offset = z_offset
 
         self.current_z_rates = None
-        self.recomp_z_threshold = update_rates_z_threshold
+        self.recomp_z_threshold = config.update_rates_z_threshold
 
         self.spec_man = prince_run.spec_man
         self.egrid = prince_run.cr_grid.grid
@@ -212,10 +210,10 @@ class UHECRPropagationSolver(object):
 
         # Configuration of BLAS backend
         self.using_cupy = False
-        if has_cupy and linear_algebra_backend.lower() == 'cupy':
+        if config.has_cupy and config.linear_algebra_backend.lower() == 'cupy':
             self.eqn_derivative = self.eqn_deriv_cupy
             self.using_cupy = True
-        elif has_mkl and linear_algebra_backend.lower() == 'mkl':
+        elif config.has_mkl and config.linear_algebra_backend.lower() == 'mkl':
             self.eqn_derivative = self.eqn_deriv_mkl
         else:
             self.eqn_derivative = self.eqn_deriv_standard
@@ -279,7 +277,7 @@ class UHECRPropagationSolver(object):
             conloss += self.pair_loss_rates_bins.loss_vector(z)
         conloss *= self.dldz(z) * delta_z
 
-        method = semi_lagr_method
+        method = config.semi_lagr_method
 
         # -------------------------------------------------------------------
         # numpy interpolator
@@ -629,7 +627,7 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
                 print('Solving hadr losses at t =', curr_z)
             self._update_jacobian(curr_z)
 
-            state += self.eqn_deriv_euler(curr_z, state) * dz
+            state += self.eqn_deriv(curr_z, state) * dz
 
             # --------------------------------------------
             # Apply the injection

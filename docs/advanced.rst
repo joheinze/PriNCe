@@ -8,12 +8,12 @@ The "advanced documentation" is the almost complete documentation of all modules
    :local:
    :depth: 2
 
-:mod:`prince_config` -- default configuration options
+:mod:`prince.config` -- default configuration options
 .....................................................
 
 The module contains all static options of PriNCe that are not meant to be changed in run time.
 
-.. automodule:: prince_config
+.. automodule:: prince.config
    :members:
 
 :mod:`prince.core` -- Core module

@@ -6,9 +6,7 @@ import inspect
 import numpy as np
 from scipy.interpolate import InterpolatedUnivariateSpline, RectBivariateSpline
 from scipy.integrate import BDF
-from prince_config import (
-    debug_level, print_module, override_debug_fcn, override_max_level)
-
+import prince.config as config
 
 def convert_to_namedtuple(dictionary, name='GenericNamedTuple'):
     """Converts a dictionary to a named tuple."""
@@ -135,7 +133,7 @@ def caller_name(skip=2):
 
     name = []
 
-    if print_module:
+    if config.print_module:
         module = inspect.getmodule(parentframe)
         # `modname` can be None when frame is executed directly in console
         if module:
@@ -173,19 +171,19 @@ def info(min_dbg_level, *message, **kwargs):
         blank_caller (bool): blank the caller name (for multiline output)
         no_caller (bool): don't print the name of the caller
     """
-    condition = kwargs.pop('condition', min_dbg_level <= debug_level)
+    condition = kwargs.pop('condition', min_dbg_level <= config.debug_level)
     # Dont' process the if the function if nothing will happen
-    if not (condition or override_debug_fcn): 
+    if not (condition or config.override_debug_fcn): 
         return
 
     blank_caller = kwargs.pop('blank_caller', False)
     no_caller = kwargs.pop('no_caller', False)
-    if override_debug_fcn and min_dbg_level < override_max_level:
+    if config.override_debug_fcn and min_dbg_level < config.override_max_level:
         fcn_name = caller_name(skip=2).split('::')[-1].split('():')[0]
-        if fcn_name in override_debug_fcn:
+        if fcn_name in config.override_debug_fcn:
             min_dbg_level = 0
 
-    if condition and min_dbg_level <= debug_level:
+    if condition and min_dbg_level <= config.debug_level:
         message = [str(m) for m in message]
         cname = caller_name() if not no_caller else ''
         if blank_caller:

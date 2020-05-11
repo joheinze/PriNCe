@@ -2,7 +2,7 @@
 
 import numpy as np
 
-import prince_config as config
+import prince.config as config
 from prince import cross_sections
 
 species_talys = {

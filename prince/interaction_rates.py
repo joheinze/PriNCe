@@ -5,13 +5,13 @@ from scipy.integrate import trapz
 
 from prince.data import PRINCE_UNITS
 from prince.util import info
-import prince_config as config
+import prince.config as config
 
 using_cupy = False
 # Use GPU support
 if config.has_cupy and config.linear_algebra_backend.lower() == 'cupy':
     import cupy
-    from prince_config import mempool
+    from prince.config import mempool
     using_cupy = True
 
 class PhotoNuclearInteractionRate(object):

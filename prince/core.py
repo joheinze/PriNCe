@@ -9,7 +9,7 @@ from prince import cross_sections, data, interaction_rates
 from prince._deprecated.util import get_AZN
 from prince.data import EnergyGrid
 from prince.util import info
-import prince_config as config
+import prince.config as config
 
 
 class PriNCeRun(object):

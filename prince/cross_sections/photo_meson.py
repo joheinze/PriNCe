@@ -6,7 +6,7 @@ import numpy as np
 from prince._deprecated.util import bin_widths, get_AZN
 from prince.data import spec_data
 from prince.util import info
-from prince_config import data_dir, max_mass, tau_dec_threshold, redist_threshold_ID
+import prince.config as config
 
 from .base import CrossSectionBase
 class SophiaSuperposition(CrossSectionBase):
@@ -267,7 +267,7 @@ class EmpiricalModel(SophiaSuperposition):
             else:
                 return gap*( 1. - sigmoid) + base
 
-        mass_scaling_file = join(data_dir, 'scaling_lines')
+        mass_scaling_file = join(config.data_dir, 'scaling_lines')
         nsc = np.load(mass_scaling_file, allow_pickle=True,encoding='latin1')
 
         # defining the transistion smoothing function s 
@@ -310,7 +310,7 @@ class EmpiricalModel(SophiaSuperposition):
         from pickle import load as pickle_load
         from scipy.interpolate import UnivariateSpline
 
-        uf_file = join(data_dir, 'universal-spline.pkl')
+        uf_file = join(config.data_dir, 'universal-spline.pkl')
         with open(uf_file, 'rb') as f:
             tck = pickle_load(f,encoding='latin1') 
 
@@ -322,7 +322,7 @@ class EmpiricalModel(SophiaSuperposition):
         from pickle import load as pickle_load
         from scipy.interpolate import UnivariateSpline
 
-        uf_file = join(data_dir, 'pion_spline.pkl')
+        uf_file = join(config.data_dir, 'pion_spline.pkl')
         with open(uf_file, 'rb') as f:
             tck = pickle_load(f,encoding='latin1') 
 
@@ -344,8 +344,8 @@ class EmpiricalModel(SophiaSuperposition):
         nuclides = sorted([k for k in spec_data.keys() if isinstance(k, int)])
         for mom in nuclides:
             A, _, _ = get_AZN(mom)
-            if (mom < 101) or (A > max_mass) or \
-                isinstance(mom, str) or (spec_data[mom]['lifetime'] < tau_dec_threshold):
+            if (mom < 101) or (A > config.max_mass) or \
+                isinstance(mom, str) or (spec_data[mom]['lifetime'] < config.tau_dec_threshold):
                 continue
             mults = multiplicity_table(mom)
             # dau_list, csincl_list = zip(*((k, v) for k, v in mults.iteritems()))
@@ -380,7 +380,7 @@ class EmpiricalModel(SophiaSuperposition):
         """
         from scipy.integrate import trapz
 
-        if daughter <= redist_threshold_ID:
+        if daughter <= config.redist_threshold_ID:
             _, cs_diff = self.incl_diff(mother, daughter)
             cs_incl = trapz(cs_diff, x=self.xcenters,
                             dx=bin_widths(self.xbins), axis=0)

@@ -7,7 +7,7 @@ import h5py
 
 
 from prince.util import convert_to_namedtuple, info
-import prince_config as config
+import prince.config as config
 
 #: Dictionary containing particle properties, like mass, charge
 #: lifetime or branching ratios

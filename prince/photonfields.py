@@ -10,7 +10,7 @@ import numpy as np
 from scipy.integrate import trapz
 from scipy.interpolate import UnivariateSpline
 
-from prince_config import E_CMB
+import prince.config as config
 
 
 class PhotonField(object):
@@ -116,7 +116,7 @@ class CMBPhotonSpectrum(PhotonField):
         # density at z = 0, for energy E / (1 + z); ECMB = kB * T0
 
         # Call exp only for values within dynamic range of the function
-        eratio = Ered / E_CMB
+        eratio = Ered / config.E_CMB
         exp_range = eratio < 709. # This is the limit for 64 bits
         nlocal = np.zeros_like(Ered)
         pref *= (1. + z)**2 # Normalize

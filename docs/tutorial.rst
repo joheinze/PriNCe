@@ -41,10 +41,10 @@ These objects then need to be passed to :class:`prince.core.PriNCeRun`::
 Can be used to set a maximal nucleus mass. All heavier nuclei will be ignored, which can lead to a very significant speedup.
 Setting this option is equivalent to setting the same option in the config::
 
-    from prince_config import
-    config['max_mass'] = 14
+    from prince.config import
+    config.max_mass = 14
 
-The config is a simple dictionary, see `prince_config.py` for all available options.
+The config is a simple dictionary, see `prince/config.py` for all available options.
 Most settings need to be set before creating other objects, such as `PriNCeRun`
 
 Solving the Transport equation
