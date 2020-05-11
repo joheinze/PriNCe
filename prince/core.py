@@ -9,7 +9,7 @@ from prince import cross_sections, data, interaction_rates
 from prince._deprecated.util import get_AZN
 from prince.data import EnergyGrid
 from prince.util import info
-from prince_config import config
+import prince_config as config
 
 
 class PriNCeRun(object):
@@ -24,17 +24,17 @@ class PriNCeRun(object):
     def __init__(self, *args, **kwargs):
 
         if "max_mass" in kwargs:
-            config["max_mass"] = kwargs["max_mass"]
+            max_mass = kwargs.pop("max_mass", config.max_mass)
 
         # Initialize energy grid
-        if config["grid_scale"] == 'E':
+        if config.grid_scale == 'E':
             info(1, 'initialising Energy grid')
-            self.cr_grid = EnergyGrid(*config["cosmic_ray_grid"])
-            self.ph_grid = EnergyGrid(*config["photon_grid"])
+            self.cr_grid = EnergyGrid(*config.cosmic_ray_grid)
+            self.ph_grid = EnergyGrid(*config.photon_grid)
         else:
             raise Exception(
-                "Unknown energy grid scale {:}, adjust config['grid_scale']".
-                format(config['grid_scale']))
+                "Unknown energy grid scale {:}, adjust config.grid_scale".
+                format(config.grid_scale))
 
         # Cross section handler
         if 'cross_sections' in kwargs:
@@ -52,9 +52,6 @@ class PriNCeRun(object):
             self.photon_field = pf.CombinedPhotonField(
                 [pf.CMBPhotonSpectrum, pf.CIBGilmore2D])
 
-        # Store adv_set
-        self.adv_set = config["adv_settings"]
-
         # Limit max nuclear mass of eqn system
         if "species_list" in kwargs:
             system_species = list(
@@ -63,13 +60,13 @@ class PriNCeRun(object):
         else:
             system_species = [
                 s for s in self.cross_sections.known_species
-                if get_AZN(s)[0] <= config["max_mass"]
+                if get_AZN(s)[0] <= max_mass
             ]
-        # If secondaries are disabled in config, delete them from system species
-        if not config["secondaries"]:
+        # Disable photo-meson production
+        if not config.secondaries:
             system_species = [s for s in system_species if s >= 100]
         # Remove particles that are explicitly excluded
-        for pid in config["ignore_particles"]:
+        for pid in config.ignore_particles:
             if pid in system_species:
                 system_species.remove(pid)
 

@@ -4,8 +4,8 @@ from os.path import join
 import numpy as np
 
 from prince._deprecated.util import get_AZN
-from prince.util import info, load_or_convert_array
-from prince_config import config
+from prince.util import info
+import prince_config as config
 
 from .base import CrossSectionBase
 
@@ -22,12 +22,10 @@ class TabulatedCrossSection(CrossSectionBase):
 
     def __init__(self,
                  model_prefix='PEANUT_IAS',
-                 max_mass=None,
                  *args,
                  **kwargs):
         self.supports_redistributions = False
-        if max_mass is None:
-            self.max_mass = config["max_mass"]
+        config.max_mass = kwargs.pop('max_mass', config.max_mass)
         CrossSectionBase.__init__(self)
         self._load(model_prefix)
         self._optimize_and_generate_index()
@@ -56,7 +54,7 @@ class TabulatedCrossSection(CrossSectionBase):
         # Now write the raw data into a dict structure
         _nonel_tab = {}
         for pid, csgrid in zip(pid_nonel, nonel_raw):
-            if get_AZN(pid)[0] > self.max_mass:
+            if get_AZN(pid)[0] > config.max_mass:
                 continue
             _nonel_tab[pid] = csgrid
 
@@ -69,7 +67,7 @@ class TabulatedCrossSection(CrossSectionBase):
         # mo = mother, da = daughter
         _incl_tab = {}
         for (mo, da), csgrid in zip(pids_incl, incl_raw):
-            if get_AZN(mo)[0] > self.max_mass:
+            if get_AZN(mo)[0] > config.max_mass:
                 continue
             _incl_tab[mo, da] = csgrid
 
@@ -253,7 +251,7 @@ class CompositeCrossSection(CrossSectionBase):
 
         for model in self.model_refs:
             egr, csec = None, None
-            if config["debug_level"] > 1:
+            if config.debug_level > 1:
                 if not np.allclose(self.xbins, model.xbins):
                     raise Exception('Unequal x bins. Aborting...',
                                     self.xbins.shape, model.xbins)

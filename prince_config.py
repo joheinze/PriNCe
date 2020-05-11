@@ -1,147 +1,128 @@
 """PriNCe configuration module."""
 
-import os
 import os.path as path
 import platform
 import sys
-import pickle as pickle
+import warnings
+
 import numpy as np
 
-base = path.dirname(path.abspath(__file__))
-sys.path.append(base)
+base_path = path.dirname(path.abspath(__file__))
+
+#: Debug flag for verbose printing, 0 silences MCEq entirely
+debug_level = 1
+#: Printout debug info only for functions in this list (just give the name,
+#: "get_solution" for instance) Warning, this option slows down initialization
+#: by a lot. Use only when needed.
+override_debug_fcn = []
+#: Override debug printout for debug levels < value for the functions above
+override_max_level = 10
+#: Print module name in debug output
+print_module = False
+
+# =================================================================
+# Paths and library locations
+# =================================================================
+
+#: Directory where the data files for the calculation are stored
+data_dir = path.join(base_path, 'prince', 'data')
+
+#: PrinceDB file name
+db_fname = 'prince_db_05.h5'
+
+#: Model file for redistribution functions (from SOPHIA or similar)
+redist_fname = 'sophia_redistribution_logbins.npy'
 
 
-config = {
+#=========================================================================
+# Physics configuration
+#=========================================================================
 
-    # Debug flag for verbose printing, 0 = minimum
-    "debug_level": 3,
+#: Cosmological parameters
 
-    # When printing output, prepend module name
-    "print_module" : False,
+#: Hubble constant
+H_0 = 70.5  #km s^-1 Mpc^-1
+H_0s = 2.28475e-18  #s^-1
 
-    #=========================================================================
-    # Paths and library locations
-    #=========================================================================
+#: Omega_m
+Omega_m = 0.27
 
-    # Location of the database
-    "data_dir": path.join(base, 'prince', 'data'),
-    # PrinceDB file name
-    "db_fname": 'prince_db_05.h5',
-    # Model file for redistribution functions (from SOPHIA or similar)
-    "redist_fname": "sophia_redistribution_logbins.npy",
+#: Omega_Lambda
+Omega_Lambda = 0.73
 
-    #=========================================================================
-    # Physics configuration
-    #=========================================================================
-    # Cosmological parameters
+#: CMB energy kB*T0 [GeV]
+E_CMB = 2.34823e-13  
 
-    # Hubble constant
-    "H_0": 70.5,  #km s^-1 Mpc^-1
-    "H_0s": 2.28475e-18,  #s^-1
+#===========================================================================
+# Grids
+#===========================================================================
 
-    # Omega_m
-    "Omega_m": 0.27,
+#: Cosmic ray energy grid (defines system size for solver)
+#: Number of bins in multiples of 4 recommended for maximal vectorization
+#: efficiency for 256 bit AVX or similar
+#: Format (log10(E_min), log10(E_max), nbins/decade of energy)
+cosmic_ray_grid = (3, 14, 8)
+#: Photon grid of target field, only for calculation of rates
+photon_grid = (-15, -6, 8)
 
-    # Omega_Lambda
-    "Omega_Lambda": 0.73,
+#: Scale of the energy grid
+#:'E': logarithmic in energy E_i = E_min * (Delta)^i
+#:'logE': linear grid in x = log_10(E): x_i = x_min + i * Delta
+grid_scale ='E'
 
-    "E_CMB" : 2.34823e-13,  # = kB*T0 [GeV]
+#: Order of semi-lagrangian for energy derivative 
+semi_lagr_method ='5th_order'
 
-    #===========================================================================
-    # Grids
-    #===========================================================================
-    # Number of bins in multiples of 4 recommended for maximal vectorization
-    # efficiency for 256 bit AVX or similar
+#===========================================================================
+# Model options
+#===========================================================================
 
-    # Format (log10(E_min), log10(E_max), nbins/decade of energy)
-    # Main energy grid for solver
-    "cosmic_ray_grid": (3, 14, 8),
-    # Photon grid of target field, only for calculation of rates
-    "photon_grid": (-15, -6, 8),
-    # Scale of the energy grid
-    # 'E': logarithmic in energy E_i = E_min * (Delta)^i
-    # 'logE': linear grid in x = log_10(E): x_i = x_min + i * Delta
-    "grid_scale":'E',
+#: Threshold lifetime value for explicit transport of particles of this type. It
+#: means that if a particle is unstable with lifetime smaller than this threshold,
+#: it will be decayed until all final state particles of this chain are stable.
+#: In other words: short intermediate states will be integrated out
+tau_dec_threshold = np.inf # All unstable particles decay
+# tau_dec_threshold = 0.  # None unstable particles decay
+# tau_dec_threshold = 850. # This value is for stable neutrons
 
-    "semi_lagr_method":'5th_order',
+#: Particle ID for which redistribution functions are needed to be taken into
+#: account. The default value is 101 (proton). All particles with smaller
+#: IDs, i.e. neutrinos, pions, muons etc., will have energy redistributions.
+#: For larger IDs (nuclei) the boost conservation is employed.
+redist_threshold_ID = 101
 
-    #===========================================================================
-    # Model options
-    #===========================================================================
-    # The sophia tables are on a grid with 2000 points. The number will use every
-    # N-th entry of the table to reduce memory usage of the interpolator
-    # "sophia_grid_skip": 4,
+#: Cut on energy redistribution functions
+#: Resitribution below this x value are set to 0.
+#: "x_cut" : 0.,
+#: "x_cut_proton" : 0.,
+x_cut = 1e-4
+x_cut_proton = 1e-1
 
-    # Threshold lifetime value to consider a particle as worth propagating. It
-    # means that if a particle is unstable with lifetime smaller than this threshold
-    # will be decayed until all final state particles of this chain are stable.
-    # In other words: short intermediate states will be integrated out
-    "tau_dec_threshold": np.inf, # All unstable particles decay
-    # "tau_dec_threshold": 0.,   # No unstable particles decay
-    # "tau_dec_threshold": 850., # This value is for stable neutrons
+#: cut on photon energy, cross section above y = E_cr e_ph / m_cr does not contribute
+y_cut = np.inf
 
-    # Particle ID for which redistribution functions are needed to be taken into
-    # account. The default value is 101 (proton). All particles with smaller
-    # IDs, i.e. neutrinos, pions, muons etc., will have energy redistributions.
-    # For larger IDs (nuclei) the boost conservation is employed.
-    "redist_threshold_ID": 101,
+# Build equation system up to a maximal nuclear mass of
+max_mass = np.inf
 
-    # Cut on redistribution functions
-    # Resitribution below this x value are set to 0.
-    # "x_cut" : 0.,
-    # "x_cut_proton" : 0.,
-    "x_cut" : 1e-4,
-    "x_cut_proton" : 1e-1,
+# Include secondaries like photons and neutrinos
+secondaries = True
+# List of specific particles to ignore
+ignore_particles = [20,21] # (we ignore photons and electrons, as their physics is not fully implemented)
 
-    # cut on photon energy, cross section above y = E_cr e_ph / m_cr does not contribute
-    "y_cut": np.inf,
+#===========================================================================
+# Parameters of numerical integration
+#===========================================================================
 
-    # Build equation system up to a maximal nuclear mass of
-    "max_mass": np.inf,
+# Update rates at not more frequently than this value in z
+update_rates_z_threshold = 0.01
 
-    # Include secondaries like photons and neutrinos
-    "secondaries": True,
-    # List of specific particles to ignore
-    "ignore_particles": [20,21], #(we ignore photons and electrons, as their physics is not fully implemented)
+# #Number of MKL threads (for sparse matrix multiplication the performance
+# #advantage from using more than a few threads is limited by memory bandwidth)
+MKL_threads = 4
 
-    #===========================================================================
-    # Parameters of numerical integration
-    #===========================================================================
+# Sparse matrix-vector product from "CUPY"|"MKL"|"scipy"
+linear_algebra_backend = "MKL"
 
-    # Update threshold of rates/cross sections
-    "update_rates_z_threshold": 0.01,
-
-    # #Number of MKL threads (for sparse matrix multiplication the performance
-    # #advantage from using more than 1 thread is limited by memory bandwidth)
-    "MKL_threads": 4,
-
-    # Sparse matrix-vector product from "CUPY"|"MKL"|"scipy"
-    "linear_algebra_backend": "MKL",
-
-    # Parameters for the lsodes integrator. 
-    "ode_params": {
-        'name': 'lsodes',
-        'method': 'bdf',
-        'rtol': 1e-6,
-        'atol': 1e68,
-        'tcrit': None,
-        # 'max_order_s': 2,
-        # 'with_jacobian': True
-    },
-
-    # # Selection of integrator (euler/odepack)
-    # "integrator": "euler",
-
-    #=========================================================================
-    # Advanced settings
-    #=========================================================================
-
-    # Possibilities to control some more advanced stuff
-    "adv_settings": {
-        # Modify something in special way
-        "some_setting": False,
-    }
-}
 
 # Check for CUPY library for GPU support
 try:
@@ -151,8 +132,8 @@ try:
     mempool.free_all_blocks()
 except ModuleNotFoundError:
     print('CUPY not found for GPU support. Degrading to MKL.')
-    if config["linear_algebra_backend"] == 'cupy':
-        config["linear_algebra_backend"] = 'MKL'
+    if linear_algebra_backend == 'cupy':
+        linear_algebra_backend = 'MKL'
     has_cupy = False
 
 #: determine shared library extension and MKL path
@@ -176,18 +157,56 @@ else:
     has_mkl = False
 
 def set_mkl_threads(nthreads):
-    global mkl
-    from ctypes import cdll, c_int, byref
+    global mkl, MKL_threads
+    from ctypes import cdll, byref, c_int
     mkl = cdll.LoadLibrary(mkl_path)
     # Set number of threads
-    config["MKL_threads"] = nthreads
+    MKL_threads = nthreads
     mkl.mkl_set_num_threads(byref(c_int(nthreads)))
-    if config['debug_level'] >= 5:
+    if debug_level >= 5:
         print('MKL threads limited to {0}'.format(nthreads))
 
 if has_mkl:
-    set_mkl_threads(config["MKL_threads"])
+    set_mkl_threads(MKL_threads)
 
-if not has_mkl and config["linear_algebra_backend"].lower() == 'mkl':
+if not has_mkl and linear_algebra_backend.lower() == 'mkl':
     print('MKL runtime not found. Degrading to scipy.')
-    config["linear_algebra_backend"] = 'scipy'
+    linear_algebra_backend = 'scipy'
+
+def _download_file(url, outfile):
+    """Downloads the PriNCe database from github release binaries."""
+
+    from tqdm import tqdm
+    import requests
+    import math
+
+    # Streaming, so we can iterate over the response.
+    r = requests.get(url, stream=True)
+
+    # Total size in bytes.
+    total_size = int(r.headers.get('content-length', 0))
+    block_size = 1024 * 1024
+    wrote = 0
+    with open(outfile, 'wb') as f:
+        for data in tqdm(r.iter_content(block_size), total=math.ceil(total_size // block_size),
+                         unit='MB', unit_scale=True):
+            wrote = wrote + len(data)
+            f.write(data)
+    if total_size != 0 and wrote != total_size:
+        raise Exception("ERROR, something went wrong")
+
+
+# Download database file from github
+base_url = 'https://github.com/joheinze/PriNCe/releases/download/'
+release_tag = 'initial_release/'
+url = base_url + release_tag + db_fname
+if not path.isfile(path.join(data_dir, db_fname)):
+    print('Downloading for PriNCe database file {0}.'.format(db_fname))
+    if debug_level >= 2:
+        print(url)
+    _download_file(url, path.join(data_dir, db_fname))
+
+# if path.isfile(path.join(data_dir, '...previous db name...')):
+#     import os
+#     print('Removing previous database {0}.'.format('...previous db name...'))
+#     os.unlink(path.join(data_dir, '...previous db name...'))

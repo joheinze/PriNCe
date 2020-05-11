@@ -4,14 +4,9 @@ Contains basic functions to handle standard cosmology
 
 import numpy as np
 
-from prince_config import config
+import prince_config as config
 
-H0 = config['H_0s']
-Omega_m = config['Omega_m']
-Omega_Lambda = config['Omega_Lambda']
-
-
-def H(z, H0=H0):
+def H(z, H0=config.H_0s):
     """Expansion rate of the universe.
 
     :math:`H(z) = H_0 \\sqrt{\\Omega_m (1 + z)^3 + \\Omega_\\Lambda}`
@@ -22,7 +17,7 @@ def H(z, H0=H0):
       float: expansion rate in :math:`s^{-1}`
     """
 
-    return H0 * np.sqrt(Omega_m * (1 + z)**3 + Omega_Lambda)
+    return H0 * np.sqrt(config.Omega_m * (1 + z)**3 + config.Omega_Lambda)
 
 
 def star_formation_rate(z, z_inhom=0.):
@@ -120,7 +115,7 @@ if __name__ == "__main__":
     ax.set_ylabel(r'Star formation rate Mpc$^{-3}$')
 
     fig, ax = plt.subplots(1, 1, figsize=(4, 3))
-    ax.plot(zrange, H(zrange, H0=config['H_0']))
+    ax.plot(zrange, H(zrange, H0=config.H_0s))
     ax.set_xlabel(r'Redshift $z$')
     ax.set_ylabel(r'Expansion rate of the universe (km s$^{-1}$ Mpc$^{-1}$')
 
