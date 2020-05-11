@@ -387,10 +387,6 @@ class UHECRPropagationSolver(object):
         if abs(z - self.current_z_rates) > self.recomp_z_threshold:
             self._update_jacobian(z)
             self.current_z_rates = z
-        
-        if self.using_cupy:
-            import cupy
-            state = cupy.array(state)
 
         r = self.jacobian.dot(state)
         
