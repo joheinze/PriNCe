@@ -15,7 +15,7 @@ from numpy import array, exp, inf, linspace, sum
 
 from prince._deprecated.util import get_AZN
 from prince.data import spec_data
-from prince_config import config
+from prince.config import config
 
 # JH: This file gave some linter errors for me, disabled for now
 # pylint: skip-file
@@ -122,7 +122,7 @@ def residual_multiplicities():
 # species_by_mass = list_species_by_mass(56, config['tau_dec_threshold'])
 species_by_mass = list_species_by_mass(56, 0.)
 # resmul = residual_multiplicities()
-small_frags_relative_yields_filename = join(config['data_dir'], 'small_frags_relative_yields.pkl')
+small_frags_relative_yields_filename = join(config.data_dir, 'small_frags_relative_yields.pkl')
 with open(small_frags_relative_yields_filename, 'rb') as f:
     # it's faster to pickle.load a precomputed resmul
     resmul = load(f,encoding='latin1')

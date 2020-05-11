@@ -6,8 +6,7 @@ import inspect
 import numpy as np
 from scipy.interpolate import InterpolatedUnivariateSpline, RectBivariateSpline
 from scipy.integrate import BDF
-from prince_config import config
-
+import prince.config as config
 
 def convert_to_namedtuple(dictionary, name='GenericNamedTuple'):
     """Converts a dictionary to a named tuple."""
@@ -122,6 +121,7 @@ def caller_name(skip=2):
 
     From https://gist.github.com/techtonik/2151727
     """
+    import inspect
 
     stack = inspect.stack()
     start = 0 + skip
@@ -133,7 +133,7 @@ def caller_name(skip=2):
 
     name = []
 
-    if config["print_module"]:
+    if config.print_module:
         module = inspect.getmodule(parentframe)
         # `modname` can be None when frame is executed directly in console
         if module:
@@ -150,13 +150,15 @@ def caller_name(skip=2):
     codename = parentframe.f_code.co_name
     if codename != '<module>':  # top level usually
         name.append(codename + '(): ')  # function or a method
+    else:
+        name.append(': ')  # If called from module scope
 
     del parentframe
     return "".join(name)
 
 
-def info(min_dbg_level, *message):
-    """Print to console if `min_debug_level <= config["debug_level"]`
+def info(min_dbg_level, *message, **kwargs):
+    """Print to console if `min_debug_level <= config.debug_level`
 
     The fuction determines automatically the name of caller and appends
     the message to it. Message can be a tuple of strings or objects
@@ -165,56 +167,73 @@ def info(min_dbg_level, *message):
     Args:
         min_dbg_level (int): Minimum debug level in config for printing
         message (tuple): Any argument or list of arguments that casts to str
+        condition (bool): Print only if condition is True
+        blank_caller (bool): blank the caller name (for multiline output)
+        no_caller (bool): don't print the name of the caller
     """
+    condition = kwargs.pop('condition', min_dbg_level <= config.debug_level)
+    # Dont' process the if the function if nothing will happen
+    if not (condition or config.override_debug_fcn): 
+        return
 
-    if min_dbg_level <= config["debug_level"]:
+    blank_caller = kwargs.pop('blank_caller', False)
+    no_caller = kwargs.pop('no_caller', False)
+    if config.override_debug_fcn and min_dbg_level < config.override_max_level:
+        fcn_name = caller_name(skip=2).split('::')[-1].split('():')[0]
+        if fcn_name in config.override_debug_fcn:
+            min_dbg_level = 0
+
+    if condition and min_dbg_level <= config.debug_level:
         message = [str(m) for m in message]
-        print(caller_name() + " ".join(message))
+        cname = caller_name() if not no_caller else ''
+        if blank_caller:
+            cname = len(cname) * ' '
+        print(cname + " ".join(message))
 
 
-def load_or_convert_array(fname, **kwargs):
-    """ Loads an array from '.npy' file if exists otherwise
-    the array is created from CVS file.
+# def load_or_convert_array(fname, **kwargs):
+#     """ Loads an array from '.npy' file if exists otherwise
+#     the array is created from CVS file.
 
-    `fname` is expected to be just the file name, without folder.
-    The CVS file is expected to be in the `raw_data_dir` directory
-    pointed to by the config. The array from the file is stored
-    as numpy binary with extension `.npy` in the folder pointed
-    by the `data_dir` config variable.
+#     `fname` is expected to be just the file name, without folder.
+#     The CVS file is expected to be in the `raw_data_dir` directory
+#     pointed to by the config. The array from the file is stored
+#     as numpy binary with extension `.npy` in the folder pointed
+#     by the `data_dir` config variable.
 
-    Args:
-        fname (str): File name without path or ending
-        kwargs (dict): Is passed to :func:`numpy.loadtxt`
-    Returns:
-        (numpy.array): Array stored in that file
-    """
-    from os.path import join, splitext, isfile, isdir
-    from os import listdir
-    import numpy as np
+#     Args:
+#         fname (str): File name without path or ending
+#         kwargs (dict): Is passed to :func:`numpy.loadtxt`
+#     Returns:
+#         (numpy.array): Array stored in that file
+#     """
+#     from os.path import join, splitext, isfile, isdir
+#     from os import listdir
+#     import numpy as np
 
-    info(10, 'Loading file', fname)
-    fname = splitext(fname)[0]
+#     info(10, 'Loading file', fname)
+#     fname = splitext(fname)[0]
 
-    if not isfile(join(config["data_dir"], fname + '.npy')):
-        info(2, 'Converting', fname, "to '.npy'")
-        arr = None
-        try:
-            arr = np.loadtxt(
-                join(config['raw_data_dir'], fname + '.dat'), **kwargs)
-        except IOError:
-            for subdir in listdir(config['raw_data_dir']):
-                if (isdir(join(config['raw_data_dir'], subdir)) and isfile(
-                        join(config['raw_data_dir'], subdir, fname + '.dat'))):
-                    arr = np.loadtxt(
-                        join(config['raw_data_dir'], subdir, fname + '.dat'),
-                        **kwargs)
-        finally:
-            if arr is None:
-                raise Exception('Required file', fname + '.dat', 'not found')
-            np.save(join(config["data_dir"], fname + '.npy'), arr)
-        return arr
-    else:
-        return np.load(join(config["data_dir"], fname + '.npy'), encoding='latin1')
+#     if not isfile(join(config.data_dir, fname + '.npy')):
+#         info(2, 'Converting', fname, "to '.npy'")
+#         arr = None
+#         try:
+#             arr = np.loadtxt(
+#                 join(config.raw_data_dir, fname + '.dat'), **kwargs)
+#         except IOError:
+#             for subdir in listdir(config.raw_data_dir):
+#                 if (isdir(join(config.raw_data_dir, subdir)) and isfile(
+#                         join(config.raw_data_dir, subdir, fname + '.dat'))):
+#                     arr = np.loadtxt(
+#                         join(config.raw_data_dir, subdir, fname + '.dat'),
+#                         **kwargs)
+#         finally:
+#             if arr is None:
+#                 raise Exception('Required file', fname + '.dat', 'not found')
+#             np.save(join(config.data_dir, fname + '.npy'), arr)
+#         return arr
+#     else:
+#         return np.load(join(config.data_dir, fname + '.npy'), encoding='latin1')
 
 
 class AdditiveDictionary(dict):

@@ -8,10 +8,8 @@ import numpy as np
 import prince.decays as decs
 from prince._deprecated.util import bin_widths, get_AZN
 from prince.data import spec_data
-from prince.util import (get_2Dinterp_object, get_interp_object,
-                         info, load_or_convert_array)
-from prince_config import config
-
+from prince.util import get_2Dinterp_object, get_interp_object, info
+import prince.config as config
 
 class CrossSectionBase(object, metaclass=ABCMeta):
     """Base class for cross section interfaces to tabulated models.
@@ -143,7 +141,7 @@ class CrossSectionBase(object, metaclass=ABCMeta):
         # if not self.supports_redistributions:
         #     info(10, mother, daughter, " model doesn't support redist")
         #     return False
-        if (daughter <= config["redist_threshold_ID"]
+        if (daughter <= config.redist_threshold_ID
                 or (mother, daughter) in self.incl_diff_idcs):
             info(60, 'Daughter requires redistribution.', mother, daughter)
             return True
@@ -269,7 +267,7 @@ class CrossSectionBase(object, metaclass=ABCMeta):
         new_incl_tab = AdditiveDictionary()
         new_dec_diff_tab = AdditiveDictionary()
 
-        threshold = config["tau_dec_threshold"]
+        threshold = config.tau_dec_threshold
 
         # How to indent debug printout for recursion
         dbg_indent = lambda lev: 4 * lev * "-" + ">" if lev else ""

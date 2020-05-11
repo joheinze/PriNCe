@@ -7,16 +7,16 @@ import h5py
 
 
 from prince.util import convert_to_namedtuple, info
-from prince_config import config
+import prince.config as config
 
 #: Dictionary containing particle properties, like mass, charge
 #: lifetime or branching ratios
 try:
     spec_data = pickle.load(
-        open(path.join(config["data_dir"], "particle_data.ppo"), "rb"))
+        open(path.join(config.data_dir, "particle_data.ppo"), "rb"))
 except UnicodeDecodeError:
     spec_data = pickle.load(
-        open(path.join(config["data_dir"], "particle_data.ppo"), "rb"), encoding='latin1')
+        open(path.join(config.data_dir, "particle_data.ppo"), "rb"), encoding='latin1')
 except FileNotFoundError:
     info(0, 'Warning, particle database "particle_data.ppo" file not found.')
 
@@ -62,12 +62,12 @@ class PrinceDB(object):
 
     def __init__(self):
 
-        info(2, 'Opening HDF5 file', config['db_fname'])
-        self.prince_db_fname = path.join(config["data_dir"], config['db_fname'])
+        info(2, 'Opening HDF5 file', config.db_fname)
+        self.prince_db_fname = path.join(config.data_dir, config.db_fname)
         if not path.isfile(self.prince_db_fname):
             raise Exception(
                 'Prince DB file {0} not found in "data" directory.'.format(
-                    config['db_fname']))
+                    config.db_fname))
 
         with h5py.File(self.prince_db_fname, 'r') as prince_db:
             self.version = (prince_db.attrs['version'])
@@ -241,7 +241,7 @@ class PrinceSpecies(object):
 
         self.AZN = self.A, self.Z, self.N
 
-        if ncoid <= config["redist_threshold_ID"]:
+        if ncoid <= config.redist_threshold_ID:
             self.has_redist = True
 
         if "name" not in dbentry:

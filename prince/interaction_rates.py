@@ -5,13 +5,13 @@ from scipy.integrate import trapz
 
 from prince.data import PRINCE_UNITS
 from prince.util import info
-from prince_config import config, has_cupy
+import prince.config as config
 
 using_cupy = False
 # Use GPU support
-if has_cupy and config["linear_algebra_backend"].lower() == 'cupy':
+if config.has_cupy and config.linear_algebra_backend.lower() == 'cupy':
     import cupy
-    from prince_config import mempool
+    from prince.config import mempool
     using_cupy = True
 
 class PhotoNuclearInteractionRate(object):
@@ -125,9 +125,9 @@ class PhotoNuclearInteractionRate(object):
         p_idcs = np.arange(dph)
 
         # values for x and y to cut on:
-        x_cut = config['x_cut']
-        y_cut = config['y_cut']
-        x_cut_proton = config['x_cut_proton']
+        x_cut = config.x_cut
+        y_cut = config.y_cut
+        x_cut_proton = config.x_cut_proton
 
         ibatch = 0
         import itertools

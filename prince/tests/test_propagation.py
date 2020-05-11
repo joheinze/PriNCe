@@ -2,16 +2,16 @@
 
 import numpy as np
 
-from prince_config import config
+import prince.config as config
 from prince import cross_sections, photonfields, core
 from prince.solvers import UHECRPropagationSolverBDF
 from prince.cr_sources import AugerFitSource
 
-config["x_cut"] = 1e-4
-config["x_cut_proton"] = 1e-2
-config["tau_dec_threshold"] = np.inf
-config["max_mass"] = 14
-config["debug_level"] = 0  # suppress info statements
+config.x_cut = 1e-4
+config.x_cut_proton = 1e-2
+config.tau_dec_threshold = np.inf
+config.max_mass = 14
+config.debug_level = 0  # suppress info statements
 
 pf = photonfields.CombinedPhotonField(
     [photonfields.CMBPhotonSpectrum, photonfields.CIBGilmore2D])
