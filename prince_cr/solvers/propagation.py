@@ -113,13 +113,15 @@ class UHECRPropagationResult(object):
         spectra = np.zeros((len(nco_ids), com_egrid.size))
         for idx, pid in enumerate(nco_ids):
             curr_egrid, curr_spec = self.get_solution_scale(pid, epow=epow)
-            res = np.exp(
-                np.interp(
-                    np.log(com_egrid),
-                    np.log(curr_egrid),
-                    np.log(curr_spec),
-                    left=np.nan,
-                    right=np.nan))
+            mask = curr_spec > 0.
+            if np.count_nonzero(mask) > 0:
+                res = np.exp(
+                    np.interp(
+                        np.log(com_egrid),
+                        np.log(curr_egrid[mask]),
+                        np.log(curr_spec[mask]),
+                        left=np.nan,
+                        right=np.nan))
             spectra[idx] = np.nan_to_num(res)
         spectrum = spectra.sum(axis=0)
 
@@ -433,11 +435,13 @@ class UHECRPropagationSolver(object):
 
     def eqn_deriv_mkl(self, z, state, *args):
         from prince_cr.solvers.mkl_interface import csrmm, csrmv
-        if state.shape[1] > 1:
-            matrix_input = True
-        else:
+        try:
+            if state.shape[1] > 1:
+                matrix_input = True
+            else:
+                matrix_input = False
+        except IndexError:
             matrix_input = False
-
         # Here starts the eqn_deriv content
         z = z - self.z_offset
         self.ncallsf += 1
@@ -448,16 +452,17 @@ class UHECRPropagationSolver(object):
             self.current_z_rates = z
 
         res = np.zeros(state.shape)
-        
         if matrix_input:
             state = np.ascontiguousarray(state)
             res = csrmm(1., self.jacobian, state, 0., res)
         else:
             res = csrmv(1., self.jacobian, state, 0., res)
-            
 
         if self.enable_injection_jacobian:
-            res += self.injection(1., z)[:, np.newaxis]
+            try:
+                res += self.injection(1., z)[:, np.newaxis]
+            except ValueError:
+                res += self.injection(1., z)
         
         if self.enable_partial_diff_jacobian:
             conloss = np.zeros_like(self.adia_loss_rates_grid.energy_vector)
@@ -465,12 +470,16 @@ class UHECRPropagationSolver(object):
                 conloss += self.adia_loss_rates_grid.loss_vector(z)
             if self.enable_pairprod_losses:
                 conloss += self.pair_loss_rates_grid.loss_vector(z)
+            try:
+                loss_state = conloss[:, np.newaxis] * state
+            except ValueError:
+                loss_state = conloss * state
             if matrix_input:
                 res = csrmm(self.dldz(z), self.diff_operator,
-                    conloss[:, np.newaxis] * state, 1., res)
+                    loss_state, 1., res)
             else:
                 res = csrmv(self.dldz(z), self.diff_operator,
-                    conloss[:, np.newaxis] * state, 1., res)
+                    loss_state, 1., res)
 
         return res
 
@@ -617,7 +626,7 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
         else:
             initial_state = np.zeros(self.dim_states)
 
-        state = initial_state
+        state = np.atleast_1d(initial_state)
         info(2, 'Starting integration.')
 
         while curr_z + dz >= self.final_z:
