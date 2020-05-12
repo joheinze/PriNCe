@@ -1,7 +1,6 @@
 import numpy as np
 
-from prince._deprecated.util import get_AZN
-from prince.util import get_2Dinterp_object, get_interp_object, info
+from prince.util import get_2Dinterp_object, get_interp_object, info, get_AZN
 
 from .base import CrossSectionBase
 

@@ -195,16 +195,28 @@ def _download_file(url, outfile):
     if total_size != 0 and wrote != total_size:
         raise Exception("ERROR, something went wrong")
 
-
 # Download database file from github
 base_url = 'https://github.com/joheinze/PriNCe/releases/download/'
-release_tag = 'initial_release/'
+release_tag = 'v0.5_alpha_release/'
 url = base_url + release_tag + db_fname
 if not path.isfile(path.join(data_dir, db_fname)):
     print('Downloading for PriNCe database file {0}.'.format(db_fname))
     if debug_level >= 2:
         print(url)
     _download_file(url, path.join(data_dir, db_fname))
+else:
+    import h5py
+    try:
+        with h5py.File(path.join(data_dir, db_fname), 'r') as prince_db:
+            db_version = (prince_db.attrs['version'])
+    except:
+        print(f'Database file {db_fname} corrupted. Retrying download.')
+        _download_file(url, path.join(data_dir, db_fname))
+    finally:
+        with h5py.File(path.join(data_dir, db_fname), 'r') as prince_db:
+            db_version = (prince_db.attrs['version'])
+        if debug_level >= 2:
+            print(f'Using database file version {db_version}.')
 
 # if path.isfile(path.join(data_dir, '...previous db name...')):
 #     import os

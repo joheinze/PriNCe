@@ -190,51 +190,30 @@ def info(min_dbg_level, *message, **kwargs):
             cname = len(cname) * ' '
         print(cname + " ".join(message))
 
+def get_AZN(nco_id):
+    """Returns mass number :math:`A`, charge :math:`Z` and neutron
+    number :math:`N` of ``nco_id``.
 
-# def load_or_convert_array(fname, **kwargs):
-#     """ Loads an array from '.npy' file if exists otherwise
-#     the array is created from CVS file.
+    Args:
+        nco_id (int): corsika id of nucleus/mass group
+    Returns:
+        (int,int,int): (Z,A) tuple
+    """
+    Z, A = 1, 1
 
-#     `fname` is expected to be just the file name, without folder.
-#     The CVS file is expected to be in the `raw_data_dir` directory
-#     pointed to by the config. The array from the file is stored
-#     as numpy binary with extension `.npy` in the folder pointed
-#     by the `data_dir` config variable.
+    if nco_id >= 100:
+        Z = nco_id % 100
+        A = (nco_id - Z) // 100
+    else:
+        Z, A = 0, 0
 
-#     Args:
-#         fname (str): File name without path or ending
-#         kwargs (dict): Is passed to :func:`numpy.loadtxt`
-#     Returns:
-#         (numpy.array): Array stored in that file
-#     """
-#     from os.path import join, splitext, isfile, isdir
-#     from os import listdir
-#     import numpy as np
+    return A, Z, A - Z
 
-#     info(10, 'Loading file', fname)
-#     fname = splitext(fname)[0]
+def bin_widths(bin_edges):
+    """Computes and returns bin widths from given edges."""
+    edg = np.array(bin_edges)
 
-#     if not isfile(join(config.data_dir, fname + '.npy')):
-#         info(2, 'Converting', fname, "to '.npy'")
-#         arr = None
-#         try:
-#             arr = np.loadtxt(
-#                 join(config.raw_data_dir, fname + '.dat'), **kwargs)
-#         except IOError:
-#             for subdir in listdir(config.raw_data_dir):
-#                 if (isdir(join(config.raw_data_dir, subdir)) and isfile(
-#                         join(config.raw_data_dir, subdir, fname + '.dat'))):
-#                     arr = np.loadtxt(
-#                         join(config.raw_data_dir, subdir, fname + '.dat'),
-#                         **kwargs)
-#         finally:
-#             if arr is None:
-#                 raise Exception('Required file', fname + '.dat', 'not found')
-#             np.save(join(config.data_dir, fname + '.npy'), arr)
-#         return arr
-#     else:
-#         return np.load(join(config.data_dir, fname + '.npy'), encoding='latin1')
-
+    return np.abs(edg[1:, ...] - edg[:-1, ...])
 
 class AdditiveDictionary(dict):
     """This dictionary subclass adds values if keys are

@@ -6,9 +6,9 @@ from os.path import isfile, join
 import numpy as np
 
 import prince.decays as decs
-from prince._deprecated.util import bin_widths, get_AZN
 from prince.data import spec_data
-from prince.util import get_2Dinterp_object, get_interp_object, info
+from prince.util import (
+    get_2Dinterp_object, get_interp_object, info, bin_widths, get_AZN)
 import prince.config as config
 
 class CrossSectionBase(object, metaclass=ABCMeta):

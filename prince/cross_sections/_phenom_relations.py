@@ -13,7 +13,7 @@ from pickle import load
 
 from numpy import array, exp, inf, linspace, sum
 
-from prince._deprecated.util import get_AZN
+from prince.util import get_AZN
 from prince.data import spec_data
 from prince.config import config
 
