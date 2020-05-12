@@ -36,7 +36,7 @@ setup(
     url='https://github.com/joheinze/PriNCe',
     packages=[
         'prince', 'prince.cross_sections',
-        'prince.solvers'
+        'prince.solvers', 'prince.tests'
     ],
     install_requires=[
         # 'six',
@@ -48,7 +48,7 @@ setup(
     ],
     tests_require=['pytest','matplotlib'],
     py_modules=["six"],
-    package_data={'particletools': ['ParticleData.xml']},
+    package_data={'prince': ['data/particle_data.ppo']},
     classifiers=[
         'Programming Language :: Python',
         'Programming Language :: Python :: 2',

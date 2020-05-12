@@ -39,7 +39,7 @@ jobs:
     - script: |
         pip install pytest pytest-azurepipelines
         pip install .
-        pytest
+        python -m pytest --pyargs prince --junitxml=junit/test-results.xml
       displayName: 'pytest'
     - task: PublishPipelineArtifact@0
       inputs:
