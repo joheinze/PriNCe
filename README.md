@@ -22,7 +22,7 @@ We are planning to make this download automatic in a future release.
 
 Uses `sphinx`-docs, which can be read at [readthedocs](https://prince.readthedocs.io/en/latest/)
 
-The documentation is still *incomplete*
+The documentation is still *incomplete*. Feedback/comments are welcome via issues.
 
 ## System requirements
 
@@ -50,7 +50,14 @@ Simply `git clone` (or manually download) this repository and link it using `pip
 
 ```bash
 git clone https://github.com/joheinze/PriNCe
-pip install -e PriNCe
+cd PriNCe
+pip install -e .
+```
+
+To test an installation:
+```bash
+pip install pytest
+python -m pytest --pyargs prince_cr
 ```
 
 This will automatically install the dependencies. If you do not want to use `pip` you can also just add this folder to your `PYTHONPATH`.

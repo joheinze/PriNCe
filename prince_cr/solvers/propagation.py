@@ -2,10 +2,10 @@
 
 import numpy as np
 
-from prince.cosmology import H
-from prince.data import PRINCE_UNITS, EnergyGrid
-from prince.util import info
-import prince.config as config
+from prince_cr.cosmology import H
+from prince_cr.data import PRINCE_UNITS, EnergyGrid
+from prince_cr.util import info
+import prince_cr.config as config
 
 from .partial_diff import DifferentialOperator, SemiLagrangianSolver
 
@@ -432,7 +432,7 @@ class UHECRPropagationSolver(object):
         return cupy.asnumpy(r)
 
     def eqn_deriv_mkl(self, z, state, *args):
-        from prince.solvers.mkl_interface import csrmm, csrmv
+        from prince_cr.solvers.mkl_interface import csrmm, csrmv
         if state.shape[1] > 1:
             matrix_input = True
         else:
@@ -498,7 +498,7 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
             sparsity = self.had_int_rates.get_hadr_jacobian(
                 self.initial_z, 1.)
 
-        from prince.util import PrinceBDF
+        from prince_cr.util import PrinceBDF
         self.r = PrinceBDF(
             self.eqn_derivative,
             self.initial_z,
@@ -544,13 +544,14 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
             # print '------ at', self.r.t, '------'
             if verbose:
                 info(3, "Integrating at z = {0}".format(self.r.t))
-            step_start = time()
+
             # --------------------------------------------
-            # Solve for hadronic interactions
+            # Request integrator step
             # --------------------------------------------
             if verbose:
-                print('Solving hadr losses at t =', self.r.t)
+                print('Solving at z =', self.r.t)
             self.r.step()
+
             # --------------------------------------------
             # Some last checks and resets
             # --------------------------------------------
@@ -565,12 +566,15 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
             reset_counter += 1
             if pbar is not None:
                 pbar.update()
+
         if pbar is not None:
             pbar.close()
+
         if self.r.status == 'failed':
             raise Exception(
                 'Integrator failed at t = {:}, try adjusting the tolerances'.
                 format(self.r.t))
+
         if verbose:
             print('Integrator finished with t = {:}, last step was dt = {:}'.format(
                 self.r.t, self.r.step_size))
@@ -610,42 +614,43 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
         curr_z = self.initial_z
         if initial_inj:
             initial_state = self.injection(dz, self.initial_z)
-            print(initial_state)
         else:
             initial_state = np.zeros(self.dim_states)
+
         state = initial_state
         info(2, 'Starting integration.')
 
         while curr_z + dz >= self.final_z:
             if verbose:
-                info(3, "Integrating at z={0}".format(curr_z))
+                info(3, "Integrating at z = {0}".format(curr_z))
 
             # --------------------------------------------
             # Solve for hadronic interactions
             # --------------------------------------------
             if verbose:
-                print('Solving hadr losses at t =', curr_z)
+                info(3, "Integrating at z = {0}", curr_z)
             self._update_jacobian(curr_z)
 
-            state += self.eqn_deriv(curr_z, state) * dz
+            state += self.eqn_derivative(curr_z, state) * dz
 
             # --------------------------------------------
             # Apply the injection
             # --------------------------------------------
             if not disable_inj:
-                if not self.enable_injection_jacobian and not self.enable_partial_diff_jacobian:
+                if not (self.enable_injection_jacobian or 
+                    self.enable_partial_diff_jacobian):
                     if verbose:
-                        print('applying injection at t =', curr_z)
+                        print('applying injection at z =', curr_z)
                     state += self.injection(dz, curr_z)
 
             # --------------------------------------------
             # Apply the semi lagrangian
             # --------------------------------------------
-            if not self.enable_partial_diff_jacobian:
-                if self.enable_adiabatic_losses or self.enable_pairprod_losses:
-                    if verbose:
-                        print('applying semi lagrangian at t =', curr_z)
-                    state = self.semi_lagrangian(dz, curr_z, state)
+            if not (self.enable_partial_diff_jacobian and
+                (self.enable_adiabatic_losses or self.enable_pairprod_losses)):
+                if verbose:
+                    print('applying semi lagrangian at z =', curr_z)
+                state = self.semi_lagrangian(dz, curr_z, state)
 
             # --------------------------------------------
             # Some last checks and resets
@@ -654,8 +659,6 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
                 print('break at z =', curr_z)
                 break
             curr_z += dz
-
-        # self.r.integrate(self.final_z)
 
         end_time = time()
         info(2, 'Integration completed in {0} s'.format(end_time - start_time))

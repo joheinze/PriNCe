@@ -10,7 +10,7 @@ import numpy as np
 from scipy.integrate import trapz
 from scipy.interpolate import UnivariateSpline
 
-import prince.config as config
+import prince_cr.config as config
 
 
 class PhotonField(object):
@@ -163,7 +163,7 @@ class CIBFranceschini2D(EBLSplined2D):
     """
 
     def __init__(self, simple_scaling=False):
-        from prince.data import db_handler
+        from prince_cr.data import db_handler
         self.int2d = db_handler.ebl_spline('Francescini2008','base')
         self.simple_scaling = simple_scaling
 
@@ -180,7 +180,7 @@ class CIBInoue2D(EBLSplined2D):
     """
 
     def __init__(self, model='base', simple_scaling=False):
-        from prince.data import db_handler
+        from prince_cr.data import db_handler
 
         assert model in ['base', 'upper', 'lower']
 
@@ -201,7 +201,7 @@ class CIBGilmore2D(EBLSplined2D):
     """
 
     def __init__(self, model='fiducial', simple_scaling=False):
-        from prince.data import db_handler
+        from prince_cr.data import db_handler
 
         assert model in ['fixed', 'fiducial']
 
@@ -222,7 +222,7 @@ class CIBDominguez2D(EBLSplined2D):
         R.C. Gilmore et al., MNRAS 410, 2556 (2011) [arXiv:1104.0671]
     """
     def __init__(self, model='base', simple_scaling=False):
-        from prince.data import db_handler
+        from prince_cr.data import db_handler
 
         assert model in ['base', 'upper', 'lower']
 

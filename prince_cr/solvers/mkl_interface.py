@@ -9,7 +9,7 @@ routines.
 
 import numpy as np
 from ctypes import c_double, c_int, c_char, POINTER, byref
-from prince.config import mkl
+from prince_cr.config import mkl
 
 
 def mkl_matdescr():

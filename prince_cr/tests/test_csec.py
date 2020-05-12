@@ -2,8 +2,8 @@
 
 import numpy as np
 
-import prince.config as config
-from prince import cross_sections
+import prince_cr.config as config
+from prince_cr import cross_sections
 
 species_talys = {
 'species': [0, 11, 12, 20, 21, 101, 201, 301, 302, 402, 603, 703, 704, 904, 1004, 1005, 1105, 1206, 1306, 1406, 1407] ,

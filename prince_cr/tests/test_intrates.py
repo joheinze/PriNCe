@@ -2,8 +2,8 @@
 
 import numpy as np
 
-import prince.config as config
-from prince import cross_sections, photonfields, core
+import prince_cr.config as config
+from prince_cr import cross_sections, photonfields, core
 
 config.x_cut = 1e-4
 config.x_cut_proton = 1e-2

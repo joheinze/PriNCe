@@ -28,61 +28,25 @@ Installation
 
 The installation via PyPi is the simplest method::
 
-    pip install prince
+    pip install prince-cr
+
+To install from source::
+
+    git clone https://github.com/joheinze/PriNCe
+    cd PriNCe
+    pip install -e .
+
+The '-e' flag will symlink the source folder to pip and behave as an ordinary package from PyPi.
 
 Supported architectures
 .......................
 
 Due to memory requirements 32-bit architectures are not recommended.
-It should run on Python 2.7 and above on
+The code will run on Python 3 on
 
 - Linux
 - Mac OS X
 - Windows
-
-Installation from source
-.........................
-
-To modify the code and contribute, the code needs to be installed from the github source::
-
-    git clone https://github.com/joheinze/PriNCe.git
-    cd PriNCe
-    pip install -e .
-
-With the last command pip will symlink this installation to your site-packages folder. There is no need to modify the PYTHONPATH.
-
-Quick start
-...........
-
-Open an new python file or jupyter notebook/lab::
-
-    from prince import bla
-    # matplotlib used plotting. Not required to run the code.
-    import matplotlib.pyplot as plt
-
-
-    # Initalize the Prince user interface
-    prince = PrinceRun(
-        ...
-    )
-
-    # ...
-    # ...
-
-    # Solve the equation system
-    prince.solve()
-
-    # Plot results
-    plt.loglog(prince.e_grid, proton_flux, label='muons')
-    plt.loglog(prince.e_grid, numu_flux, label='muon neutrinos')
-    plt.loglog(prince.e_grid, nue_flux, label='electron neutrinos')
-
-    plt.xlim(1., 1e9)
-    plt.xlabel('Kinetic energy (GeV)')
-    plt.ylim(1e-6, 1.)
-    plt.ylabel(r'$(E/\text{GeV})^3\,\Phi$ (GeV cm$^{-2}$\,$s$^{-1}\,$sr$^{-1}$) (GeV)')
-    plt.legend()
-    plt.show()
 
 Examples
 ........

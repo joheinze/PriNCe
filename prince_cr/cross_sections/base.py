@@ -5,11 +5,11 @@ from os.path import isfile, join
 
 import numpy as np
 
-import prince.decays as decs
-from prince.data import spec_data
-from prince.util import (
+import prince_cr.decays as decs
+from prince_cr.data import spec_data
+from prince_cr.util import (
     get_2Dinterp_object, get_interp_object, info, bin_widths, get_AZN)
-import prince.config as config
+import prince_cr.config as config
 
 class CrossSectionBase(object, metaclass=ABCMeta):
     """Base class for cross section interfaces to tabulated models.
@@ -259,7 +259,7 @@ class CrossSectionBase(object, metaclass=ABCMeta):
         are known, will be forced to beta-decay until they reach a stable
         element.
         """
-        from prince.util import AdditiveDictionary
+        from prince_cr.util import AdditiveDictionary
         # TODO: check routine, how to avoid empty channels and
         # mothers with zero nonel cross sections
 
