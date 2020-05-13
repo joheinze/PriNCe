@@ -106,41 +106,42 @@ class UHECRPropagationResult(object):
 
         return nco_ids, com_egrid
 
-    def get_solution_group(self, nco_ids, epow=3, egrid=None):
-        """Return the summed spectrum (in total energy) for all elements in the range"""
+    def _collect_interpolated_spectra(self, nco_ids, epow, egrid=None):
+        """Collect interpolated spectra in a 2D array. Used by
+        get_solution_group and get_lnA"""
         nco_ids, com_egrid = self._check_id_grid(nco_ids, egrid)
-
+        
+        # collect all the spectra in 2d array of dimension
         spectra = np.zeros((len(nco_ids), com_egrid.size))
         for idx, pid in enumerate(nco_ids):
-            curr_egrid, curr_spec = self.get_solution_scale(pid, epow=epow)
-            res = np.exp(
-                np.interp(
-                    np.log(com_egrid),
-                    np.log(curr_egrid),
-                    np.log(curr_spec),
-                    left=np.nan,
-                    right=np.nan))
+            curr_egrid, curr_spec = self.get_solution_scale(pid, epow)
+            mask = curr_spec > 0.
+            if np.count_nonzero(mask) > 0:
+                res = np.exp(
+                    np.interp(
+                        np.log(com_egrid),
+                        np.log(curr_egrid[mask]),
+                        np.log(curr_spec[mask]),
+                        left=np.nan,
+                        right=np.nan))
+            else:
+                res = np.zeros_like(com_egrid)
             spectra[idx] = np.nan_to_num(res)
+
+        return nco_ids, com_egrid, spectra
+
+    def get_solution_group(self, nco_ids, epow=3, egrid=None):
+        """Return the summed spectrum (in total energy) for all elements in the range"""
+        
+        _, com_egrid, spectra = self._collect_interpolated_spectra(nco_ids, epow, egrid)
         spectrum = spectra.sum(axis=0)
 
         return com_egrid, spectrum
 
     def get_lnA(self, nco_ids, egrid=None):
         """Return the average ln(A) as a function of total energy for all elements in the range"""
-        nco_ids, com_egrid = self._check_id_grid(nco_ids, egrid)
-
-        # collect all the spectra in 2d array of dimension
-        spectra = np.zeros((len(nco_ids), com_egrid.size))
-        for idx, pid in enumerate(nco_ids):
-            curr_egrid, curr_spec = self.get_solution_scale(pid)
-            res = np.exp(
-                np.interp(
-                    np.log(com_egrid),
-                    np.log(curr_egrid),
-                    np.log(curr_spec),
-                    left=np.nan,
-                    right=np.nan))
-            spectra[idx] = np.nan_to_num(res)
+        
+        nco_ids, com_egrid, spectra = self._collect_interpolated_spectra(nco_ids, 0, egrid)
 
         # get the average and variance by using the spectra as weights
         lnA = np.array([np.log(self.spec_man.ncoid2sref[el].A) for el in nco_ids])
