@@ -22,16 +22,16 @@ We are planning to make this download automatic in a future release.
 
 Uses `sphinx`-docs, which can be read at [readthedocs](https://prince.readthedocs.io/en/latest/)
 
-The documentation is still *incomplete*
+The documentation is still *incomplete*. Feedback/comments are welcome via issues.
 
 ## System requirements
 
-- lots of RAM
+- ~16GB RAM
 - several GB disk space
 
 ## Software requirements
 
-The majority of the code consists of pure Python modules.
+The code is pure Python heavily using vectorization via numpy/scipy.
 
 Dependencies (list might be incomplete):
 
@@ -42,6 +42,11 @@ Dependencies (list might be incomplete):
 - tqdm
 - jupyter (optional, but needed for examples)
 
+Optional:
+
+- mkl (Intel's MKL runtime from pip/anaconda works)
+- cupy (For GPU acceleration with CUDA. Support is experimental and memory requirements are not yet understood.)
+
 ## Installation
 
 Since this code is written in pure Python 3, it requries no installation. All you need is a python distribution including `pip`. For scientific computing [Anaconda/Miniconda](https://www.anaconda.com/products/individual/) is a good choice.
@@ -51,6 +56,15 @@ Simply `git clone` (or manually download) this repository and link it using `pip
 ```bash
 git clone https://github.com/joheinze/PriNCe
 pip install -e PriNCe
+```
+
+with the option `-e` (or `--editable`) this will link the local foulder to your pip installation, such that any local code edits will take effect. Use this for testing and development.
+
+To test an installation:
+
+```bash
+pip install pytest
+python -m pytest --pyargs prince_cr
 ```
 
 This will automatically install the dependencies. If you do not want to use `pip` you can also just add this folder to your `PYTHONPATH`.

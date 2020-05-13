@@ -8,7 +8,7 @@ from abc import ABCMeta, abstractmethod
 
 import numpy as np
 
-from prince.util import info
+from prince_cr.util import info
 
 
 class CosmicRaySource(object, metaclass=ABCMeta):

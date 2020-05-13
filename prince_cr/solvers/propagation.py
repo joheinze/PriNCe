@@ -2,10 +2,10 @@
 
 import numpy as np
 
-from prince.cosmology import H
-from prince.data import PRINCE_UNITS, EnergyGrid
-from prince.util import info
-import prince.config as config
+from prince_cr.cosmology import H
+from prince_cr.data import PRINCE_UNITS, EnergyGrid
+from prince_cr.util import info
+import prince_cr.config as config
 
 from .partial_diff import DifferentialOperator, SemiLagrangianSolver
 
@@ -106,41 +106,42 @@ class UHECRPropagationResult(object):
 
         return nco_ids, com_egrid
 
-    def get_solution_group(self, nco_ids, epow=3, egrid=None):
-        """Return the summed spectrum (in total energy) for all elements in the range"""
+    def _collect_interpolated_spectra(self, nco_ids, epow, egrid=None):
+        """Collect interpolated spectra in a 2D array. Used by
+        get_solution_group and get_lnA"""
         nco_ids, com_egrid = self._check_id_grid(nco_ids, egrid)
-
+        
+        # collect all the spectra in 2d array of dimension
         spectra = np.zeros((len(nco_ids), com_egrid.size))
         for idx, pid in enumerate(nco_ids):
-            curr_egrid, curr_spec = self.get_solution_scale(pid, epow=epow)
-            res = np.exp(
-                np.interp(
-                    np.log(com_egrid),
-                    np.log(curr_egrid),
-                    np.log(curr_spec),
-                    left=np.nan,
-                    right=np.nan))
+            curr_egrid, curr_spec = self.get_solution_scale(pid, epow)
+            mask = curr_spec > 0.
+            if np.count_nonzero(mask) > 0:
+                res = np.exp(
+                    np.interp(
+                        np.log(com_egrid),
+                        np.log(curr_egrid[mask]),
+                        np.log(curr_spec[mask]),
+                        left=np.nan,
+                        right=np.nan))
+            else:
+                res = np.zeros_like(com_egrid)
             spectra[idx] = np.nan_to_num(res)
+
+        return nco_ids, com_egrid, spectra
+
+    def get_solution_group(self, nco_ids, epow=3, egrid=None):
+        """Return the summed spectrum (in total energy) for all elements in the range"""
+        
+        _, com_egrid, spectra = self._collect_interpolated_spectra(nco_ids, epow, egrid)
         spectrum = spectra.sum(axis=0)
 
         return com_egrid, spectrum
 
     def get_lnA(self, nco_ids, egrid=None):
         """Return the average ln(A) as a function of total energy for all elements in the range"""
-        nco_ids, com_egrid = self._check_id_grid(nco_ids, egrid)
-
-        # collect all the spectra in 2d array of dimension
-        spectra = np.zeros((len(nco_ids), com_egrid.size))
-        for idx, pid in enumerate(nco_ids):
-            curr_egrid, curr_spec = self.get_solution_scale(pid)
-            res = np.exp(
-                np.interp(
-                    np.log(com_egrid),
-                    np.log(curr_egrid),
-                    np.log(curr_spec),
-                    left=np.nan,
-                    right=np.nan))
-            spectra[idx] = np.nan_to_num(res)
+        
+        nco_ids, com_egrid, spectra = self._collect_interpolated_spectra(nco_ids, 0, egrid)
 
         # get the average and variance by using the spectra as weights
         lnA = np.array([np.log(self.spec_man.ncoid2sref[el].A) for el in nco_ids])
@@ -432,7 +433,7 @@ class UHECRPropagationSolver(object):
         return cupy.asnumpy(r)
 
     def eqn_deriv_mkl(self, z, state, *args):
-        from prince.solvers.mkl_interface import csrmm, csrmv
+        from prince_cr.solvers.mkl_interface import csrmm, csrmv
         if state.shape[1] > 1:
             matrix_input = True
         else:
@@ -498,7 +499,7 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
             sparsity = self.had_int_rates.get_hadr_jacobian(
                 self.initial_z, 1.)
 
-        from prince.util import PrinceBDF
+        from prince_cr.util import PrinceBDF
         self.r = PrinceBDF(
             self.eqn_derivative,
             self.initial_z,
@@ -519,6 +520,7 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
               full_reset=False,
               progressbar=False):
         from time import time
+        from prince_cr.util import PrinceProgressBar
 
         reset_counter = 0
         stepcount = 0
@@ -530,43 +532,31 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
         info(2, 'Solver initialized in {0} s'.format(time() - start_time))
 
         info(2, 'Starting integration.')
-        if progressbar:
-            if progressbar == 'notebook':
-                from tqdm import tqdm_notebook as tqdm
-            else:
-                from tqdm import tqdm
-            pbar = tqdm(total=-(self.initial_z - self.final_z) / dz)
-            pbar.update()
-        else:
-            pbar = None
+        with PrinceProgressBar(
+            bar_type=progressbar,
+            nsteps=-(self.initial_z - self.final_z) / dz) as pbar:
+            while self.r.status == 'running':
+                # print '------ at', self.r.t, '------'
+                if verbose:
+                    info(3, "Integrating at z = {0}".format(self.r.t))
+                # --------------------------------------------
+                # Evaluate a step
+                # --------------------------------------------
+                self.r.step()
+                # --------------------------------------------
+                # Some last checks and resets
+                # --------------------------------------------
+                if verbose:
+                    print('last step:', self.r.step_size)
+                    print('h_abs:', self.r.h_abs)
+                    print('LU decomp:', self.r.nlu)
+                    print('current order:', self.r.dense_output().order)
+                    print('---' * 20)
 
-        while self.r.status == 'running':
-            # print '------ at', self.r.t, '------'
-            if verbose:
-                info(3, "Integrating at z = {0}".format(self.r.t))
-            step_start = time()
-            # --------------------------------------------
-            # Solve for hadronic interactions
-            # --------------------------------------------
-            if verbose:
-                print('Solving hadr losses at t =', self.r.t)
-            self.r.step()
-            # --------------------------------------------
-            # Some last checks and resets
-            # --------------------------------------------
-            if verbose:
-                print('last step:', self.r.step_size)
-                print('h_abs:', self.r.h_abs)
-                print('LU decomp:', self.r.nlu)
-                print('current order:', self.r.dense_output().order)
-                print('---' * 20)
-
-            stepcount += 1
-            reset_counter += 1
-            if pbar is not None:
+                stepcount += 1
+                reset_counter += 1
                 pbar.update()
-        if pbar is not None:
-            pbar.close()
+
         if self.r.status == 'failed':
             raise Exception(
                 'Integrator failed at t = {:}, try adjusting the tolerances'.
@@ -599,63 +589,64 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
         super(UHECRPropagationSolverEULER, self).__init__(*args, **kwargs)
 
     def solve(self, dz=1e-3, verbose=True, extended_output=False,
-              initial_inj=False, disable_inj=False):
+              initial_inj=False, disable_inj=False, progressbar=False):
+        from prince_cr.util import PrinceProgressBar
         from time import time
         self._update_jacobian(self.initial_z)
         self.current_z_rates = self.initial_z
 
-        # stepcount = 0
         dz = -1 * dz
         start_time = time()
         curr_z = self.initial_z
         if initial_inj:
-            initial_state = self.injection(dz, self.initial_z)
+            initial_state = np.atleast_2d(self.injection(dz, self.initial_z))
             print(initial_state)
         else:
-            initial_state = np.zeros(self.dim_states)
+            initial_state = np.zeros((self.dim_states,1))
         state = initial_state
         info(2, 'Starting integration.')
+        with PrinceProgressBar(
+            bar_type=progressbar,
+            nsteps=-(self.initial_z - self.final_z) / dz) as pbar:
+            while curr_z + dz >= self.final_z:
+                if verbose:
+                    info(3, "Integrating at z={0}".format(curr_z))
 
-        while curr_z + dz >= self.final_z:
-            if verbose:
-                info(3, "Integrating at z={0}".format(curr_z))
+                # --------------------------------------------
+                # Solve for hadronic interactions
+                # --------------------------------------------
+                if verbose:
+                    print('Solving hadr losses at t =', curr_z)
+                self._update_jacobian(curr_z)
 
-            # --------------------------------------------
-            # Solve for hadronic interactions
-            # --------------------------------------------
-            if verbose:
-                print('Solving hadr losses at t =', curr_z)
-            self._update_jacobian(curr_z)
+                state += self.eqn_derivative(curr_z, state) * dz
 
-            state += self.eqn_deriv(curr_z, state) * dz
+                # --------------------------------------------
+                # Apply the injection
+                # --------------------------------------------
+                if not disable_inj:
+                    if not self.enable_injection_jacobian and not self.enable_partial_diff_jacobian:
+                        if verbose:
+                            print('applying injection at t =', curr_z)
+                        state += self.injection(dz, curr_z)
 
-            # --------------------------------------------
-            # Apply the injection
-            # --------------------------------------------
-            if not disable_inj:
-                if not self.enable_injection_jacobian and not self.enable_partial_diff_jacobian:
-                    if verbose:
-                        print('applying injection at t =', curr_z)
-                    state += self.injection(dz, curr_z)
+                # --------------------------------------------
+                # Apply the semi lagrangian
+                # --------------------------------------------
+                if not self.enable_partial_diff_jacobian:
+                    if self.enable_adiabatic_losses or self.enable_pairprod_losses:
+                        if verbose:
+                            print('applying semi lagrangian at t =', curr_z)
+                        state = self.semi_lagrangian(dz, curr_z, state)
 
-            # --------------------------------------------
-            # Apply the semi lagrangian
-            # --------------------------------------------
-            if not self.enable_partial_diff_jacobian:
-                if self.enable_adiabatic_losses or self.enable_pairprod_losses:
-                    if verbose:
-                        print('applying semi lagrangian at t =', curr_z)
-                    state = self.semi_lagrangian(dz, curr_z, state)
-
-            # --------------------------------------------
-            # Some last checks and resets
-            # --------------------------------------------
-            if curr_z < -1 * dz:
-                print('break at z =', curr_z)
-                break
-            curr_z += dz
-
-        # self.r.integrate(self.final_z)
+                # --------------------------------------------
+                # Some last checks and resets
+                # --------------------------------------------
+                if curr_z < -1 * dz:
+                    print('break at z =', curr_z)
+                    break
+                curr_z += dz
+                pbar.update()
 
         end_time = time()
         info(2, 'Integration completed in {0} s'.format(end_time - start_time))

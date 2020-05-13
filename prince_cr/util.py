@@ -6,7 +6,7 @@ import inspect
 import numpy as np
 from scipy.interpolate import InterpolatedUnivariateSpline, RectBivariateSpline
 from scipy.integrate import BDF
-import prince.config as config
+import prince_cr.config as config
 
 def convert_to_namedtuple(dictionary, name='GenericNamedTuple'):
     """Converts a dictionary to a named tuple."""
@@ -395,3 +395,30 @@ class PrinceBDF(BDF):
         self.LU = None
 
         return True, None
+
+class PrinceProgressBar(object):
+    """This is a wrapper around tqdm to process some prince
+    argument handling, making it optional, for notebooks and
+    python scripts using the bar_type argument."""
+    def __init__(self, bar_type=None, nsteps=None):
+        if bar_type == None or bar_type == False:
+            self.pbar = None
+        elif bar_type == 'notebook':
+            from tqdm import tqdm_notebook as tqdm
+            self.pbar = tqdm(total=nsteps)
+            self.pbar.update()
+        else:
+            from tqdm import tqdm
+            self.pbar = tqdm(total=nsteps)
+            self.pbar.update()
+
+    def __enter__(self):
+        return self
+    
+    def update(self):
+        if self.pbar is not None:
+            self.pbar.update()
+    
+    def __exit__(self, type, value, traceback):
+        if self.pbar is not None:
+            self.pbar.close()
