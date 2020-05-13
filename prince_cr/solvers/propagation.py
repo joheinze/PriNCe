@@ -520,6 +520,7 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
               full_reset=False,
               progressbar=False):
         from time import time
+        from prince_cr.util import PrinceProgressBar
 
         reset_counter = 0
         stepcount = 0
@@ -531,43 +532,31 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
         info(2, 'Solver initialized in {0} s'.format(time() - start_time))
 
         info(2, 'Starting integration.')
-        if progressbar:
-            if progressbar == 'notebook':
-                from tqdm import tqdm_notebook as tqdm
-            else:
-                from tqdm import tqdm
-            pbar = tqdm(total=-(self.initial_z - self.final_z) / dz)
-            pbar.update()
-        else:
-            pbar = None
+        with PrinceProgressBar(
+            bar_type=progressbar,
+            nsteps=-(self.initial_z - self.final_z) / dz) as pbar:
+            while self.r.status == 'running':
+                # print '------ at', self.r.t, '------'
+                if verbose:
+                    info(3, "Integrating at z = {0}".format(self.r.t))
+                # --------------------------------------------
+                # Evaluate a step
+                # --------------------------------------------
+                self.r.step()
+                # --------------------------------------------
+                # Some last checks and resets
+                # --------------------------------------------
+                if verbose:
+                    print('last step:', self.r.step_size)
+                    print('h_abs:', self.r.h_abs)
+                    print('LU decomp:', self.r.nlu)
+                    print('current order:', self.r.dense_output().order)
+                    print('---' * 20)
 
-        while self.r.status == 'running':
-            # print '------ at', self.r.t, '------'
-            if verbose:
-                info(3, "Integrating at z = {0}".format(self.r.t))
-            step_start = time()
-            # --------------------------------------------
-            # Solve for hadronic interactions
-            # --------------------------------------------
-            if verbose:
-                print('Solving hadr losses at t =', self.r.t)
-            self.r.step()
-            # --------------------------------------------
-            # Some last checks and resets
-            # --------------------------------------------
-            if verbose:
-                print('last step:', self.r.step_size)
-                print('h_abs:', self.r.h_abs)
-                print('LU decomp:', self.r.nlu)
-                print('current order:', self.r.dense_output().order)
-                print('---' * 20)
-
-            stepcount += 1
-            reset_counter += 1
-            if pbar is not None:
+                stepcount += 1
+                reset_counter += 1
                 pbar.update()
-        if pbar is not None:
-            pbar.close()
+
         if self.r.status == 'failed':
             raise Exception(
                 'Integrator failed at t = {:}, try adjusting the tolerances'.
