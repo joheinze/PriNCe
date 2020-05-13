@@ -6,7 +6,7 @@ import inspect
 import numpy as np
 from scipy.interpolate import InterpolatedUnivariateSpline, RectBivariateSpline
 from scipy.integrate import BDF
-import prince.config as config
+import prince_cr.config as config
 
 def convert_to_namedtuple(dictionary, name='GenericNamedTuple'):
     """Converts a dictionary to a named tuple."""

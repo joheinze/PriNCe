@@ -3,8 +3,8 @@ from os.path import join
 
 import numpy as np
 
-from prince.util import info, get_AZN
-import prince.config as config
+from prince_cr.util import info, get_AZN
+import prince_cr.config as config
 
 from .base import CrossSectionBase
 
@@ -30,7 +30,7 @@ class TabulatedCrossSection(CrossSectionBase):
         self._optimize_and_generate_index()
 
     def _load(self, model_prefix):
-        from prince.data import db_handler
+        from prince_cr.data import db_handler
         info(2, "Load tabulated cross sections")
         # The energy grid is given in MeV, so we convert to GeV
         photo_nuclear_tables = db_handler.photo_nuclear_db(model_prefix)

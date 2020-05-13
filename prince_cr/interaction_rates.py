@@ -3,15 +3,15 @@
 import numpy as np
 from scipy.integrate import trapz
 
-from prince.data import PRINCE_UNITS
-from prince.util import info
-import prince.config as config
+from prince_cr.data import PRINCE_UNITS
+from prince_cr.util import info
+import prince_cr.config as config
 
 using_cupy = False
 # Use GPU support
 if config.has_cupy and config.linear_algebra_backend.lower() == 'cupy':
     import cupy
-    from prince.config import mempool
+    from prince_cr.config import mempool
     using_cupy = True
 
 class PhotoNuclearInteractionRate(object):
@@ -402,7 +402,7 @@ class ContinuousAdiabaticLossRate(object):
     def loss_vector(self, z, energy=None):
         """Returns all continuous losses on dim_states grid"""
         # return self.adiabatic_losses(z)
-        from prince.cosmology import H
+        from prince_cr.cosmology import H
         if energy is None:
             return H(z) * PRINCE_UNITS.cm2sec * self.energy_vector
         else:

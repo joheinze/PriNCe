@@ -56,7 +56,7 @@ Quick start
 
 Open an new python file or jupyter notebook/lab::
 
-    from prince import bla
+    from prince_cr import bla
     # matplotlib used plotting. Not required to run the code.
     import matplotlib.pyplot as plt
 

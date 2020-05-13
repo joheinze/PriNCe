@@ -2,10 +2,10 @@
 
 import numpy as np
 
-from prince.cosmology import H
-from prince.data import PRINCE_UNITS, EnergyGrid
-from prince.util import info
-import prince.config as config
+from prince_cr.cosmology import H
+from prince_cr.data import PRINCE_UNITS, EnergyGrid
+from prince_cr.util import info
+import prince_cr.config as config
 
 from .partial_diff import DifferentialOperator, SemiLagrangianSolver
 
@@ -432,7 +432,7 @@ class UHECRPropagationSolver(object):
         return cupy.asnumpy(r)
 
     def eqn_deriv_mkl(self, z, state, *args):
-        from prince.solvers.mkl_interface import csrmm, csrmv
+        from prince_cr.solvers.mkl_interface import csrmm, csrmv
         if state.shape[1] > 1:
             matrix_input = True
         else:
@@ -498,7 +498,7 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
             sparsity = self.had_int_rates.get_hadr_jacobian(
                 self.initial_z, 1.)
 
-        from prince.util import PrinceBDF
+        from prince_cr.util import PrinceBDF
         self.r = PrinceBDF(
             self.eqn_derivative,
             self.initial_z,

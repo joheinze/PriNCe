@@ -3,8 +3,8 @@
 import numpy as np
 from scipy.integrate import trapz
 
-from prince.util import info, get_AZN
-from prince.data import spec_data
+from prince_cr.util import info, get_AZN
+from prince_cr.data import spec_data
 
 def get_particle_channels(mo, mo_energy, da_energy):
     """

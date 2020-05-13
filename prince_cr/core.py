@@ -5,10 +5,10 @@ from os import path
 
 import numpy as np
 
-from prince import cross_sections, data, interaction_rates
-from prince.data import EnergyGrid
-from prince.util import info, get_AZN
-import prince.config as config
+from prince_cr import cross_sections, data, interaction_rates
+from prince_cr.data import EnergyGrid
+from prince_cr.util import info, get_AZN
+import prince_cr.config as config
 
 
 class PriNCeRun(object):
@@ -47,7 +47,7 @@ class PriNCeRun(object):
         if 'photon_field' in kwargs:
             self.photon_field = kwargs['photon_field']
         else:
-            import prince.photonfields as pf
+            import prince_cr.photonfields as pf
             self.photon_field = pf.CombinedPhotonField(
                 [pf.CMBPhotonSpectrum, pf.CIBGilmore2D])
 

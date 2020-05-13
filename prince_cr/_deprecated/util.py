@@ -1,6 +1,6 @@
 import numpy as np
 
-from prince.data import PRINCE_UNITS
+from prince_cr.data import PRINCE_UNITS
 
 
 def get_AZN(nco_id):

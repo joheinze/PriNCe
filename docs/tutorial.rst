@@ -6,7 +6,7 @@ Tutorial
 The main interface to the cde is provided by the class :class:`prince.core.PriNCeRun`.
 To create an instance type::
 
-    from prince.core import PriNCeRun
+    from prince_cr.core import PriNCeRun
     prince_run = PriNCeRun()
 
 This assume will assume the Talys disintegration model at low energies 
@@ -20,12 +20,12 @@ Changing model assumption
 
 Either of these assumptions can be changed by manually creating objects::
 
-    from prince import photonfields
+    from prince_cr import photonfields
     pf = photonfields.CombinedPhotonField(
                     [photonfields.CMBPhotonSpectrum, 
                     photonfields.CIBDominguez2D])
 
-    from prince import cross_sections
+    from prince_cr import cross_sections
     cs = cross_sections.CompositeCrossSection([(0., cross_sections.TabulatedCrossSection, ('peanut_IAS',)),
                                             (0.14, cross_sections.SophiaSuperposition, ())])
 
@@ -35,13 +35,13 @@ In this case Peanut will be used at low energies (greater then 0) and Sophia for
 
 These objects then need to be passed to :class:`prince.core.PriNCeRun`::
 
-    from prince.core import PriNCeRun
+    from prince_cr.core import PriNCeRun
     prince_run_talys = core.PriNCeRun(max_mass = 56, photon_field=pf, cross_sections=cs)
 
 Can be used to set a maximal nucleus mass. All heavier nuclei will be ignored, which can lead to a very significant speedup.
 Setting this option is equivalent to setting the same option in the config::
 
-    from prince.config import
+    from prince_cr.config import
     config.max_mass = 14
 
 The config is a simple dictionary, see `prince/config.py` for all available options.
@@ -52,7 +52,7 @@ Solving the Transport equation
 
 To solve the transport equation, create an instance of :class:`UHECRPropagationSolverBDF`::
 
-    from prince.solvers import UHECRPropagationSolverBDF
+    from prince_cr.solvers import UHECRPropagationSolverBDF
     solver = UHECRPropagationSolverBDF(initial_z=1., final_z = 0.,prince_run=prince_run,
                                     enable_pairprod_losses = True, enable_adiabatic_losses = True)
 
@@ -63,7 +63,7 @@ Add a source class by::
     rmax = 1e11
     gamma = 1.2
 
-    from prince.cr_sources import AugerFitSource,
+    from prince_cr.cr_sources import AugerFitSource,
     solver.add_source_class(
         AugerFitSource(prince_run, norm = 1e-50, params={1407: (gamma, rmax, 1.)}))
 
@@ -92,7 +92,7 @@ provide more keys to the `params` argument::
     f_silicon = 4.6
     f_iron = 0.
 
-    from prince.cr_sources import AugerFitSource,
+    from prince_cr.cr_sources import AugerFitSource,
     solver.add_source_class(prince_run, norm = total_norm,
                    params={101: (gamma, rmax, f_hydrogen),
                            402: (gamma, rmax, f_helium),

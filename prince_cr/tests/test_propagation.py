@@ -2,10 +2,10 @@
 
 import numpy as np
 
-import prince.config as config
-from prince import cross_sections, photonfields, core
-from prince.solvers import UHECRPropagationSolverBDF
-from prince.cr_sources import AugerFitSource
+import prince_cr.config as config
+from prince_cr import cross_sections, photonfields, core
+from prince_cr.solvers import UHECRPropagationSolverBDF
+from prince_cr.cr_sources import AugerFitSource
 
 config.x_cut = 1e-4
 config.x_cut_proton = 1e-2

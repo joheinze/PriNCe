@@ -1,6 +1,6 @@
 
 import numpy as np
-import prince.config as config
+import prince_cr.config as config
 
 class SemiLagrangianSolver(object):
     """Contains routines to project spectra from shifted grids back to old grid"""

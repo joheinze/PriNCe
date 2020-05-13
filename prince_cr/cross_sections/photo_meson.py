@@ -3,9 +3,9 @@ from os.path import join
 
 import numpy as np
 
-from prince.data import spec_data
-from prince.util import info, bin_widths, get_AZN
-import prince.config as config
+from prince_cr.data import spec_data
+from prince_cr.util import info, bin_widths, get_AZN
+import prince_cr.config as config
 
 from .base import CrossSectionBase
 class SophiaSuperposition(CrossSectionBase):
@@ -26,7 +26,7 @@ class SophiaSuperposition(CrossSectionBase):
         self._load()
 
     def _load(self):
-        from prince.data import db_handler
+        from prince_cr.data import db_handler
         info(2, "Load tabulated cross sections")
         photo_nuclear_tables = db_handler.photo_meson_db('SOPHIA')
         info(2, "Loading SOPHIA cross sections from file.")
