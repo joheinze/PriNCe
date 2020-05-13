@@ -589,63 +589,64 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
         super(UHECRPropagationSolverEULER, self).__init__(*args, **kwargs)
 
     def solve(self, dz=1e-3, verbose=True, extended_output=False,
-              initial_inj=False, disable_inj=False):
+              initial_inj=False, disable_inj=False, progressbar=False):
+        from prince_cr.util import PrinceProgressBar
         from time import time
         self._update_jacobian(self.initial_z)
         self.current_z_rates = self.initial_z
 
-        # stepcount = 0
         dz = -1 * dz
         start_time = time()
         curr_z = self.initial_z
         if initial_inj:
-            initial_state = self.injection(dz, self.initial_z)
+            initial_state = np.atleast_2d(self.injection(dz, self.initial_z))
             print(initial_state)
         else:
-            initial_state = np.zeros(self.dim_states)
+            initial_state = np.zeros((self.dim_states,1))
         state = initial_state
         info(2, 'Starting integration.')
+        with PrinceProgressBar(
+            bar_type=progressbar,
+            nsteps=-(self.initial_z - self.final_z) / dz) as pbar:
+            while curr_z + dz >= self.final_z:
+                if verbose:
+                    info(3, "Integrating at z={0}".format(curr_z))
 
-        while curr_z + dz >= self.final_z:
-            if verbose:
-                info(3, "Integrating at z={0}".format(curr_z))
+                # --------------------------------------------
+                # Solve for hadronic interactions
+                # --------------------------------------------
+                if verbose:
+                    print('Solving hadr losses at t =', curr_z)
+                self._update_jacobian(curr_z)
 
-            # --------------------------------------------
-            # Solve for hadronic interactions
-            # --------------------------------------------
-            if verbose:
-                print('Solving hadr losses at t =', curr_z)
-            self._update_jacobian(curr_z)
+                state += self.eqn_derivative(curr_z, state) * dz
 
-            state += self.eqn_deriv(curr_z, state) * dz
+                # --------------------------------------------
+                # Apply the injection
+                # --------------------------------------------
+                if not disable_inj:
+                    if not self.enable_injection_jacobian and not self.enable_partial_diff_jacobian:
+                        if verbose:
+                            print('applying injection at t =', curr_z)
+                        state += self.injection(dz, curr_z)
 
-            # --------------------------------------------
-            # Apply the injection
-            # --------------------------------------------
-            if not disable_inj:
-                if not self.enable_injection_jacobian and not self.enable_partial_diff_jacobian:
-                    if verbose:
-                        print('applying injection at t =', curr_z)
-                    state += self.injection(dz, curr_z)
+                # --------------------------------------------
+                # Apply the semi lagrangian
+                # --------------------------------------------
+                if not self.enable_partial_diff_jacobian:
+                    if self.enable_adiabatic_losses or self.enable_pairprod_losses:
+                        if verbose:
+                            print('applying semi lagrangian at t =', curr_z)
+                        state = self.semi_lagrangian(dz, curr_z, state)
 
-            # --------------------------------------------
-            # Apply the semi lagrangian
-            # --------------------------------------------
-            if not self.enable_partial_diff_jacobian:
-                if self.enable_adiabatic_losses or self.enable_pairprod_losses:
-                    if verbose:
-                        print('applying semi lagrangian at t =', curr_z)
-                    state = self.semi_lagrangian(dz, curr_z, state)
-
-            # --------------------------------------------
-            # Some last checks and resets
-            # --------------------------------------------
-            if curr_z < -1 * dz:
-                print('break at z =', curr_z)
-                break
-            curr_z += dz
-
-        # self.r.integrate(self.final_z)
+                # --------------------------------------------
+                # Some last checks and resets
+                # --------------------------------------------
+                if curr_z < -1 * dz:
+                    print('break at z =', curr_z)
+                    break
+                curr_z += dz
+                pbar.update()
 
         end_time = time()
         info(2, 'Integration completed in {0} s'.format(end_time - start_time))
