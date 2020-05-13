@@ -43,6 +43,7 @@ Dependencies (list might be incomplete):
 - jupyter (optional, but needed for examples)
 
 Optional:
+
 - mkl (Intel's MKL runtime from pip/anaconda works)
 - cupy (For GPU acceleration with CUDA. Support is experimental and memory requirements are not yet understood.)
 
@@ -53,17 +54,19 @@ Since this code is written in pure Python 3, it requries no installation. All yo
 Simply `git clone` (or manually download) this repository and link it using `pip`:
 
 ```bash
-ggit clone https://github.com/joheinze/PriNCe
+git clone https://github.com/joheinze/PriNCe
 pip install -e PriNCe
-cd PriNCe
-pip install -e .
 ```
 
+with the option `-e` (or `--editable`) this will link the local foulder to your pip installation, such that any local code edits will take effect. Use this for testing and development.
+
 To test an installation:
+
 ```bash
 pip install pytest
 python -m pytest --pyargs prince_cr
 ```
+
 This will automatically install the dependencies. If you do not want to use `pip` you can also just add this folder to your `PYTHONPATH`.
 
 ## [Examples](https://github.com/joheinze/PriNCe-examples)
