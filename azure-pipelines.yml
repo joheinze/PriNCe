@@ -34,7 +34,7 @@ jobs:
         python setup.py sdist
       displayName: 'Make sdist'
     - script: |
-        python setup.py bdist_wheel --universal
+        python setup.py bdist_wheel
       displayName: 'Make wheel'
     - script: |
         pip install pytest pytest-azurepipelines
