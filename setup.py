@@ -39,7 +39,6 @@ setup(
         'prince_cr.solvers', 'prince_cr.tests'
     ],
     install_requires=[
-        # 'six',
         'scipy',
         'numpy',
         'tqdm',
@@ -51,8 +50,6 @@ setup(
     package_data={'prince_cr': ['data/particle_data.ppo']},
     classifiers=[
         'Programming Language :: Python',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
