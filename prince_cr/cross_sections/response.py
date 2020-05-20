@@ -135,7 +135,7 @@ class ResponseFunction(object):
     def _precompute_interpolators(self):
         """Interpolate each response function and store interpolators.
 
-        Uses :func:`prince.util.get_interp_object` as interpolator.
+        Uses :func:`prince_cr.util.get_interp_object` as interpolator.
         This might result in too many knots and can be subject to
         future optimization.
         """

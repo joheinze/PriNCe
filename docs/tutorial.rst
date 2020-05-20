@@ -3,7 +3,7 @@
 Tutorial
 --------
 
-The main interface to the cde is provided by the class :class:`prince.core.PriNCeRun`.
+The main interface to the cde is provided by the class :class:`prince_cr.core.PriNCeRun`.
 To create an instance type::
 
     from prince_cr.core import PriNCeRun
@@ -29,11 +29,11 @@ Either of these assumptions can be changed by manually creating objects::
     cs = cross_sections.CompositeCrossSection([(0., cross_sections.TabulatedCrossSection, ('peanut_IAS',)),
                                             (0.14, cross_sections.SophiaSuperposition, ())])
 
-The numbers in the arguments to :class:`prince.cross_sections.CompositeCrossSection` 
+The numbers in the arguments to :class:`prince_cr.cross_sections.CompositeCrossSection` 
 define the energies (in GeV) above which the models are joined. 
 In this case Peanut will be used at low energies (greater then 0) and Sophia for energies above 0.14 GeV
 
-These objects then need to be passed to :class:`prince.core.PriNCeRun`::
+These objects then need to be passed to :class:`prince_cr.core.PriNCeRun`::
 
     from prince_cr.core import PriNCeRun
     prince_run_talys = core.PriNCeRun(max_mass = 56, photon_field=pf, cross_sections=cs)
@@ -102,7 +102,7 @@ provide more keys to the `params` argument::
 
 `gamma` and `rmax` can also be defined separately for each element.
 
-The spectral shape is defined by the source class (in this case :class:`prince.cr_sources.AugerFitSource`)
-:mod:`prince.cr_sources` contains several other predefined classes. 
-You can also define your own source class by subclassing :class:`prince.cr_sources.CosmicRaySource`
+The spectral shape is defined by the source class (in this case :class:`prince_cr.cr_sources.AugerFitSource`)
+:mod:`prince_cr.cr_sources` contains several other predefined classes. 
+You can also define your own source class by subclassing :class:`prince_cr.cr_sources.CosmicRaySource`
 and implementing :func:`CosmicRaySource.injection_spectrum`.

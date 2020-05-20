@@ -144,7 +144,7 @@ class EnergyGrid(object):
 
 class PrinceSpecies(object):
     """Bundles different particle properties for simplified
-    availability of particle properties in :class:`prince.core.PriNCeRun`.
+    availability of particle properties in :class:`prince_cr.core.PriNCeRun`.
 
     Args:
       pdgid (int): PDG ID of the particle
