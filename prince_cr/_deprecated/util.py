@@ -28,6 +28,7 @@ def e_nucleon(e_tot, nco_id):
     A, _, _ = get_AZN(nco_id)
     return e_tot / A
 
+
 def get_y(e, eps, nco_id):
     """Retrns center of mass energy of nucleus-photon system.
 
@@ -61,20 +62,19 @@ def bin_widths(bin_edges):
 def bin_edges2D(bin_centers):
     lcen = np.log10(bin_centers)
     steps = lcen[1, ...] - lcen[0, ...]
-    bins_log = np.zeros_like(lcen)  #(len(lcen) + 1)
+    bins_log = np.zeros_like(lcen)  # (len(lcen) + 1)
     # print bins_log.shape
-    bins_log = np.pad(
-        bins_log, ((0, 1), (0, 0)), 'constant', constant_values=0.)
+    bins_log = np.pad(bins_log, ((0, 1), (0, 0)), "constant", constant_values=0.0)
     # print bins_log.shape
-    bins_log[:lcen.shape[0], ...] = lcen - 0.5 * steps
+    bins_log[: lcen.shape[0], ...] = lcen - 0.5 * steps
     bins_log[-1, ...] = lcen[-1, ...] + 0.5 * steps
-    return 10**bins_log
+    return 10 ** bins_log
 
 
 def bin_edges1D(bin_centers):
     lcen = np.log10(bin_centers)
     steps = lcen[1] - lcen[0]
     bins_log = np.zeros(len(lcen) + 1)
-    bins_log[:lcen.shape[0]] = lcen - 0.5 * steps
+    bins_log[: lcen.shape[0]] = lcen - 0.5 * steps
     bins_log[-1] = lcen[-1] + 0.5 * steps
-    return 10**bins_log
+    return 10 ** bins_log

@@ -8,8 +8,9 @@ from .base import CrossSectionBase
 class ResponseFunction(object):
     """Redistribution Function based on Crossection model
 
-        The response function is the angular average crosssection
+    The response function is the angular average crosssection
     """
+
     def __init__(self, cross_section):
         self.cross_section = cross_section
 
@@ -25,7 +26,7 @@ class ResponseFunction(object):
         self.incl_intp = {}
         self.incl_diff_intp = {}
         self.incl_diff_intp_integral = {}
-        
+
         self._precompute_interpolators()
 
     # forward is_differential() to CrossSectionBase
@@ -35,37 +36,39 @@ class ResponseFunction(object):
 
     def get_full(self, mother, daughter, ygrid, xgrid=None):
         """Return the full response function :math:`f(y) + g(y) + h(x,y)`
-        on the grid that is provided. xgrid is ignored if `h(x,y)` not in the channel.
+        on the ygrid. xgrid is ignored if `h(x,y)` not in the channel.
         """
         if xgrid is not None and ygrid.shape != xgrid.shape:
-            raise Exception('ygrid and xgrid do not have the same shape!!')
+            raise Exception("ygrid and xgrid do not have the same shape!!")
         if get_AZN(mother)[0] < get_AZN(daughter)[0]:
             info(
                 3,
-                'WARNING: channel {:} -> {:} with daughter heavier than mother!'
-                .format(mother, daughter))
+                "WARNING: channel {:} -> {:} with daughter heavier than mother!".format(
+                    mother, daughter
+                ),
+            )
 
         res = np.zeros(ygrid.shape)
 
         if (mother, daughter) in self.incl_intp:
             res += self.incl_intp[(mother, daughter)](ygrid)
         elif (mother, daughter) in self.incl_diff_intp:
-            #incl_diff_res = self.incl_diff_intp[(mother, daughter)](
+            # incl_diff_res = self.incl_diff_intp[(mother, daughter)](
             #    xgrid, ygrid, grid=False)
-            #if mother == 101:
+            # if mother == 101:
             #    incl_diff_res = np.where(xgrid < 0.9, incl_diff_res, 0.)
-            #res += incl_diff_res
-            #if not(mother == daughter):
-            res += self.incl_diff_intp[(mother, daughter)].inteval(xgrid,
-                                                                   ygrid,
-                                                                   grid=False)
+            # res += incl_diff_res
+            # if not(mother == daughter):
+            res += self.incl_diff_intp[(mother, daughter)].inteval(
+                xgrid, ygrid, grid=False
+            )
 
         if mother == daughter and mother in self.nonel_intp:
             # nonel cross section leads to absorption, therefore the minus
             if xgrid is None:
                 res -= self.nonel_intp[mother](ygrid)
             else:
-                diagonal = xgrid == 1.
+                diagonal = xgrid == 1.0
                 res[diagonal] -= self.nonel_intp[mother](ygrid[diagonal])
 
         return res
@@ -97,18 +100,20 @@ class ResponseFunction(object):
                 egrid, cross_section = cs_model.incl(mother, daughter)
             else:
                 raise Exception(
-                    'Unknown inclusive channel {:} -> {:} for this model'.
-                    format(mother, daughter))
+                    "Unknown inclusive channel {:} -> {:} for this model".format(
+                        mother, daughter
+                    )
+                )
         else:
             egrid, cross_section = cs_model.nonel(mother)
 
-    # note that cumtrapz works also for 2d-arrays and will integrate along axis = 1
+        # note that cumtrapz works also for 2d-arrays and will integrate along axis = 1
         integral = integrate.cumtrapz(egrid * cross_section, x=egrid)
-        ygrid = egrid[1:] / 2.
+        ygrid = egrid[1:] / 2.0
 
-        return ygrid, integral / (2 * ygrid**2)
+        return ygrid, integral / (2 * ygrid ** 2)
 
-    def get_channel_scale(self, mother, daughter=None, scale='A'):
+    def get_channel_scale(self, mother, daughter=None, scale="A"):
         """Returns the reponse function scaled by `scale`.
 
         Convenience funtion for plotting, where it is important to
@@ -127,8 +132,8 @@ class ResponseFunction(object):
 
         ygr, cs = self.get_channel(mother, daughter)
 
-        if scale == 'A':
-            scale = 1. / get_AZN(mother)[0]
+        if scale == "A":
+            scale = 1.0 / get_AZN(mother)[0]
 
         return ygr, scale * cs
 
@@ -140,30 +145,33 @@ class ResponseFunction(object):
         future optimization.
         """
 
-        info(2, 'Computing interpolators for response functions')
+        info(2, "Computing interpolators for response functions")
 
-        info(5, 'Nonelastic response functions f(y)')
+        info(5, "Nonelastic response functions f(y)")
         self.nonel_intp = {}
         for mother in self.nonel_idcs:
-            self.nonel_intp[mother] = get_interp_object(
-                *self.get_channel(mother))
+            self.nonel_intp[mother] = get_interp_object(*self.get_channel(mother))
 
-        info(5, 'Inclusive (boost conserving) response functions g(y)')
+        info(5, "Inclusive (boost conserving) response functions g(y)")
         self.incl_intp = {}
         for mother, daughter in self.incl_idcs:
             self.incl_intp[(mother, daughter)] = get_interp_object(
-                *self.get_channel(mother, daughter))
+                *self.get_channel(mother, daughter)
+            )
 
-        info(5, 'Inclusive (redistributed) response functions h(y)')
+        info(5, "Inclusive (redistributed) response functions h(y)")
         self.incl_diff_intp = {}
         for mother, daughter in self.incl_diff_idcs:
             ygr, rfunc = self.get_channel(mother, daughter)
             self.incl_diff_intp[(mother, daughter)] = get_2Dinterp_object(
-                self.xcenters, ygr, rfunc, self.cross_section.xbins)
+                self.xcenters, ygr, rfunc, self.cross_section.xbins
+            )
 
             from scipy.integrate import cumtrapz
-            integral = cumtrapz(rfunc, ygr, axis=1,initial=0)
-            integral = cumtrapz(integral, self.xcenters, axis=0,initial=0)
+
+            integral = cumtrapz(rfunc, ygr, axis=1, initial=0)
+            integral = cumtrapz(integral, self.xcenters, axis=0, initial=0)
 
             self.incl_diff_intp_integral[(mother, daughter)] = get_2Dinterp_object(
-                self.xcenters, ygr, integral, self.cross_section.xbins)
+                self.xcenters, ygr, integral, self.cross_section.xbins
+            )

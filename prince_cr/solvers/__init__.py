@@ -1,1 +1,5 @@
-from .propagation import UHECRPropagationResult, UHECRPropagationSolverBDF, UHECRPropagationSolverEULER
+from .propagation import (
+    UHECRPropagationResult,
+    UHECRPropagationSolverBDF,
+    UHECRPropagationSolverEULER,
+)

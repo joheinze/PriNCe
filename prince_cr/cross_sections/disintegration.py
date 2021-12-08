@@ -1,4 +1,3 @@
-
 from os.path import join
 
 import numpy as np
@@ -11,26 +10,24 @@ from .base import CrossSectionBase
 
 class TabulatedCrossSection(CrossSectionBase):
     """Interface class to read tabulated disintegration cross sections
-        Data is expected to be files with names:
-        (model_prefix)_egrid.data, (model_prefix)_nonel.data, (model_prefix)_incl_i_j.data 
-    
-        Data available for Peanut and TALYS with :
-        model_prefix = 'PEANUT_IAS' and model_prefix = 'CRP2_TALYS'
-        Data available from 1 MeV to 1 GeV
+    Data is expected to be files with names:
+    (model_prefix)_egrid.data, (model_prefix)_nonel.data, (model_prefix)_incl_i_j.data
+
+    Data available for Peanut and TALYS with :
+    model_prefix = 'PEANUT_IAS' and model_prefix = 'CRP2_TALYS'
+    Data available from 1 MeV to 1 GeV
     """
 
-    def __init__(self,
-                 model_prefix='PEANUT_IAS',
-                 *args,
-                 **kwargs):
+    def __init__(self, model_prefix="PEANUT_IAS", *args, **kwargs):
         self.supports_redistributions = False
-        config.max_mass = kwargs.pop('max_mass', config.max_mass)
+        config.max_mass = kwargs.pop("max_mass", config.max_mass)
         CrossSectionBase.__init__(self)
         self._load(model_prefix)
         self._optimize_and_generate_index()
 
     def _load(self, model_prefix):
         from prince_cr.data import db_handler
+
         info(2, "Load tabulated cross sections")
         # The energy grid is given in MeV, so we convert to GeV
         photo_nuclear_tables = db_handler.photo_nuclear_db(model_prefix)
@@ -79,8 +76,7 @@ class TabulatedCrossSection(CrossSectionBase):
 
 
 class CompositeCrossSection(CrossSectionBase):
-    """Joins and interpolates between cross section models.
-    """
+    """Joins and interpolates between cross section models."""
 
     def __init__(self, model_list):
         """The constructor takes a list of models in the following format::
@@ -130,12 +126,13 @@ class CompositeCrossSection(CrossSectionBase):
 
             # Save reference
             self.model_refs.append(csm_inst)
-        #print self.model_refs[1].incl_diff_idcs
+        # print self.model_refs[1].incl_diff_idcs
 
         # Create a unique list of nonel cross sections from
         # the combination of all models
         self.nonel_idcs = sorted(
-            list(set(sum([m.nonel_idcs for m in self.model_refs], []))))
+            list(set(sum([m.nonel_idcs for m in self.model_refs], [])))
+        )
         # For each ID interpolate the cross sections over entire energy range
         self._nonel_tab = {}
         for mo in self.nonel_idcs:
@@ -145,20 +142,27 @@ class CompositeCrossSection(CrossSectionBase):
         # of all models, no matter if diff or not. The rearrangement
         # is performed in the next steps
         self.incl_idcs_all = sorted(
-            list(set(sum([m.incl_idcs for m in self.model_refs], []))))
+            list(set(sum([m.incl_idcs for m in self.model_refs], [])))
+        )
         self.incl_idcs_all += sorted(
-            list(set(sum([m.incl_diff_idcs for m in self.model_refs], []))))
+            list(set(sum([m.incl_diff_idcs for m in self.model_refs], [])))
+        )
 
         # Add dynamically generated indices to each model
         newincl = sorted(
             list(
                 set(
-                    sum([
-                        m.generate_incl_channels(self.nonel_idcs)
-                        for m in self.model_refs
-                    ], []))))
-        self.incl_idcs_all = sorted(
-            list(set(sum([newincl, self.incl_idcs_all], []))))
+                    sum(
+                        [
+                            m.generate_incl_channels(self.nonel_idcs)
+                            for m in self.model_refs
+                        ],
+                        [],
+                    )
+                )
+            )
+        )
+        self.incl_idcs_all = sorted(list(set(sum([newincl, self.incl_idcs_all], []))))
 
         # Collect the channels, that need redistribution functions in a
         # separate list. Put channels that conserve boost into the normal
@@ -167,12 +171,10 @@ class CompositeCrossSection(CrossSectionBase):
         self.incl_idcs = []
         for mother, daughter in self.incl_idcs_all:
             if self.is_differential(mother, daughter):
-                info(10, 'Daughter has redistribution function', mother,
-                     daughter)
+                info(10, "Daughter has redistribution function", mother, daughter)
                 self.incl_diff_idcs.append((mother, daughter))
             else:
-                info(10, 'Mother and daughter conserve boost', mother,
-                     daughter)
+                info(10, "Mother and daughter conserve boost", mother, daughter)
                 self.incl_idcs.append((mother, daughter))
 
         # Join the Egrid
@@ -182,23 +184,22 @@ class CompositeCrossSection(CrossSectionBase):
         # Join the boost conserving channels
         self._incl_tab = {}
         for mother, daughter in self.incl_idcs:
-            self._incl_tab[(mother, daughter)] = self._join_incl(
-                mother, daughter)
+            self._incl_tab[(mother, daughter)] = self._join_incl(mother, daughter)
 
         # Join the redistribution channels
         self._incl_diff_tab = {}
         for mother, daughter in self.incl_diff_idcs:
             self._incl_diff_tab[(mother, daughter)] = self._join_incl_diff(
-                mother, daughter)
+                mother, daughter
+            )
 
         self._update_indices()
         self._optimize_and_generate_index()
 
     def _join_nonel(self, mother):
-        """Returns the non-elastic cross section of the joined models.
-        """
+        """Returns the non-elastic cross section of the joined models."""
 
-        info(5, 'Joining nonelastic cross sections for', mother)
+        info(5, "Joining nonelastic cross sections for", mother)
 
         egrid = []
         nonel = []
@@ -207,14 +208,13 @@ class CompositeCrossSection(CrossSectionBase):
             egrid.append(e)
             nonel.append(csec)
 
-        #return np.concatenate(nonel)
+        # return np.concatenate(nonel)
         return np.concatenate(egrid), np.concatenate(nonel)
 
     def _join_incl(self, mother, daughter):
         """Returns joined incl cross sections."""
 
-        info(5, 'Joining inclusive cross sections for channel',
-             (mother, daughter))
+        info(5, "Joining inclusive cross sections for channel", (mother, daughter))
         egrid = []
         incl = []
 
@@ -222,9 +222,9 @@ class CompositeCrossSection(CrossSectionBase):
             e, csec = model.incl(mother, daughter)
             egrid.append(e)
             incl.append(csec)
-        #print np.concatenate(egrid), np.concatenate(incl)
-        #print '---'*30
-        #return np.concatenate(incl)
+        # print np.concatenate(egrid), np.concatenate(incl)
+        # print '---'*30
+        # return np.concatenate(incl)
         return np.concatenate(egrid), np.concatenate(incl)
 
     def _join_incl_diff(self, mother, daughter):
@@ -233,8 +233,11 @@ class CompositeCrossSection(CrossSectionBase):
         The function assumes the same `x` bins for all models.
         """
 
-        info(5, 'Joining inclusive differential cross sections for channel',
-             (mother, daughter))
+        info(
+            5,
+            "Joining inclusive differential cross sections for channel",
+            (mother, daughter),
+        )
 
         egrid = []
         incl_diff = []
@@ -245,18 +248,20 @@ class CompositeCrossSection(CrossSectionBase):
                 self.xbins = model.xbins
                 break
         if self.xbins is None:
-            raise Exception('Redistributions requested but none of the ' +
-                            'models supports it')
+            raise Exception(
+                "Redistributions requested but none of the " + "models supports it"
+            )
 
         for model in self.model_refs:
             egr, csec = None, None
             if config.debug_level > 1:
                 if not np.allclose(self.xbins, model.xbins):
-                    raise Exception('Unequal x bins. Aborting...',
-                                    self.xbins.shape, model.xbins)
+                    raise Exception(
+                        "Unequal x bins. Aborting...", self.xbins.shape, model.xbins
+                    )
             if (mother, daughter) in model.incl_diff_idcs:
                 egr, csec = model.incl_diff(mother, daughter)
-                info(10, model.mname, mother, daughter, 'is differential.')
+                info(10, model.mname, mother, daughter, "is differential.")
 
             elif (mother, daughter) in model.incl_idcs:
                 # try to use incl and extend by zeros
@@ -264,13 +269,17 @@ class CompositeCrossSection(CrossSectionBase):
                 print(mother, daughter, csec_1d.shape)
                 # no x-distribution given, so x = 1
                 csec = self._arange_on_xgrid(csec_1d)
-                info(1, model.mname, mother, daughter,
-                     'not differential, x=1.')
+                info(1, model.mname, mother, daughter, "not differential, x=1.")
             else:
                 info(
-                    5, 'Model', model.mname, 'does not provide cross',
-                    'sections for channel {0}/{1}. Setting to zero.'.format(
-                        mother, daughter))
+                    5,
+                    "Model",
+                    model.mname,
+                    "does not provide cross",
+                    "sections for channel {0}/{1}. Setting to zero.".format(
+                        mother, daughter
+                    ),
+                )
                 # Tried with reduced energy grids to save memory, but
                 # matrix addition in decay chains becomes untrasparent
                 # egr = np.array((model.egrid[0], model.egrid[-1]))
@@ -281,5 +290,5 @@ class CompositeCrossSection(CrossSectionBase):
             egrid.append(egr)
             incl_diff.append(csec)
 
-        #return np.concatenate(incl_diff, axis=1)
+        # return np.concatenate(incl_diff, axis=1)
         return np.concatenate(egrid), np.concatenate(incl_diff, axis=1)

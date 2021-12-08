@@ -14,12 +14,11 @@ from prince_cr.config import mkl
 
 def mkl_matdescr():
     """Generate matdescr (matrix description) array required by BLAS calls."""
-    from ctypes import c_char, POINTER, byref
-    ntrans = byref(c_char(b'n'))  # Non-trans
-    trans = byref(c_char(b't'))  # trans
+    ntrans = byref(c_char(b"n"))  # Non-trans
+    trans = byref(c_char(b"t"))  # trans
     npmatd = np.chararray(6)
-    npmatd[0] = b'G'  # General
-    npmatd[3] = b'C'  # C-ordering
+    npmatd[0] = b"G"  # General
+    npmatd[3] = b"C"  # C-ordering
     return trans, ntrans, npmatd.ctypes.data_as(POINTER(c_char))
 
 
@@ -40,6 +39,7 @@ def mkl_csrmat_args(csr_mat):
 def mkl_pointer(numpy_array):
     """Cast pointers of numpy dense array of double for MKL."""
     from ctypes import c_double, POINTER
+
     return numpy_array, numpy_array.ctypes.data_as(POINTER(c_double))
 
 
@@ -59,11 +59,7 @@ def csrmm(alpha, mA, mB, beta, mC, transa=False):
     c = mC.ctypes.data_as(POINTER(c_double))
     ldb = byref(c_int(mB.shape[1]))
     ldc = byref(c_int(mC.shape[1]))
-    mkl.mkl_dcsrmm(
-        tr, m, n, k, alpha, matdescr,
-        data, ci, pb, pe,
-        b, ldb,
-        beta, c, ldc)
+    mkl.mkl_dcsrmm(tr, m, n, k, alpha, matdescr, data, ci, pb, pe, b, ldb, beta, c, ldc)
     return mC
 
 
@@ -78,10 +74,7 @@ def csrmv(alpha, mA, b, beta, c, transa=False):
     m, n, data, ci, pb, pe = mkl_csrmat_args(mA)
     bp = b.ctypes.data_as(POINTER(c_double))
     cp = c.ctypes.data_as(POINTER(c_double))
-    mkl.mkl_dcsrmv(
-        tr, m, n, alpha, matdescr,
-        data, ci, pb, pe,
-        bp, beta, cp)
+    mkl.mkl_dcsrmv(tr, m, n, alpha, matdescr, data, ci, pb, pe, bp, beta, cp)
     return c
 
 
@@ -98,7 +91,7 @@ def dgemv(alpha, mA, vb, beta, vc, transa=False):
     beta = c_double(beta)
 
     # Analyse A layout
-    layout = 101 if mA.flags['C_CONTIGUOUS'] else 102
+    layout = 101 if mA.flags["C_CONTIGUOUS"] else 102
     tr = 112 if transa else 111
     m = mA.shape[0]
     n = mA.shape[1]
@@ -108,6 +101,5 @@ def dgemv(alpha, mA, vb, beta, vc, transa=False):
     a = mA.ctypes.data_as(POINTER(c_double))
     b = vb.ctypes.data_as(POINTER(c_double))
     c = vc.ctypes.data_as(POINTER(c_double))
-    mkl.cblas_dgemv(layout, tr, m, n, alpha, a, lda, b,
-        inc, beta, c, inc)
+    mkl.cblas_dgemv(layout, tr, m, n, alpha, a, lda, b, inc, beta, c, inc)
     return vc

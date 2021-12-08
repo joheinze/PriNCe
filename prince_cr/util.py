@@ -8,10 +8,13 @@ from scipy.interpolate import InterpolatedUnivariateSpline, RectBivariateSpline
 from scipy.integrate import BDF
 import prince_cr.config as config
 
-def convert_to_namedtuple(dictionary, name='GenericNamedTuple'):
+
+def convert_to_namedtuple(dictionary, name="GenericNamedTuple"):
     """Converts a dictionary to a named tuple."""
     from collections import namedtuple
+
     return namedtuple(name, list(dictionary.keys()))(**dictionary)
+
 
 def get_interp_object(xgrid, ygrid, **kwargs):
     """Returns simple standard interpolation object.
@@ -25,13 +28,15 @@ def get_interp_object(xgrid, ygrid, **kwargs):
     """
     if xgrid.shape != ygrid.shape:
         raise Exception(
-            'xgrid and ygrid args need identical shapes: {0} != {1}'.format(
-                xgrid.shape, ygrid.shape))
+            "xgrid and ygrid args need identical shapes: {0} != {1}".format(
+                xgrid.shape, ygrid.shape
+            )
+        )
 
-    if 'k' not in kwargs:
-        kwargs['k'] = 1
-    if 'ext' not in kwargs:
-        kwargs['ext'] = 'zeros'
+    if "k" not in kwargs:
+        kwargs["k"] = 1
+    if "ext" not in kwargs:
+        kwargs["ext"] = "zeros"
 
     return InterpolatedUnivariateSpline(xgrid, ygrid, **kwargs)
     # if xwidths is not None:
@@ -53,15 +58,17 @@ def get_2Dinterp_object(xgrid, ygrid, zgrid, xbins=None, **kwargs):
     """
     if (xgrid.shape[0], ygrid.shape[0]) != zgrid.shape:
         raise Exception(
-            'x and y grid do not match z grid shape: {0} != {1}'.format(
-                (xgrid.shape, ygrid.shape), zgrid.shape))
+            "x and y grid do not match z grid shape: {0} != {1}".format(
+                (xgrid.shape, ygrid.shape), zgrid.shape
+            )
+        )
 
-    if 'kx' not in kwargs:
-        kwargs['kx'] = 1
-    if 'ky' not in kwargs:
-        kwargs['ky'] = 1
-    if 's' not in kwargs:
-        kwargs['s'] = 0.
+    if "kx" not in kwargs:
+        kwargs["kx"] = 1
+    if "ky" not in kwargs:
+        kwargs["ky"] = 1
+    if "s" not in kwargs:
+        kwargs["s"] = 0.0
     return RectBivariateSplineNoExtrap(xgrid, ygrid, zgrid, xbins, **kwargs)
 
 
@@ -70,28 +77,27 @@ class RectBivariateSplineNoExtrap(RectBivariateSpline):
 
     def __init__(self, xgrid, ygrid, zgrid, xbins=None, *args, **kwargs):
         self.xbins = xbins
-        RectBivariateSpline.__init__(self, xgrid, ygrid, zgrid, *args,
-                                     **kwargs)
+        RectBivariateSpline.__init__(self, xgrid, ygrid, zgrid, *args, **kwargs)
         xknots, yknots = self.get_knots()
         self.xmin, self.xmax = np.min(xknots), np.max(xknots)
         self.ymin, self.ymax = np.min(yknots), np.max(yknots)
 
     def __call__(self, x, y, **kwargs):
-        if 'grid' not in kwargs:
+        if "grid" not in kwargs:
             x, y = np.meshgrid(x, y)
-            kwargs['grid'] = False
+            kwargs["grid"] = False
 
             result = RectBivariateSpline.__call__(self, x, y, **kwargs)
             # result = np.where((x < self.xmax) & (x > self.xmin), result, 0.)
             # result[np.isnan(result)] = 0.
             # return result.T
-            return np.where(np.isnan(result), 0., result).T
+            return np.where(np.isnan(result), 0.0, result).T
         else:
             result = RectBivariateSpline.__call__(self, x, y, **kwargs)
             # result = np.where((x <= xmax) & (x >= xmin), result, 0.)
             # result[np.isnan(result)] = 0.
             # return result
-            return np.where(np.isnan(result), 0., result)
+            return np.where(np.isnan(result), 0.0, result)
 
 
 class RectBivariateSplineLogData(RectBivariateSplineNoExtrap):
@@ -101,7 +107,7 @@ class RectBivariateSplineLogData(RectBivariateSplineNoExtrap):
         x = np.log10(x)
         y = np.log10(y)
 
-        info(2, 'Spline created')
+        info(2, "Spline created")
         RectBivariateSplineNoExtrap.__init__(self, x, y, z, *args, **kwargs)
 
     def __call__(self, x, y, **kwargs):
@@ -127,7 +133,7 @@ def caller_name(skip=2):
     start = 0 + skip
 
     if len(stack) < start + 1:
-        return ''
+        return ""
 
     parentframe = stack[start][0]
 
@@ -137,21 +143,21 @@ def caller_name(skip=2):
         module = inspect.getmodule(parentframe)
         # `modname` can be None when frame is executed directly in console
         if module:
-            name.append(module.__name__ + '.')
+            name.append(module.__name__ + ".")
 
     # detect classname
-    if 'self' in parentframe.f_locals:
+    if "self" in parentframe.f_locals:
         # I don't know any way to detect call from the object method
         # there seems to be no way to detect static method call - it will
         # be just a function call
 
-        name.append(parentframe.f_locals['self'].__class__.__name__ + '::')
+        name.append(parentframe.f_locals["self"].__class__.__name__ + "::")
 
     codename = parentframe.f_code.co_name
-    if codename != '<module>':  # top level usually
-        name.append(codename + '(): ')  # function or a method
+    if codename != "<module>":  # top level usually
+        name.append(codename + "(): ")  # function or a method
     else:
-        name.append(': ')  # If called from module scope
+        name.append(": ")  # If called from module scope
 
     del parentframe
     return "".join(name)
@@ -171,24 +177,25 @@ def info(min_dbg_level, *message, **kwargs):
         blank_caller (bool): blank the caller name (for multiline output)
         no_caller (bool): don't print the name of the caller
     """
-    condition = kwargs.pop('condition', min_dbg_level <= config.debug_level)
+    condition = kwargs.pop("condition", min_dbg_level <= config.debug_level)
     # Dont' process the if the function if nothing will happen
-    if not (condition or config.override_debug_fcn): 
+    if not (condition or config.override_debug_fcn):
         return
 
-    blank_caller = kwargs.pop('blank_caller', False)
-    no_caller = kwargs.pop('no_caller', False)
+    blank_caller = kwargs.pop("blank_caller", False)
+    no_caller = kwargs.pop("no_caller", False)
     if config.override_debug_fcn and min_dbg_level < config.override_max_level:
-        fcn_name = caller_name(skip=2).split('::')[-1].split('():')[0]
+        fcn_name = caller_name(skip=2).split("::")[-1].split("():")[0]
         if fcn_name in config.override_debug_fcn:
             min_dbg_level = 0
 
     if condition and min_dbg_level <= config.debug_level:
         message = [str(m) for m in message]
-        cname = caller_name() if not no_caller else ''
+        cname = caller_name() if not no_caller else ""
         if blank_caller:
-            cname = len(cname) * ' '
+            cname = len(cname) * " "
         print(cname + " ".join(message))
+
 
 def get_AZN(nco_id):
     """Returns mass number :math:`A`, charge :math:`Z` and neutron
@@ -209,11 +216,13 @@ def get_AZN(nco_id):
 
     return A, Z, A - Z
 
+
 def bin_widths(bin_edges):
     """Computes and returns bin widths from given edges."""
     edg = np.array(bin_edges)
 
     return np.abs(edg[1:, ...] - edg[:-1, ...])
+
 
 class AdditiveDictionary(dict):
     """This dictionary subclass adds values if keys are
@@ -226,21 +235,28 @@ class AdditiveDictionary(dict):
             super(AdditiveDictionary, self).__setitem__(key, value)
         elif isinstance(value, tuple):
             super(AdditiveDictionary, self).__setitem__(
-                key, (self[key][0], value[1] + self[key][1]))
+                key, (self[key][0], value[1] + self[key][1])
+            )
         else:
-            super(AdditiveDictionary, self).__setitem__(
-                key, self[key] + value)
-            
+            super(AdditiveDictionary, self).__setitem__(key, self[key] + value)
+
+
 class PrinceBDF(BDF):
     """This is a modified version of :class:`scipy.integrate.BDF` solver,
     that avoids oscillations that triggers excessive Jacobian updates.
     This improves solutions for CR propagation for z>1."""
-    
+
     def _step_impl(self):
         from scipy.integrate._ivp.bdf import (
-            change_D, solve_bdf_system, NEWTON_MAXITER,
-            MIN_FACTOR, MAX_FACTOR, MAX_ORDER)
-        from scipy.integrate._ivp.common import norm            
+            change_D,
+            solve_bdf_system,
+            NEWTON_MAXITER,
+            MIN_FACTOR,
+            MAX_FACTOR,
+            MAX_ORDER,
+        )
+        from scipy.integrate._ivp.common import norm
+
         t = self.t
         D = self.D
 
@@ -286,10 +302,10 @@ class PrinceBDF(BDF):
             h = t_new - t
             h_abs = np.abs(h)
 
-            y_predict = np.sum(D[:order + 1], axis=0)
+            y_predict = np.sum(D[: order + 1], axis=0)
 
             scale = atol + rtol * np.abs(y_predict)
-            psi = np.dot(D[1: order + 1].T, gamma[1: order + 1]) / alpha[order]
+            psi = np.dot(D[1 : order + 1].T, gamma[1 : order + 1]) / alpha[order]
 
             converged = False
             c = h / alpha[order]
@@ -298,8 +314,16 @@ class PrinceBDF(BDF):
                     LU = self.lu(self.I - c * J)
 
                 converged, n_iter, y_new, d = solve_bdf_system(
-                    self.fun, t_new, y_predict, c, psi, LU, self.solve_lu,
-                    scale, self.newton_tol)
+                    self.fun,
+                    t_new,
+                    y_predict,
+                    c,
+                    psi,
+                    LU,
+                    self.solve_lu,
+                    scale,
+                    self.newton_tol,
+                )
 
                 if not converged:
                     if current_jac:
@@ -316,16 +340,17 @@ class PrinceBDF(BDF):
                 LU = None
                 continue
 
-            safety = round(0.9 * (2 * NEWTON_MAXITER + 1) / (2 * NEWTON_MAXITER
-                                                       + n_iter), ndigits=15)
+            safety = round(
+                0.9 * (2 * NEWTON_MAXITER + 1) / (2 * NEWTON_MAXITER + n_iter),
+                ndigits=15,
+            )
 
             scale = atol + rtol * np.abs(y_new)
             error = error_const[order] * d
             error_norm = norm(error / scale)
 
             if error_norm > 1:
-                factor = max(MIN_FACTOR,
-                             safety * error_norm ** (-1 / (order + 1)))
+                factor = max(MIN_FACTOR, safety * error_norm ** (-1 / (order + 1)))
                 h_abs *= factor
                 change_D(D, order, factor)
                 self.n_equal_steps = 0
@@ -360,8 +385,6 @@ class PrinceBDF(BDF):
             error_m_norm = norm(error_m / scale)
         else:
             error_m_norm = np.inf
-        
-        
 
         if order < MAX_ORDER:
             error_p = error_const[order + 1] * D[order + 2]
@@ -370,7 +393,7 @@ class PrinceBDF(BDF):
             error_p_norm = np.inf
 
         error_norms = np.array([error_m_norm, error_norm, error_p_norm])
-        with np.errstate(divide='ignore'): 
+        with np.errstate(divide="ignore"):
             factors = error_norms ** (-1 / np.arange(order, order + 3))
 
         delta_order = np.argmax(factors) - 1
@@ -378,10 +401,10 @@ class PrinceBDF(BDF):
         self.order = order
 
         factor = min(MAX_FACTOR, safety * np.max(factors))
-        
+
         # # This is the custom modification for PriNCe
         if round(self.h_abs * factor, ndigits=15) > self.max_step:
-            if round(self.h_abs,ndigits=15) != self.max_step:
+            if round(self.h_abs, ndigits=15) != self.max_step:
                 change_D(D, order, max_step / self.h_abs)
                 self.h_abs = self.max_step
                 self.n_equal_steps = 0
@@ -396,29 +419,33 @@ class PrinceBDF(BDF):
 
         return True, None
 
+
 class PrinceProgressBar(object):
     """This is a wrapper around tqdm to process some prince
     argument handling, making it optional, for notebooks and
     python scripts using the bar_type argument."""
+
     def __init__(self, bar_type=None, nsteps=None):
         if bar_type == None or bar_type == False:
             self.pbar = None
-        elif bar_type == 'notebook':
+        elif bar_type == "notebook":
             from tqdm import tqdm_notebook as tqdm
+
             self.pbar = tqdm(total=nsteps)
             self.pbar.update()
         else:
             from tqdm import tqdm
+
             self.pbar = tqdm(total=nsteps)
             self.pbar.update()
 
     def __enter__(self):
         return self
-    
+
     def update(self):
         if self.pbar is not None:
             self.pbar.update()
-    
+
     def __exit__(self, type, value, traceback):
         if self.pbar is not None:
             self.pbar.close()
