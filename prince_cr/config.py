@@ -124,7 +124,7 @@ update_rates_z_threshold = 0.01
 MKL_threads = 32
 
 # Sparse matrix-vector product from "CUPY"|"MKL"|"scipy"
-linear_algebra_backend = "cupy"
+linear_algebra_backend = "MKL"
 
 
 # Check for CUPY library for GPU support
