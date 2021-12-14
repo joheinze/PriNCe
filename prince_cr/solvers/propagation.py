@@ -186,6 +186,7 @@ class UHECRPropagationSolver(object):
         self.spec_man = prince_run.spec_man
         self.egrid = prince_run.cr_grid.grid
         self.ebins = prince_run.cr_grid.bins
+        self.widths = prince_run.cr_grid.widths
         # Flags to enable/disable different loss types
         self.enable_adiabatic_losses = enable_adiabatic_losses
         self.enable_pairprod_losses = enable_pairprod_losses
@@ -237,6 +238,15 @@ class UHECRPropagationSolver(object):
         if self.result is None:
             self.result = UHECRPropagationResult(self.state, self.egrid, self.spec_man)
         return self.result
+
+    def pre_step_hook(self, t):
+        """This function is called after initializing the solver
+        but before the first step."""
+        pass
+
+    def post_step_hook(self, t):
+        """This call-back like function is called after each successful step"""
+        pass
 
     def add_source_class(self, source_instance):
         self.list_of_sources.append(source_instance)
@@ -549,6 +559,8 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
         self._init_solver(dz)
         info(2, "Solver initialized in {0} s".format(time() - start_time))
 
+        self.pre_step_hook(self.initial_z)
+
         info(2, "Starting integration.")
         with PrinceProgressBar(
             bar_type=progressbar, nsteps=-(self.initial_z - self.final_z) / dz
@@ -570,6 +582,8 @@ class UHECRPropagationSolverBDF(UHECRPropagationSolver):
                     print("LU decomp:", self.r.nlu)
                     print("current order:", self.r.dense_output().order)
                     print("---" * 20)
+
+                self.post_step_hook(self.r.t)
 
                 stepcount += 1
                 reset_counter += 1
@@ -637,6 +651,9 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
         else:
             initial_state = np.zeros((self.dim_states, 1))
         state = initial_state
+
+        self.pre_step_hook(self.initial_z)
+
         info(2, "Starting integration.")
         with PrinceProgressBar(
             bar_type=progressbar, nsteps=-(self.initial_z - self.final_z) / dz
@@ -682,6 +699,7 @@ class UHECRPropagationSolverEULER(UHECRPropagationSolver):
                     print("break at z =", curr_z)
                     break
                 curr_z += dz
+                self.post_step_hook(curr_z)
                 pbar.update()
 
         end_time = time()

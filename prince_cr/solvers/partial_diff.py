@@ -120,9 +120,17 @@ class SemiLagrangianSolver(object):
         # calculate state by interpolating with weights
         state = np.zeros_like(self.grid_log)
         # backward only
-        # state[i1] = np.exp(weight_b0 * newstate_log[i0] + weight_b1 * newstate_log[i1] + weight_b2 * newstate_log[i2])
+        # state[i1] = np.exp(
+        #     weight_b0 * newstate_log[i0]
+        #     + weight_b1 * newstate_log[i1]
+        #     + weight_b2 * newstate_log[i2]
+        # )
         # forward only
-        # state[i1] = np.exp(weight_f1 * newstate_log[i1] + weight_f2 * newstate_log[i2] + weight_f3 * newstate_log[i3])
+        # state[i1] = np.exp(
+        #     weight_f1 * newstate_log[i1]
+        #     + weight_f2 * newstate_log[i2]
+        #     + weight_f3 * newstate_log[i3]
+        # )
 
         # forward and backward average
         state[i1] = np.exp(
@@ -177,28 +185,44 @@ class SemiLagrangianSolver(object):
             / (newgrid_log[i3] - newgrid_log[i2])
         )
 
-        # reverse0 = ((newgrid_log[i2] - self.grid_log[i1]) / (self.grid_log[i0] - self.grid_log[i1])
-        #             *(newgrid_log[i2] - self.grid_log[i2]) / (self.grid_log[i0] - self.grid_log[i2])
-        #             *(newgrid_log[i2] - self.grid_log[i3]) / (self.grid_log[i0] - self.grid_log[i3])
-        #             )
-        # reverse1 = ((newgrid_log[i2] - self.grid_log[i0]) / (self.grid_log[i1] - self.grid_log[i0])
-        #             *(newgrid_log[i2] - self.grid_log[i2]) / (self.grid_log[i1] - self.grid_log[i2])
-        #             *(newgrid_log[i2] - self.grid_log[i3]) / (self.grid_log[i1] - self.grid_log[i3])
-        #             )
-        # reverse2 = ((newgrid_log[i2] - self.grid_log[i0]) / (self.grid_log[i2] - self.grid_log[i0])
-        #             *(newgrid_log[i2] - self.grid_log[i1]) / (self.grid_log[i2] - self.grid_log[i1])
-        #             *(newgrid_log[i2] - self.grid_log[i3]) / (self.grid_log[i2] - self.grid_log[i3])
-        #             )
-        # reverse3 = ((newgrid_log[i2] - self.grid_log[i0]) / (self.grid_log[i3] - self.grid_log[i0])
-        #             *(newgrid_log[i2] - self.grid_log[i1]) / (self.grid_log[i3] - self.grid_log[i1])
-        #             *(newgrid_log[i2] - self.grid_log[i2]) / (self.grid_log[i3] - self.grid_log[i2])
-        #             )
+        # reverse0 = (
+        #     (newgrid_log[i2] - self.grid_log[i1])
+        #     / (self.grid_log[i0] - self.grid_log[i1])
+        #     * (newgrid_log[i2] - self.grid_log[i2])
+        #     / (self.grid_log[i0] - self.grid_log[i2])
+        #     * (newgrid_log[i2] - self.grid_log[i3])
+        #     / (self.grid_log[i0] - self.grid_log[i3])
+        # )
+        # reverse1 = (
+        #     (newgrid_log[i2] - self.grid_log[i0])
+        #     / (self.grid_log[i1] - self.grid_log[i0])
+        #     * (newgrid_log[i2] - self.grid_log[i2])
+        #     / (self.grid_log[i1] - self.grid_log[i2])
+        #     * (newgrid_log[i2] - self.grid_log[i3])
+        #     / (self.grid_log[i1] - self.grid_log[i3])
+        # )
+        # reverse2 = (
+        #     (newgrid_log[i2] - self.grid_log[i0])
+        #     / (self.grid_log[i2] - self.grid_log[i0])
+        #     * (newgrid_log[i2] - self.grid_log[i1])
+        #     / (self.grid_log[i2] - self.grid_log[i1])
+        #     * (newgrid_log[i2] - self.grid_log[i3])
+        #     / (self.grid_log[i2] - self.grid_log[i3])
+        # )
+        # reverse3 = (
+        #     (newgrid_log[i2] - self.grid_log[i0])
+        #     / (self.grid_log[i3] - self.grid_log[i0])
+        #     * (newgrid_log[i2] - self.grid_log[i1])
+        #     / (self.grid_log[i3] - self.grid_log[i1])
+        #     * (newgrid_log[i2] - self.grid_log[i2])
+        #     / (self.grid_log[i3] - self.grid_log[i2])
+        # )
 
         # weight_sum = weight0[i3] + weight1[i2] + weight2[i1] + weight3[i0]
         # weight_sum = weight0[i0] + weight1[i1] + weight2[i2] + weight3[i3]
 
         # if spid == 101:
-        #     print (1 - weight_sum)
+        #     print(1 - weight_sum)
         # weight0[i3] += (1 - weight_sum) * reverse0[i3]
         # weight1[i2] += (1 - weight_sum) * reverse1[i2]
         # weight2[i1] += (1 - weight_sum) * reverse2[i1]
@@ -281,31 +305,56 @@ class SemiLagrangianSolver(object):
             / (newgrid_log[i4] - newgrid_log[i3])
         )
 
-        # weight_f1 = ((self.grid_log[i2] - newgrid_log[i2]) / (newgrid_log[i1] - newgrid_log[i2])
-        #             *(self.grid_log[i2] - newgrid_log[i3]) / (newgrid_log[i1] - newgrid_log[i3])
-        #             *(self.grid_log[i2] - newgrid_log[i4]) / (newgrid_log[i1] - newgrid_log[i4])
-        #             *(self.grid_log[i2] - newgrid_log[i5]) / (newgrid_log[i1] - newgrid_log[i5])
-        #             )
-        # weight_f2 = ((self.grid_log[i2] - newgrid_log[i1]) / (newgrid_log[i2] - newgrid_log[i1])
-        #             *(self.grid_log[i2] - newgrid_log[i3]) / (newgrid_log[i2] - newgrid_log[i3])
-        #             *(self.grid_log[i2] - newgrid_log[i4]) / (newgrid_log[i2] - newgrid_log[i4])
-        #             *(self.grid_log[i2] - newgrid_log[i5]) / (newgrid_log[i2] - newgrid_log[i5])
-        #             )
-        # weight_f3 = ((self.grid_log[i2] - newgrid_log[i1]) / (newgrid_log[i3] - newgrid_log[i1])
-        #             *(self.grid_log[i2] - newgrid_log[i2]) / (newgrid_log[i3] - newgrid_log[i2])
-        #             *(self.grid_log[i2] - newgrid_log[i4]) / (newgrid_log[i3] - newgrid_log[i4])
-        #             *(self.grid_log[i2] - newgrid_log[i5]) / (newgrid_log[i3] - newgrid_log[i5])
-        #             )
-        # weight_f4 = ((self.grid_log[i2] - newgrid_log[i1]) / (newgrid_log[i4] - newgrid_log[i1])
-        #             *(self.grid_log[i2] - newgrid_log[i2]) / (newgrid_log[i4] - newgrid_log[i2])
-        #             *(self.grid_log[i2] - newgrid_log[i3]) / (newgrid_log[i4] - newgrid_log[i3])
-        #             *(self.grid_log[i2] - newgrid_log[i5]) / (newgrid_log[i4] - newgrid_log[i5])
-        #             )
-        # weight_f5 = ((self.grid_log[i2] - newgrid_log[i1]) / (newgrid_log[i5] - newgrid_log[i1])
-        #             *(self.grid_log[i2] - newgrid_log[i2]) / (newgrid_log[i5] - newgrid_log[i2])
-        #             *(self.grid_log[i2] - newgrid_log[i3]) / (newgrid_log[i5] - newgrid_log[i3])
-        #             *(self.grid_log[i2] - newgrid_log[i4]) / (newgrid_log[i5] - newgrid_log[i4])
-        #             )
+        # weight_f1 = (
+        #     (self.grid_log[i2] - newgrid_log[i2])
+        #     / (newgrid_log[i1] - newgrid_log[i2])
+        #     * (self.grid_log[i2] - newgrid_log[i3])
+        #     / (newgrid_log[i1] - newgrid_log[i3])
+        #     * (self.grid_log[i2] - newgrid_log[i4])
+        #     / (newgrid_log[i1] - newgrid_log[i4])
+        #     * (self.grid_log[i2] - newgrid_log[i5])
+        #     / (newgrid_log[i1] - newgrid_log[i5])
+        # )
+        # weight_f2 = (
+        #     (self.grid_log[i2] - newgrid_log[i1])
+        #     / (newgrid_log[i2] - newgrid_log[i1])
+        #     * (self.grid_log[i2] - newgrid_log[i3])
+        #     / (newgrid_log[i2] - newgrid_log[i3])
+        #     * (self.grid_log[i2] - newgrid_log[i4])
+        #     / (newgrid_log[i2] - newgrid_log[i4])
+        #     * (self.grid_log[i2] - newgrid_log[i5])
+        #     / (newgrid_log[i2] - newgrid_log[i5])
+        # )
+        # weight_f3 = (
+        #     (self.grid_log[i2] - newgrid_log[i1])
+        #     / (newgrid_log[i3] - newgrid_log[i1])
+        #     * (self.grid_log[i2] - newgrid_log[i2])
+        #     / (newgrid_log[i3] - newgrid_log[i2])
+        #     * (self.grid_log[i2] - newgrid_log[i4])
+        #     / (newgrid_log[i3] - newgrid_log[i4])
+        #     * (self.grid_log[i2] - newgrid_log[i5])
+        #     / (newgrid_log[i3] - newgrid_log[i5])
+        # )
+        # weight_f4 = (
+        #     (self.grid_log[i2] - newgrid_log[i1])
+        #     / (newgrid_log[i4] - newgrid_log[i1])
+        #     * (self.grid_log[i2] - newgrid_log[i2])
+        #     / (newgrid_log[i4] - newgrid_log[i2])
+        #     * (self.grid_log[i2] - newgrid_log[i3])
+        #     / (newgrid_log[i4] - newgrid_log[i3])
+        #     * (self.grid_log[i2] - newgrid_log[i5])
+        #     / (newgrid_log[i4] - newgrid_log[i5])
+        # )
+        # weight_f5 = (
+        #     (self.grid_log[i2] - newgrid_log[i1])
+        #     / (newgrid_log[i5] - newgrid_log[i1])
+        #     * (self.grid_log[i2] - newgrid_log[i2])
+        #     / (newgrid_log[i5] - newgrid_log[i2])
+        #     * (self.grid_log[i2] - newgrid_log[i3])
+        #     / (newgrid_log[i5] - newgrid_log[i3])
+        #     * (self.grid_log[i2] - newgrid_log[i4])
+        #     / (newgrid_log[i5] - newgrid_log[i4])
+        # )
 
         # calculate state by interpolating with weights
         state = np.zeros_like(self.grid_log)
@@ -317,14 +366,23 @@ class SemiLagrangianSolver(object):
             + weight_b3 * newstate_log[i3]
             + weight_b4 * newstate_log[i4]
         )
-        # forward only
-        # state[i2] = np.exp(weight_f1 * newstate_log[i1] + weight_f2 * newstate_log[i2]
-        #            + weight_f3 * newstate_log[i3] + weight_f4 * newstate_log[i4] + weight_f5 * newstate_log[i5])
-        # forward and backward average
-        # state[i2] = np.exp(weight_b0 / 2 * newstate_log[i0] + (weight_f1 + weight_b1) / 2 * newstate_log[i1]
-        #                   + (weight_f2 + weight_b2) / 2 * newstate_log[i2] + (weight_f3 + weight_b3) / 2 * newstate_log[i3]
-        #                   + (weight_f4 + weight_b4) / 2 * newstate_log[i4] + weight_f5 / 2 * newstate_log[i5]
-        #                   )
+        # # forward only
+        # state[i2] = np.exp(
+        #     weight_f1 * newstate_log[i1]
+        #     + weight_f2 * newstate_log[i2]
+        #     + weight_f3 * newstate_log[i3]
+        #     + weight_f4 * newstate_log[i4]
+        #     + weight_f5 * newstate_log[i5]
+        # )
+        # # forward and backward average
+        # state[i2] = np.exp(
+        #     weight_b0 / 2 * newstate_log[i0]
+        #     + (weight_f1 + weight_b1) / 2 * newstate_log[i1]
+        #     + (weight_f2 + weight_b2) / 2 * newstate_log[i2]
+        #     + (weight_f3 + weight_b3) / 2 * newstate_log[i3]
+        #     + (weight_f4 + weight_b4) / 2 * newstate_log[i4]
+        #     + weight_f5 / 2 * newstate_log[i5]
+        # )
         return state
 
     def interpolate_5thorder_weights(self, conloss, state):
@@ -442,7 +500,7 @@ class DifferentialOperator(object):
             self.operator = cupyx.scipy.sparse.csr_matrix(self.operator)
 
     def construct_differential_operator(self):
-        from scipy.sparse import coo_matrix, block_diag
+        from scipy.sparse import block_diag, coo_matrix
 
         # # Construct a
         # # First rows of operator matrix
@@ -455,12 +513,10 @@ class DifferentialOperator(object):
         # diags_left_2 = [-2, -1, 0, 1, 2, 3]
         # coeffs_left_2 = [3, -30, -20, 60, -15, 2]
         # denom_left_2 = 60.
-
         # # Centered diagonals
         # diags = [-3, -2, -1, 1, 2, 3]
         # coeffs = [-1, 9, -45, 45, -9, 1]
         # denom = 60.
-
         # # First rows of operator matrix
         # diags_leftmost = [0, 1]
         # coeffs_leftmost = [-1, 1]
@@ -471,12 +527,10 @@ class DifferentialOperator(object):
         # diags_left_2 = [0, 1]
         # coeffs_left_2 = [-1, 1]
         # denom_left_2 = 1.
-
         # # Centered diagonals
         # diags = [0, 1]
         # coeffs = [-1, 1]
         # denom = 1.
-
         # First rows of operator matrix
         diags_leftmost = [1, 2, 3]
         coeffs_leftmost = [-3, 4, -1]
