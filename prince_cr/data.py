@@ -104,7 +104,7 @@ class PrinceDB(object):
         return db_entry
 
     def ebl_spline(self, model_tag, subset='base'):
-        from scipy.interpolate import interp2d
+        from scipy.interpolate import RectBivariateSpline
         info(10, 'Reading EBL field splines. tag={0}'.format(model_tag))
         with h5py.File(self.prince_db_fname, 'r') as prince_db:
             self._check_subgroup_exists(prince_db['EBL_models'],
@@ -112,9 +112,11 @@ class PrinceDB(object):
             self._check_subgroup_exists(prince_db['EBL_models'][model_tag],
                                         subset)
             spl_gr = prince_db['EBL_models'][model_tag][subset]
+            
+            interp2d_transposed = RectBivariateSpline(spl_gr['x'], spl_gr['y'], spl_gr['z'].T)
+            interp2d = lambda xval, yval: interp2d_transposed(xval, yval).T
 
-            return interp2d(spl_gr['x'], spl_gr['y'], spl_gr['z'],
-                            fill_value=0., kind='linear')
+            return interp2d
 
 #: db_handler is the HDF file interface
 db_handler = PrinceDB()
