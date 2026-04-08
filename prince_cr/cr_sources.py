@@ -65,7 +65,7 @@ class CosmicRaySource(object, metaclass=ABCMeta):
         num_int = np.zeros_like(self.ncoids, dtype=np.float)
         lum_int = np.zeros_like(self.ncoids, dtype=np.float)
 
-        from scipy.integrate import trapz
+        from scipy.integrate import trapezoid
         for idx, pid in enumerate(self.ncoids):
             # get the inection for the species and subsitute back from E_A =  E / A to E
             s = self.spec_man.ncoid2sref[pid]
@@ -76,8 +76,8 @@ class CosmicRaySource(object, metaclass=ABCMeta):
             # Get the ranges where the energy is greater than Emin and integrate
             mask = np.argwhere(egrid > Emin)
             mask = mask.flatten()
-            num_int[idx] = trapz(injec[mask], egrid[mask])
-            lum_int[idx] = trapz(injec[mask] * egrid[mask], egrid[mask])
+            num_int[idx] = trapezoid(injec[mask], egrid[mask])
+            lum_int[idx] = trapezoid(injec[mask] * egrid[mask], egrid[mask])
         return num_int, lum_int
 
     def injection_rate(self, z):

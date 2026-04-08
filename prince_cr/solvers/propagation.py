@@ -153,10 +153,10 @@ class UHECRPropagationResult(object):
         return com_egrid, average, variance
 
     def get_energy_density(self, nco_id):
-        from scipy.integrate import trapz
+        from scipy.integrate import trapezoid
 
         A = self.spec_man.ncoid2sref[nco_id].A
-        return trapz(A * self.egrid * self.get_solution(nco_id), self.egrid)
+        return trapezoid(A * self.egrid * self.get_solution(nco_id), self.egrid)
 
 
 class UHECRPropagationSolver(object):

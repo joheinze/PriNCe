@@ -1,7 +1,7 @@
 """The module contains classes for computations of interaction rates"""
 
 import numpy as np
-from scipy.integrate import trapz
+from scipy.integrate import trapezoid
 
 from prince_cr.data import PRINCE_UNITS
 from prince_cr.util import info
@@ -483,7 +483,7 @@ class ContinuousPairProductionLossRate(object):
     def loss_vector(self, z):
         """Returns all continuous losses on dim_states grid"""
 
-        rate_single = trapz(
+        rate_single = trapezoid(
             self.photon_vector(z) * self.phi_xi2, self.xi, axis=1)
         pprod_loss_vector = self.scale_vec * np.tile(rate_single,
                                                      self.spec_man.nspec)
