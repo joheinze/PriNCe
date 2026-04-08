@@ -113,7 +113,15 @@ class PrinceDB(object):
                                         subset)
             spl_gr = prince_db['EBL_models'][model_tag][subset]
             
-            interp2d_transposed = RectBivariateSpline(spl_gr['x'], spl_gr['y'], np.array(spl_gr['z']).T)
+            Z = np.array(spl_gr['z']).T
+            if np.all(np.diff(spl_gr['x']) > 0):
+                # increasing values
+                interp2d_transposed = RectBivariateSpline(spl_gr['x'], spl_gr['y'], Z)
+            elif np.all(np.diff(spl_gr['x']) < 0):
+                # decreasing values
+                X = np.array(spl_gr['x'])
+                interp2d_transposed = RectBivariateSpline(X[::-1], spl_gr['y'], Z[::-1, :])
+
             interp2d = lambda xval, yval: interp2d_transposed(xval, yval).T
 
             return interp2d
