@@ -7,7 +7,7 @@ from abc import abstractmethod
 from os.path import join
 
 import numpy as np
-from scipy.integrate import trapz
+from scipy.integrate import trapezoid
 from scipy.interpolate import UnivariateSpline
 
 import prince_cr.config as config
@@ -146,7 +146,7 @@ class EBLSplined2D(PhotonField):
             Ered = E / (1. + z)
             nlocal = self.int2d(Ered, 0., assume_sorted=True)
             nz = self.int2d(Ered, z, assume_sorted=True)
-            scale = trapz(nz,Ered) / trapz(nlocal,Ered) / (1+z)**3
+            scale = trapezoid(nz,Ered) / trapezoid(nlocal,Ered) / (1+z)**3
             # print(scale)
             return (1. + z)**2 * nlocal * scale
         else:
