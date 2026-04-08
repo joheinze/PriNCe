@@ -122,7 +122,7 @@ class PrinceDB(object):
                 X = np.array(spl_gr['x'])
                 interp2d_transposed = RectBivariateSpline(X[::-1], spl_gr['y'], Z[::-1, :])
 
-            interp2d = lambda xval, yval: interp2d_transposed(xval, yval).T
+            interp2d = lambda xval, yval: interp2d_transposed(xval, yval).T.squeeze()
 
             return interp2d
 
