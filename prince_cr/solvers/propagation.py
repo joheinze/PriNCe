@@ -82,7 +82,7 @@ class UHECRPropagationResult(object):
         if egrid is None:
             max_mass = max([s.A for s in self.spec_man.species_refs])
             emin_log, emax_log, nbins = list(config.cosmic_ray_grid)
-            emax_log = np.log10(max_mass * 10**emax_log)
+            emax_log = np.log10(max_mass * 10**float(emax_log))
             nbins *= 4
             com_egrid = EnergyGrid(emin_log, emax_log, nbins).grid
         else:
