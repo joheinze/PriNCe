@@ -33,11 +33,17 @@ dependencies = [
     "requests",
 ]
 
-[project.optional-dependencies]
-test = ["pytest", "matplotlib"]
-
 [project.urls]
 Homepage = "https://github.com/joheinze/PriNCe"
+
+[dependency-groups]
+test = ["pytest", "matplotlib"]
+dev = [
+    {include-group = "test"},
+    "ruff",
+    "mypy",
+    "pre-commit",
+]
 
 [tool.setuptools.dynamic]
 version = {attr = "prince_cr.version.__version__"}
