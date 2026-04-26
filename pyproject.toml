@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "prince-cr"
+dynamic = ["version"]
+description = "Cosmic ray PRopagation Including Nuclear Cascade equations"
+readme = {file = "README.md", content-type = "text/markdown"}
+license = {text = "BSD 3-Clause License"}
+authors = [
+    {name = "Jonas Heinze"},
+    {name = "Anatoli Fedynitch", email = "afedynitch@gmail.com"},
+]
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Intended Audience :: Science/Research",
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: BSD License",
+]
+dependencies = [
+    "scipy",
+    "numpy",
+    "tqdm",
+    "h5py",
+    "requests",
+]
+
+[project.optional-dependencies]
+test = ["pytest", "matplotlib"]
+
+[project.urls]
+Homepage = "https://github.com/joheinze/PriNCe"
+
+[tool.setuptools.dynamic]
+version = {attr = "prince_cr.version.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["prince_cr*"]
+
+    [tool.setuptools.package-data]
+prince_cr = ["data/particle_data.ppo"]
