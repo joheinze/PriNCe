@@ -154,11 +154,11 @@ class SophiaSuperposition(CrossSectionBase):
         if daughter <= 101:
             # raise Exception('Boost conserving cross section called ' +
             #                 'for redistributed particle')
-            from scipy.integrate import trapz
+            from scipy.integrate import trapezoid
 
             _, cs_diff = self.incl_diff(mother, daughter)
-            cs_incl = trapz(cs_diff, x=self.xcenters,
-                            dx=bin_widths(self.xbins), axis=0)
+            cs_incl = trapezoid(cs_diff, x=self.xcenters,
+                                dx=bin_widths(self.xbins), axis=0)
             return self.egrid, cs_incl[self._range]
 
         elif daughter >= 200 and daughter not in [mother - 101, mother - 100]:
@@ -377,12 +377,12 @@ class EmpiricalModel(SophiaSuperposition):
         """Computes inclusive from nonel * M with M is
         multiplicity value stored in internal table
         """
-        from scipy.integrate import trapz
+        from scipy.integrate import trapezoid
 
         if daughter <= config.redist_threshold_ID:
             _, cs_diff = self.incl_diff(mother, daughter)
-            cs_incl = trapz(cs_diff, x=self.xcenters,
-                            dx=bin_widths(self.xbins), axis=0)
+            cs_incl = trapezoid(cs_diff, x=self.xcenters,
+                                dx=bin_widths(self.xbins), axis=0)
             return self.egrid, cs_incl[self._range]
         elif (mother, daughter) in self.multiplicity:
             egrid, cs_nonel = self.nonel(mother)
@@ -404,12 +404,12 @@ class EmpiricalModel(SophiaSuperposition):
                 self.multiplicity[mother, daughter] * cs_nonel / xw
         elif (mother > 101) and (daughter in [2, 3, 4]):  # if it's a pion rescale to A^2/3
             def superposition_incl(mother, daughter):
-                from scipy.integrate import trapz
+                from scipy.integrate import trapezoid
                 _, Z, N = get_AZN(mother)
                 cs_diff = self.redist_proton[daughter].T * Z * self.cs_proton_grid + \
                     self.redist_neutron[daughter].T * N * self.cs_neutron_grid
-                cs_incl = trapz(cs_diff, x=self.xcenters,
-                                dx=bin_widths(self.xbins), axis=0)
+                cs_incl = trapezoid(cs_diff, x=self.xcenters,
+                                    dx=bin_widths(self.xbins), axis=0)
                 return cs_incl[self._range]
 
             def superposition_multiplicities(mother ,daughter):

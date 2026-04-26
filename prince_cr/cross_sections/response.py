@@ -102,8 +102,8 @@ class ResponseFunction(object):
         else:
             egrid, cross_section = cs_model.nonel(mother)
 
-    # note that cumtrapz works also for 2d-arrays and will integrate along axis = 1
-        integral = integrate.cumtrapz(egrid * cross_section, x=egrid)
+    # note that cumulative_trapezoid works also for 2d-arrays and will integrate along axis = 1
+        integral = integrate.cumulative_trapezoid(egrid * cross_section, x=egrid)
         ygrid = egrid[1:] / 2.
 
         return ygrid, integral / (2 * ygrid**2)
@@ -161,9 +161,9 @@ class ResponseFunction(object):
             self.incl_diff_intp[(mother, daughter)] = get_2Dinterp_object(
                 self.xcenters, ygr, rfunc, self.cross_section.xbins)
 
-            from scipy.integrate import cumtrapz
-            integral = cumtrapz(rfunc, ygr, axis=1,initial=0)
-            integral = cumtrapz(integral, self.xcenters, axis=0,initial=0)
+            from scipy.integrate import cumulative_trapezoid
+            integral = cumulative_trapezoid(rfunc, ygr, axis=1,initial=0)
+            integral = cumulative_trapezoid(integral, self.xcenters, axis=0,initial=0)
 
             self.incl_diff_intp_integral[(mother, daughter)] = get_2Dinterp_object(
                 self.xcenters, ygr, integral, self.cross_section.xbins)

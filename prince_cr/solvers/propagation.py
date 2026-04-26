@@ -82,7 +82,7 @@ class UHECRPropagationResult(object):
         if egrid is None:
             max_mass = max([s.A for s in self.spec_man.species_refs])
             emin_log, emax_log, nbins = list(config.cosmic_ray_grid)
-            emax_log = np.log10(max_mass * 10**emax_log)
+            emax_log = np.log10(max_mass * 10**float(emax_log))
             nbins *= 4
             com_egrid = EnergyGrid(emin_log, emax_log, nbins).grid
         else:
@@ -153,10 +153,10 @@ class UHECRPropagationResult(object):
         return com_egrid, average, variance
 
     def get_energy_density(self, nco_id):
-        from scipy.integrate import trapz
+        from scipy.integrate import trapezoid
 
         A = self.spec_man.ncoid2sref[nco_id].A
-        return trapz(A * self.egrid * self.get_solution(nco_id), self.egrid)
+        return trapezoid(A * self.egrid * self.get_solution(nco_id), self.egrid)
 
 
 class UHECRPropagationSolver(object):

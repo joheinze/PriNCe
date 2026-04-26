@@ -50,6 +50,30 @@ UNITS_AND_CONVERSIONS_DEF = dict(
 PRINCE_UNITS = convert_to_namedtuple(UNITS_AND_CONVERSIONS_DEF, "PriNCeUnits")
 
 
+class ebl_interpolator(object):
+    """Provides an interpolator to replace previously used interp2d.
+
+    To be used in the class PrinceDB below, in the function ebl_spline.
+    """
+    def __init__(self, spline_grid):
+        from scipy.interpolate import RectBivariateSpline
+
+        Z = np.array(spline_grid['z']).T
+        
+        if np.all(np.diff(spline_grid['x']) > 0):
+            # increasing values
+            interp2d_transposed = RectBivariateSpline(spline_grid['x'], spline_grid['y'], Z)
+        elif np.all(np.diff(spline_grid['x']) < 0):
+            # decreasing values
+            X = np.array(spline_grid['x'])
+            interp2d_transposed = RectBivariateSpline(X[::-1], spline_grid['y'], Z[::-1, :])
+
+        self._interpolator = interp2d_transposed
+
+    def __call__(self, xval, yval):
+        return self._interpolator(xval, yval).T.squeeze()
+
+
 class PrinceDB(object):
     """Provides access to data stored in an HDF5 file.
 
@@ -104,7 +128,7 @@ class PrinceDB(object):
         return db_entry
 
     def ebl_spline(self, model_tag, subset='base'):
-        from scipy.interpolate import interp2d
+        
         info(10, 'Reading EBL field splines. tag={0}'.format(model_tag))
         with h5py.File(self.prince_db_fname, 'r') as prince_db:
             self._check_subgroup_exists(prince_db['EBL_models'],
@@ -113,8 +137,7 @@ class PrinceDB(object):
                                         subset)
             spl_gr = prince_db['EBL_models'][model_tag][subset]
 
-            return interp2d(spl_gr['x'], spl_gr['y'], spl_gr['z'],
-                            fill_value=0., kind='linear')
+            return ebl_interpolator(spl_gr)
 
 #: db_handler is the HDF file interface
 db_handler = PrinceDB()

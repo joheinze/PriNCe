@@ -7,7 +7,7 @@ from abc import abstractmethod
 from os.path import join
 
 import numpy as np
-from scipy.integrate import trapz
+from scipy.integrate import trapezoid
 from scipy.interpolate import UnivariateSpline
 
 import prince_cr.config as config
@@ -144,13 +144,13 @@ class EBLSplined2D(PhotonField):
         # pylint:disable=not-callable
         if self.simple_scaling:
             Ered = E / (1. + z)
-            nlocal = self.int2d(Ered, 0., assume_sorted=True)
-            nz = self.int2d(Ered, z, assume_sorted=True)
-            scale = trapz(nz,Ered) / trapz(nlocal,Ered) / (1+z)**3
+            nlocal = self.int2d(Ered, 0.)
+            nz = self.int2d(Ered, z)
+            scale = trapezoid(nz,Ered) / trapezoid(nlocal,Ered) / (1+z)**3
             # print(scale)
             return (1. + z)**2 * nlocal * scale
         else:
-            return self.int2d(E, z, assume_sorted=True)
+            return self.int2d(E, z)
 
 class CIBFranceschini2D(EBLSplined2D):
     """CIB model "1" by Fraceschini et al.
@@ -280,7 +280,7 @@ class CIBFranceschiniZ0(PhotonField):
             raise Exception(self.__class__.__name__ + 'get_photon_density(): '
                             + 'Redshift z > 0 not supported by this class')
 
-        return self.spl_ngamma(E, assume_sorted=True)
+        return self.spl_ngamma(E)
 
 
 class CIBSteckerZ0(PhotonField):
@@ -359,7 +359,7 @@ class CIBSteckerZ0(PhotonField):
             raise Exception(self.__class__.__name__ + 'get_photon_density(): '
                             + 'Redshift z > 0 not supported by this class')
 
-        return self.spl_ngamma(E, assume_sorted=True)
+        return self.spl_ngamma(E)
 
 
 if __name__ == "__main__":

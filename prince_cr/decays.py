@@ -1,7 +1,7 @@
 """The module contains everything to handle cross section interfaces."""
 
 import numpy as np
-from scipy.integrate import trapz
+from scipy.integrate import trapezoid
 
 from prince_cr.util import info, get_AZN
 from prince_cr.data import spec_data
@@ -151,7 +151,7 @@ def get_decay_matrix_bin_average(mo, da, x_lower, x_upper):
     x_grid = (x_upper + x_lower) / 2
 
     # remember shape, but only calculate for last column, as x repeats in each column
-    from scipy.integrate import trapz
+    from scipy.integrate import trapezoid
     shape = x_grid.shape
 
     if len(shape) == 2:
@@ -531,11 +531,11 @@ def nu_from_beta_decay(x_grid, mother, daughter, Gamma=200, angle=None):
              'No angle averaging performed!')
     elif angle is None:
         # now average over angle
-        res = trapz(res, x=ctheta, axis=1)
-        res = res / trapz(res, x=x_grid)
+        res = trapezoid(res, x=ctheta, axis=1)
+        res = res / trapezoid(res, x=x_grid)
     else:
         res = res[:, 0]
-        res = res / trapz(res, x=x_grid)
+        res = res / trapezoid(res, x=x_grid)
 
     return res
 

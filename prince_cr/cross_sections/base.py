@@ -535,16 +535,16 @@ class CrossSectionBase(object, metaclass=ABCMeta):
                            on self._egrid_tab
         """
 
-        from scipy.integrate import trapz
+        from scipy.integrate import trapezoid
 
         if (mother, daughter) in self._incl_diff_tab:
             # Return the integral of the differential for the inclusive
             egr_incl, cs_diff = self.incl_diff(mother, daughter)
             # diff_mat = diff_mat.transpose()
-            cs_incl = trapz(cs_diff,
-                            x=self.xcenters,
-                            dx=bin_widths(self.xbins),
-                            axis=0)
+            cs_incl = trapezoid(cs_diff,
+                                x=self.xcenters,
+                                dx=bin_widths(self.xbins),
+                                axis=0)
 
             if isinstance(self._incl_diff_tab[(mother, daughter)], tuple):
                 return egr_incl, cs_incl
