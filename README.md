@@ -1,8 +1,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/prince-cr)](https://pypi.org/project/prince-cr/)
 [![Documentation Status](https://readthedocs.org/projects/prince/badge/?version=latest)](https://prince.readthedocs.io/en/latest/?badge=latest)
-[![Build Status](https://dev.azure.com/jonasheinze/PriNCe/_apis/build/status/joheinze.PriNCe?branchName=master)](https://dev.azure.com/jonasheinze/PriNCe/_build/latest?definitionId=1&branchName=master)
-![Deployment Status](https://vsrm.dev.azure.com/jonasheinze/_apis/public/Release/badge/23c377f2-2078-4a05-9329-f3888f8b6c6d/1/1)
+[![CI](https://github.com/joheinze/PriNCe/actions/workflows/ci.yml/badge.svg)](https://github.com/joheinze/PriNCe/actions/workflows/ci.yml)
 
 # PriNCe - **Pr**opagation **i**ncluding **N**uclear **C**ascade **e**quations
 
