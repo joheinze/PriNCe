@@ -49,7 +49,7 @@ dev = [
 version = {attr = "prince_cr.version.__version__"}
 
 [tool.setuptools.packages.find]
-include = ["prince_cr*"]
+where = ["src"]
 
     [tool.setuptools.package-data]
 prince_cr = ["data/particle_data.ppo"]
