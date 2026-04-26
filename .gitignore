@@ -7,5 +7,8 @@ prince_cr/data/*.h5
 .ipynb_checkpoints
 __pycache__
 /docs/_build
-prince_cr.egg-info
+*.egg-info/
+dist/
+build/
 sandbox_*
+/uv.lock
