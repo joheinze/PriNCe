@@ -3,6 +3,7 @@ prince_cr/data/*.h5
 
 # ignore subfolders used for programm settings and caches
 .vscode
+.idea
 .ipynb_checkpoints
 __pycache__
 /docs/_build
