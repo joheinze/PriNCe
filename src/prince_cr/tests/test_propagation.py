@@ -29,6 +29,9 @@ import unittest
 
 class TestCsec(unittest.TestCase):
     def test_propagation(self):
+        # TEMPORARY: intentionally raises to exercise CI test reporting
+        raise RuntimeError('deliberate failure to check JUnit reporting')
+
         solver = UHECRPropagationSolverBDF(initial_z=1.,
                                            final_z=0.,
                                            prince_run=prince_run_talys,

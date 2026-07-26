@@ -22,7 +22,8 @@ class TestCsec(unittest.TestCase):
 
     def test_kernel_1(self):
         prince_run_talys = core.PriNCeRun(max_mass = 4, photon_field=pf, cross_sections=cs)
-        self.assertEqual(prince_run_talys.int_rates._batch_matrix.shape, (88344, 72))
+        # TEMPORARY: intentionally wrong to exercise CI test reporting
+        self.assertEqual(prince_run_talys.int_rates._batch_matrix.shape, (12345, 72))
         self.assertEqual(prince_run_talys.int_rates._batch_rows.shape, (88344,))
         self.assertEqual(prince_run_talys.int_rates._batch_cols.shape, (88344,))
         self.assertEqual(prince_run_talys.int_rates._batch_vec.shape, (88344,))

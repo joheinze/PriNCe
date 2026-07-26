@@ -33,7 +33,8 @@ import unittest
 class TestCsec(unittest.TestCase):
     def test_talys(self):
         cs = cross_sections.TabulatedCrossSection('CRP2_TALYS')
-        self.assertEqual(cs.known_species, species_talys['species'])
+        # TEMPORARY: intentionally wrong to exercise CI test reporting
+        self.assertEqual(cs.known_species, species_talys['species'] + [9999])
         self.assertEqual(cs.known_bc_channels, species_talys['incl'])
         self.assertEqual(cs.known_diff_channels, species_talys['diff'])
 
