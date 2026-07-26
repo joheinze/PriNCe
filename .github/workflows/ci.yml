@@ -67,6 +67,7 @@ jobs:
           path: artifacts/**/*.xml
           reporter: python-xunit
           fail-on-error: false
+          use-actions-summary: false
 
   build:
     runs-on: ubuntu-latest
