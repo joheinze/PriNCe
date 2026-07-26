@@ -48,7 +48,7 @@ jobs:
     if: always()
     permissions:
       checks: write
-      pull-requests: write
+      actions: read
       contents: read
 
     steps:
@@ -59,9 +59,12 @@ jobs:
           path: artifacts
 
       - name: Publish test results
-        uses: EnricoMi/publish-unit-test-result-action@v2
+        uses: dorny/test-reporter@v3
         with:
-          files: artifacts/**/*.xml
+          name: Test Results
+          path: artifacts/**/*.xml
+          reporter: python-xunit
+          fail-on-error: false
 
   build:
     runs-on: ubuntu-latest
